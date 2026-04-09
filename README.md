@@ -45,7 +45,7 @@ Dự án sử dụng cơ chế **Cấu trúc Prompt Phân lớp (Layered Prompti
 ```text
 project/
 ├── backend/
-│   ├── prompt_orchestrator.py # [NEW] Trái tim của hệ thống Prompt
+│   ├── prompt_orchestrator.py # Trái tim của hệ thống Prompt
 │   ├── agent.py               # Điều phối luồng Coder → Critic
 │   ├── memory.py              # Quản lý bộ nhớ SQLite & Vector
 │   ├── main.py                # FastAPI endpoints
