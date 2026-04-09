@@ -37,3 +37,7 @@ DS_Store
 
 # Data
 backend/data/
+
+# Build
+frontend/build/
+frontend/dist/

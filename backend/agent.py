@@ -48,7 +48,21 @@ class PipelineResult:
 # Agent wrappers
 # ---------------------------------------------------------------------------
 
-DEFAULT_MODEL = "gemini-1.5-flash"
+# Ordered by quality — auto-rotation falls through this list when quota is hit
+CANDIDATE_MODELS: list[str] = [
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash-lite",
+]
+
+# Safety settings: allow everything to avoid empty "blocked" responses
+SAFETY_SETTINGS = {
+    "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+    "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
+    "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
+    "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+}
 
 
 def _configure_genai() -> None:
@@ -62,11 +76,11 @@ def _configure_genai() -> None:
     genai.configure(api_key=api_key)
 
 
-def _create_model(system_instruction: str) -> genai.GenerativeModel:
-    model_name = os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
+def _create_model(system_instruction: str, model_name: str) -> genai.GenerativeModel:
     return genai.GenerativeModel(
         model_name=model_name,
         system_instruction=system_instruction,
+        safety_settings=SAFETY_SETTINGS,
     )
 
 
@@ -102,8 +116,20 @@ def _parse_critique_json(text: str) -> dict[str, Any]:
 # Orchestrator
 # ---------------------------------------------------------------------------
 
-MAX_RETRIES = 3
-RETRY_BASE_DELAY = 2  # seconds
+MAX_RETRIES = len(CANDIDATE_MODELS) + 2  # enough attempts to cycle all models
+RETRY_BASE_DELAY = 5  # seconds — only used for per-minute rate limits
+
+
+def _parse_retry_delay(err_str: str) -> float | None:
+    """Extract the retry delay (in seconds) from a Google API 429 error."""
+    match = re.search(r"retry(?:_delay)?.*?(\d+(?:\.\d+)?)\s*s", err_str, re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+    # Fallback: look for "retry in Xs" pattern
+    match = re.search(r"retry\s+in\s+(\d+(?:\.\d+)?)", err_str, re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+    return None
 
 
 class AgentOrchestrator:
@@ -120,37 +146,87 @@ class AgentOrchestrator:
     ) -> None:
         self.memory = memory or MemoryManager()
         self.prompts = prompt_orchestrator or PromptOrchestrator(self.memory)
+        # Index into CANDIDATE_MODELS; advances when quota is hit.
+        # Ignored when GEMINI_MODEL env var is explicitly set.
+        self._model_idx: int = 0
 
     # ---- internal ---------------------------------------------------------
 
-    async def _call_with_retry(
-        self, model: genai.GenerativeModel, prompt: str
-    ) -> str:
-        """Call Gemini with exponential backoff on 429 / 503."""
+    def _current_model_name(self) -> str:
+        """Return active model: explicit env override, or current candidate."""
+        override = os.getenv("GEMINI_MODEL", "").strip()
+        return override if override else CANDIDATE_MODELS[self._model_idx]
+
+    def _rotate_model(self) -> None:
+        """Advance to the next candidate (no-op when GEMINI_MODEL is pinned)."""
+        if os.getenv("GEMINI_MODEL", "").strip():
+            return  # pinned — don't rotate
+        next_idx = (self._model_idx + 1) % len(CANDIDATE_MODELS)
+        logger.warning(
+            "[HITL] Quota exhausted on %s — rotating to %s",
+            CANDIDATE_MODELS[self._model_idx],
+            CANDIDATE_MODELS[next_idx],
+        )
+        self._model_idx = next_idx
+
+    async def _call_with_retry(self, system_instruction: str, prompt: str) -> str:
+        """Call Gemini with auto model-rotation on quota errors.
+
+        Two types of 429 are handled differently:
+        - Per-day quota ("PerDay" in error): rotate immediately, no sleep —
+          waiting does nothing since the quota won't reset for hours.
+        - Per-minute rate limit (has a retry_delay suggestion): wait the
+          suggested delay, then retry the NEW model.
+        """
         last_exc: Exception | None = None
         for attempt in range(1, MAX_RETRIES + 1):
+            model = _create_model(system_instruction, self._current_model_name())
             try:
-                response = await asyncio.to_thread(
-                    model.generate_content, prompt
+                timeout_secs = int(os.getenv("GEMINI_TIMEOUT", "60"))
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(model.generate_content, prompt),
+                    timeout=timeout_secs,
                 )
+                if not response.candidates:
+                    raise ValueError("Model returned no candidates.")
+                if not response.text:
+                    raise ValueError("Model output is empty. Please try again.")
                 return response.text
             except Exception as exc:
                 last_exc = exc
                 err_str = str(exc)
-                retryable = any(code in err_str for code in ("429", "503"))
-                if retryable and attempt < MAX_RETRIES:
-                    delay = RETRY_BASE_DELAY ** attempt
-                    logger.warning(
-                        "Gemini %s — retrying in %ss (attempt %d/%d)",
-                        err_str[:80],
-                        delay,
-                        attempt,
-                        MAX_RETRIES,
-                    )
-                    await asyncio.sleep(delay)
-                else:
+                is_timeout = isinstance(exc, asyncio.TimeoutError)
+                is_quota = "429" in err_str
+                is_daily_quota = is_quota and (
+                    "PerDay" in err_str or "per_day" in err_str.lower()
+                    or "limit: 0," in err_str
+                )
+                retryable = is_timeout or is_quota or "503" in err_str
+
+                if is_quota:
+                    self._rotate_model()
+
+                if not retryable or attempt >= MAX_RETRIES:
                     raise
-        # BUG-4 FIX: guard against None before raising
+
+                if is_daily_quota:
+                    # No point sleeping — rotate was already done, retry immediately
+                    logger.warning(
+                        "[HITL] Daily quota exhausted — switching to %s (attempt %d/%d)",
+                        self._current_model_name(), attempt, MAX_RETRIES,
+                    )
+                    continue
+
+                # Per-minute rate limit or transient error: wait then retry
+                api_delay = _parse_retry_delay(err_str)
+                delay = (api_delay if api_delay else RETRY_BASE_DELAY * attempt) + 3
+                logger.warning(
+                    "[HITL] %s — waiting %.0fs (attempt %d/%d, next model=%s)",
+                    "Rate limited" if is_quota else "Transient error",
+                    delay, attempt, MAX_RETRIES, self._current_model_name(),
+                )
+                await asyncio.sleep(delay)
+
         if last_exc is not None:
             raise last_exc
         raise RuntimeError("Pipeline retry loop exited unexpectedly.")
@@ -162,6 +238,7 @@ class AgentOrchestrator:
         task: str,
         lang: str = "en",
         feedback: str | None = None,
+        wrong_code: str | None = None,
     ) -> PipelineResult:
         """Execute the full Coder → Critic pipeline.
 
@@ -185,17 +262,28 @@ class AgentOrchestrator:
         # 0 — Re-read .env to pick up any API key / model changes
         _configure_genai()
 
-        # 1 — Build coder prompt via orchestrator
+        # 1 — Merge wrong_code into feedback so the Coder sees exactly what
+        #     it wrote before and what the human found wrong with it.
+        #     This is the core of the HITL revision loop: without wrong_code,
+        #     the model would only have the human comment ("lacks error handling")
+        #     but not the actual code to fix.
+        effective_feedback = feedback
+        if wrong_code and wrong_code.strip():
+            wrong_section = f"Previous attempt (has issues):\n```python\n{wrong_code.strip()}\n```"
+            effective_feedback = (
+                f"{wrong_section}\n\nHuman correction: {feedback}"
+                if feedback else wrong_section
+            )
+
         coder_bundle = self.prompts.build_prompt(
             role=Role.CODER,
             task=task,
-            feedback=feedback,
+            feedback=effective_feedback,
             lang=lang,
         )
 
-        # 2 — Create model dynamically using the bundle's system instructions
-        coder_model = _create_model(coder_bundle.system)
-        raw_code = await self._call_with_retry(coder_model, coder_bundle.user_content)
+        # 2 — Call Coder (model chosen automatically or from GEMINI_MODEL env)
+        raw_code = await self._call_with_retry(coder_bundle.system, coder_bundle.user_content)
         code = _extract_code_block(raw_code)
 
         # 3 — Rate-limit gap
@@ -209,13 +297,13 @@ class AgentOrchestrator:
             lang=lang,
         )
 
-        # 5 — Create critic model dynamically and review
-        critic_model = _create_model(critic_bundle.system)
-        raw_critique = await self._call_with_retry(critic_model, critic_bundle.user_content)
+        # 5 — Call Critic with same active model
+        raw_critique = await self._call_with_retry(critic_bundle.system, critic_bundle.user_content)
         critique = _parse_critique_json(raw_critique)
 
         # 6 — Log pipeline run
-        auto_fixed = critique.get("severity") == "low"
+        # Gemini sometimes returns "Low"/"LOW" — normalise before comparing
+        auto_fixed = str(critique.get("severity", "")).strip().lower() == "low"
         run_id = self.memory.log_pipeline_run(
             task=task, iterations=1, auto_fixed=auto_fixed
         )

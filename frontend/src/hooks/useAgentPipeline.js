@@ -102,20 +102,25 @@ function reducer(state, action) {
 export function useAgentPipeline() {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  const generate = useCallback(async (task, lang = "en", feedback = null) => {
+  const generate = useCallback(async (task, lang = "en", feedback = null, wrongCode = null) => {
     dispatch({ type: ACTIONS.PIPELINE_START });
 
+    const controller = new AbortController();
+    // 180 second timeout. Backend retry can take:
+    // - 5 retries with exponential backoff (~8 + 13 + 18 + 23 + 60s)
+    // - Plus Gemini timeout (~60s per attempt)
+    // Total worst-case ~130s, so 180s provides safe headroom.
+    const timeoutId = setTimeout(() => controller.abort(), 180000);
+
     try {
-      // Phase: generating → backend runs Coder then Critic internally.
-      // debug=true asks backend to return the full coder/critic PromptBundles
-      // for the UI Prompt Inspector.
-      // feedback (optional) is injected into the coder prompt by the backend
-      // PromptOrchestrator for a retry round.
       const res = await fetch(`${API_BASE}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task, lang, feedback, debug: true }),
+        body: JSON.stringify({ task, lang, feedback, wrong_code: wrongCode, debug: true }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -125,7 +130,11 @@ export function useAgentPipeline() {
       const data = await res.json();
       dispatch({ type: ACTIONS.PIPELINE_SUCCESS, payload: data });
     } catch (err) {
-      dispatch({ type: ACTIONS.PIPELINE_ERROR, payload: err.message });
+      clearTimeout(timeoutId);
+      const msg = err.name === "AbortError" 
+        ? "Request timed out (server took too long to respond)."
+        : err.message;
+      dispatch({ type: ACTIONS.PIPELINE_ERROR, payload: msg });
     }
   }, []);
 

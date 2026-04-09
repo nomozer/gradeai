@@ -314,7 +314,7 @@ class PromptOrchestrator:
         for les in lessons:
             text = str(les.get("lesson_text", "")).strip()
             bullets.append(f"(!) {text}")
-        
+
         body = "\n".join(bullets)
         return f"### {header}\n{body}"
 

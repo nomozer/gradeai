@@ -98,6 +98,10 @@ class GenerateRequest(BaseModel):
         default=None,
         description="Optional human feedback injected into the coder prompt (retry round)",
     )
+    wrong_code: str | None = Field(
+        default=None,
+        description="Previous AI-generated code that had issues — shown to the Coder so it knows exactly what to fix",
+    )
     debug: bool = Field(
         default=False,
         description="If true, include the full coder/critic PromptBundles in the response",
@@ -181,19 +185,22 @@ async def generate(req: GenerateRequest):
     """Run the Coder → Critic pipeline for a given task."""
     try:
         result = await orchestrator.run_pipeline(
-            req.task, lang=req.lang, feedback=req.feedback
+            req.task, lang=req.lang, feedback=req.feedback, wrong_code=req.wrong_code
+        )
+        return GenerateResponse(
+            code=result.code,
+            critique=result.critique,
+            lessons_used=result.lessons_used,
+            run_id=result.run_id,
+            coder_prompt=result.coder_prompt if req.debug else None,
+            critic_prompt=result.critic_prompt if req.debug else None,
         )
     except Exception as exc:
+        # Catch everything and return it as a 502 Bad Gateway to the UI
+        # This prevents generic 500 Internal Server Errors when Pydantic fails.
+        import traceback
+        print(f"[API ERROR] {traceback.format_exc()}")
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    return GenerateResponse(
-        code=result.code,
-        critique=result.critique,
-        lessons_used=result.lessons_used,
-        run_id=result.run_id,
-        coder_prompt=result.coder_prompt if req.debug else None,
-        critic_prompt=result.critic_prompt if req.debug else None,
-    )
 
 
 @app.post("/api/prompt/preview")
@@ -247,9 +254,13 @@ async def feedback(req: FeedbackRequest):
 
     Routing rules:
       - "approve"      → no lesson saved, just acknowledge.
-      - "revise"       → persist the comment as a lesson (score 4.0) so the
-                         next /api/generate run retrieves it via MemoryManager.
-      - "reject"       → persist as a strong negative lesson (score 2.0).
+      - "revise"       → persist as a lesson (score 4.0) — useful correction.
+      - "reject"       → persist as a lesson (score 5.0) — strongest signal,
+                         ranks first in the retrieved-lesson ordering so the
+                         Coder prompt emphasises it on the next run.
+      NOTE: PromptOrchestrator sorts retrieved lessons by feedback_score DESC
+      before injecting them into the prompt, so a HIGHER score ⇒ greater
+      influence on the next generation. Reject must therefore be the highest.
 
     This is the bridge that turns a single human click into a durable
     improvement for subsequent pipeline runs, making the HITL loop closed.
@@ -274,7 +285,8 @@ async def feedback(req: FeedbackRequest):
             detail='"comment" is required when action is "revise" or "reject".',
         )
 
-    score = 4.0 if action == "revise" else 2.0
+    # reject > revise: stronger rejection must dominate retrieval ordering
+    score = 5.0 if action == "reject" else 4.0
     lesson_id = prompt_orch.ingest_feedback(
         task=req.task,
         wrong_code=req.wrong_code,

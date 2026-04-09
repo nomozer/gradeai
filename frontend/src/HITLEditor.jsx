@@ -34,7 +34,7 @@ import { useFeedback } from "./hooks/useFeedback";
 /* =========================================================================
    THEME TOKENS
    ========================================================================= */
-const T = {
+const DARK = {
   bg:       "#0D0D0D",
   surface:  "#141414",
   surface2: "#1A1A1A",
@@ -48,7 +48,28 @@ const T = {
   textSec:  "#808080",
   mono:     "'JetBrains Mono', monospace",
   ui:       "'Space Mono', monospace",
+  editorTheme: "vs-dark",
 };
+
+const LIGHT = {
+  bg:       "#F5F5F5",
+  surface:  "#FFFFFF",
+  surface2: "#EBEBEB",
+  border:   "#D0D0D0",
+  cyan:     "#0077B6",
+  amber:    "#E65100",
+  green:    "#2E7D32",
+  red:      "#C62828",
+  magenta:  "#AD1457",
+  textPri:  "#1A1A1A",
+  textSec:  "#666666",
+  mono:     "'JetBrains Mono', monospace",
+  ui:       "'Space Mono', monospace",
+  editorTheme: "light",
+};
+
+// Mutable theme reference — synced each render so sub-components read the active palette
+let T = DARK;
 
 /* =========================================================================
    I18N
@@ -397,8 +418,9 @@ function FeedbackPanel({
   };
 
   const handleRunAgain = () => {
-    onRunAgain(comment.trim() || null);
-    // reset local UI but keep the comment visible briefly for context
+    // Pass BOTH the human comment AND the wrong code so the AI sees
+    // exactly what it generated before and what needs fixing.
+    onRunAgain(comment.trim() || null, pipelineCode || "");
     setJustSaved(false);
     setAction(null);
     setComment("");
@@ -498,7 +520,7 @@ function FeedbackPanel({
         {feedbackHook.isSubmitting ? t.feedbackSubmitting : t.feedbackSubmit}
       </button>
 
-      {justSaved && (
+      {justSaved && action !== "approve" && (
         <button
           onClick={handleRunAgain}
           style={{
@@ -667,6 +689,14 @@ export default function HITLEditor() {
     localStorage.setItem("hitl_lang", next);
   };
 
+  const [theme, setTheme] = useState(() => localStorage.getItem("hitl_theme") || "dark");
+  T = theme === "dark" ? DARK : LIGHT;  // sync module-level ref for sub-components
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    localStorage.setItem("hitl_theme", next);
+  };
+
   // Keep backend alive while tab is open
   useEffect(() => {
     const send = () => fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
@@ -742,14 +772,10 @@ export default function HITLEditor() {
     pipeline.generate(task, lang, feedback);
   };
 
-  const handleRunAgain = (feedback) => {
-    // After feedback was saved, the memory store already has the new lesson.
-    // Passing `feedback` here ALSO injects the comment into the coder prompt
-    // explicitly, in case it is more specific than what semantic retrieval
-    // would surface on its own.
+  const handleRunAgain = (feedback, wrongCode) => {
     feedbackHook.reset();
     fetchStats();
-    handleRunPipeline(feedback);
+    pipeline.generate(task, lang, feedback, wrongCode);
   };
 
   const handleEditorMount = useCallback((editor) => {
@@ -813,6 +839,34 @@ export default function HITLEditor() {
             }}
           >
             {lang === "en" ? "🇻🇳 VI" : "🇺🇸 EN"}
+          </button>
+          <button
+            onClick={toggleTheme}
+            title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            style={{
+              padding: "6px 12px", background: T.surface2,
+              border: `1px solid ${T.amber}`, borderRadius: 3,
+              color: T.amber, display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", transition: "all 0.2s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "scale(1.05)";
+              e.currentTarget.style.boxShadow = `0 0 8px ${T.amber}44`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "scale(1)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          >
+            {theme === "dark" ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+              </svg>
+            )}
           </button>
           <button
             onClick={handleReset}
@@ -981,7 +1035,7 @@ export default function HITLEditor() {
                 original={pipeline.code || ""}
                 modified={editedCode}
                 onMount={handleEditorMount}
-                theme="vs-dark"
+                theme={T.editorTheme}
                 options={{
                   fontSize: 13,
                   fontFamily: "'JetBrains Mono', monospace",
