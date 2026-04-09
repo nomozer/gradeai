@@ -32,16 +32,19 @@ from prompt_orchestrator import PromptOrchestrator
 # Heartbeat — tự tắt server khi frontend đóng
 # ---------------------------------------------------------------------------
 
+# Lấy timeout từ .env, mặc định là 60s để đảm bảo ổn định
+HEARTBEAT_TIMEOUT_SEC = int(os.getenv("HEARTBEAT_TIMEOUT", "60"))
 last_heartbeat = time.time()
 
 
 def _monitor_heartbeat():
-    """Background thread: tắt server nếu không nhận heartbeat trong 60s."""
+    """Background thread: tự động tắt backend nếu không nhận tín hiệu từ trình duyệt."""
     global last_heartbeat
     while True:
         time.sleep(10)
-        if time.time() - last_heartbeat > 60:
-            print("[HITL] No heartbeat for 60s — shutting down.")
+        elapsed = time.time() - last_heartbeat
+        if elapsed > HEARTBEAT_TIMEOUT_SEC:
+            print(f"[HITL] No heartbeat for {HEARTBEAT_TIMEOUT_SEC}s — shutting down.")
             os._exit(0)
 
 

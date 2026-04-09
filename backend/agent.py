@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 from memory import MemoryManager
 from prompt_orchestrator import PromptOrchestrator, Role
 
-load_dotenv()
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +48,12 @@ class PipelineResult:
 # Agent wrappers
 # ---------------------------------------------------------------------------
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+DEFAULT_MODEL = "gemini-1.5-flash"
 
 
 def _configure_genai() -> None:
+    """Re-read .env and configure Gemini API. Called before every pipeline run."""
+    load_dotenv(override=True)
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise EnvironmentError(
@@ -61,8 +63,9 @@ def _configure_genai() -> None:
 
 
 def _create_model(system_instruction: str) -> genai.GenerativeModel:
+    model_name = os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
     return genai.GenerativeModel(
-        model_name=GEMINI_MODEL,
+        model_name=model_name,
         system_instruction=system_instruction,
     )
 
@@ -115,7 +118,6 @@ class AgentOrchestrator:
         memory: MemoryManager | None = None,
         prompt_orchestrator: PromptOrchestrator | None = None,
     ) -> None:
-        _configure_genai()
         self.memory = memory or MemoryManager()
         self.prompts = prompt_orchestrator or PromptOrchestrator(self.memory)
 
@@ -180,6 +182,9 @@ class AgentOrchestrator:
             PipelineResult with code, critique, lessons_used, run_id, and the
             two PromptBundles (as dicts) for UI transparency and research.
         """
+        # 0 — Re-read .env to pick up any API key / model changes
+        _configure_genai()
+
         # 1 — Build coder prompt via orchestrator
         coder_bundle = self.prompts.build_prompt(
             role=Role.CODER,
