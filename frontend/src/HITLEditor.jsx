@@ -212,17 +212,6 @@ function parseGrade(raw) {
   }
 }
 
-function cloneGrade(g) {
-  if (!g) return null;
-  return {
-    scores: { ...g.scores },
-    overall: g.overall,
-    strengths: g.strengths.slice(),
-    weaknesses: g.weaknesses.slice(),
-    comment: g.comment,
-    transcript: g.transcript,
-  };
-}
 
 /* ═════════════════════════════════════════════════════════════════════
    GLOBAL STYLES
@@ -270,18 +259,7 @@ function GlobalStyles() {
         to { opacity: 1; transform: none; }
       }
 
-      @keyframes shimmer {
-        0% { background-position: -200% 0; }
-        100% { background-position: 200% 0; }
-      }
 
-      @keyframes hourglassFlip {
-        0% { transform: rotate(0deg); }
-        25% { transform: rotate(180deg); }
-        50% { transform: rotate(180deg); }
-        75% { transform: rotate(360deg); }
-        100% { transform: rotate(360deg); }
-      }
 
       @keyframes dotBounce {
         0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
@@ -523,29 +501,7 @@ const Icon = {
       <circle cx="11" cy="11" r="2" />
     </svg>
   ),
-  Cpu: ({ size = 14, color = "currentColor" }) => (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="4" y="4" width="16" height="16" rx="2" ry="2" />
-      <rect x="9" y="9" width="6" height="6" />
-      <line x1="9" y1="1" x2="9" y2="4" />
-      <line x1="15" y1="1" x2="15" y2="4" />
-      <line x1="9" y1="20" x2="9" y2="23" />
-      <line x1="15" y1="20" x2="15" y2="23" />
-      <line x1="20" y1="9" x2="23" y2="9" />
-      <line x1="20" y1="15" x2="23" y2="15" />
-      <line x1="1" y1="9" x2="4" y2="9" />
-      <line x1="1" y1="15" x2="4" y2="15" />
-    </svg>
-  ),
+
 };
 
 /* ═════════════════════════════════════════════════════════════════════

@@ -178,18 +178,6 @@ class FeedbackResponse(BaseModel):
     message: str
 
 
-class TeachRequest(BaseModel):
-    run_id: int | None = None
-    task: str          # essay topic
-    wrong_code: str    # AI's incorrect grade JSON
-    correct_code: str  # teacher's corrected grade JSON
-    lesson: str        # teacher's note
-    score: int = Field(..., ge=1, le=5)
-
-
-class TeachResponse(BaseModel):
-    lesson_id: int
-    message: str
 
 
 # ---------------------------------------------------------------------------
@@ -323,28 +311,6 @@ async def feedback(req: FeedbackRequest):
     )
 
 
-@app.post("/api/teach", response_model=TeachResponse)
-async def teach(req: TeachRequest):
-    """Store a teacher-authored grading lesson into dual memory."""
-    lesson_id = memory.save_lesson(
-        task=req.task,
-        wrong_code=req.wrong_code,
-        correct_code=req.correct_code,
-        lesson_text=req.lesson,
-        feedback_score=float(req.score),
-    )
-    return TeachResponse(
-        lesson_id=lesson_id,
-        message="Lesson saved to SQLite + ChromaDB.",
-    )
-
-
-@app.get("/api/research/stats")
-async def research_stats():
-    """Aggregated metrics for the Research Dashboard."""
-    lessons_summary = memory.get_all_lessons_summary()
-    pipeline_stats = memory.get_pipeline_stats()
-    return {**lessons_summary, **pipeline_stats}
 
 
 @app.post("/api/heartbeat")

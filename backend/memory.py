@@ -26,10 +26,8 @@ from sqlalchemy import (
     DateTime,
     Float,
     Integer,
-    String,
     Text,
     create_engine,
-    func,
 )
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker, mapped_column, Mapped
 
@@ -228,30 +226,6 @@ class MemoryManager:
         # Preserve ChromaDB relevance ordering
         return [by_id[lid] for lid in lesson_ids if lid in by_id]
 
-    def get_all_lessons_summary(self) -> dict[str, Any]:
-        """Aggregate stats for the Research Dashboard.
-
-        Returns:
-            Dict with total, avg_score, and the 5 most recent lessons.
-        """
-        with self._get_session() as session:
-            total: int = session.query(func.count(Lesson.id)).scalar() or 0
-            avg_score: float | None = session.query(
-                func.avg(Lesson.feedback_score)
-            ).scalar()
-            recent = (
-                session.query(Lesson)
-                .order_by(Lesson.timestamp.desc())
-                .limit(5)
-                .all()
-            )
-            recent_dicts = [les.to_dict() for les in recent]
-
-        return {
-            "total": total,
-            "avg_score": round(avg_score, 2) if avg_score else 0.0,
-            "recent": recent_dicts,
-        }
 
     def log_pipeline_run(
         self, task: str, iterations: int = 1, auto_fixed: bool = False
@@ -265,24 +239,3 @@ class MemoryManager:
             session.flush()
             return run.id
 
-    def get_pipeline_stats(self) -> dict[str, Any]:
-        """Return pipeline-level research metrics."""
-        with self._get_session() as session:
-            total_runs: int = (
-                session.query(func.count(PipelineRun.id)).scalar() or 0
-            )
-            auto_fixed_count: int = (
-                session.query(func.count(PipelineRun.id))
-                .filter(PipelineRun.auto_fixed == 1)
-                .scalar()
-                or 0
-            )
-
-        auto_fix_rate = (
-            round(auto_fixed_count / total_runs * 100, 1) if total_runs else 0.0
-        )
-        return {
-            "total_runs": total_runs,
-            "auto_fixed_count": auto_fixed_count,
-            "auto_fix_rate": auto_fix_rate,
-        }
