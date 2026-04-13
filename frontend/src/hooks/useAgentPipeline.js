@@ -1,9 +1,11 @@
 // useAgentPipeline.js — Hook điều khiển Grader→Reviewer (VLM) pipeline.
 // Quản lý phase transitions và kết quả grading qua useReducer.
 
-import { useReducer, useCallback } from "react";
+import { useReducer, useCallback, useEffect, useRef } from "react";
 
 const API_BASE = "/api";
+// Intentionally generous so the client does not need to mirror backend retry math.
+const PIPELINE_TIMEOUT_MS = 10 * 60 * 1000;
 
 // ── State & actions ─────────────────────────────────────────────────
 
@@ -101,59 +103,105 @@ function reducer(state, action) {
  */
 export function useAgentPipeline() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const controllerRef = useRef(null);
+  const timeoutRef = useRef(null);
+  const requestIdRef = useRef(0);
 
-  const generate = useCallback(async (
-    task,
-    lang = "en",
-    feedback = null,
-    wrongCode = null,
-    imageB64 = null,
-  ) => {
-    dispatch({ type: ACTIONS.PIPELINE_START });
-
-    const controller = new AbortController();
-    // 180 second timeout. Backend retry can take:
-    // - 5 retries with exponential backoff (~8 + 13 + 18 + 23 + 60s)
-    // - Plus Gemini timeout (~60s per attempt)
-    // Total worst-case ~130s, so 180s provides safe headroom.
-    const timeoutId = setTimeout(() => controller.abort(), 180000);
-
-    try {
-      const res = await fetch(`${API_BASE}/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          task,
-          lang,
-          feedback,
-          wrong_code: wrongCode,
-          image_b64: imageB64,
-          debug: true,
-        }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || `Server error ${res.status}`);
-      }
-
-      const data = await res.json();
-      dispatch({ type: ACTIONS.PIPELINE_SUCCESS, payload: data });
-    } catch (err) {
-      clearTimeout(timeoutId);
-      const msg = err.name === "AbortError" 
-        ? "Request timed out (server took too long to respond)."
-        : err.message;
-      dispatch({ type: ACTIONS.PIPELINE_ERROR, payload: msg });
+  const clearInFlight = useCallback(() => {
+    if (timeoutRef.current !== null) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (controllerRef.current) {
+      controllerRef.current.abort();
+      controllerRef.current = null;
     }
   }, []);
 
+  const generate = useCallback(
+    async (
+      task,
+      lang = "en",
+      feedback = null,
+      wrongCode = null,
+      imageB64 = null,
+    ) => {
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+      clearInFlight();
+      dispatch({ type: ACTIONS.PIPELINE_START });
+
+      const controller = new AbortController();
+      controllerRef.current = controller;
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        PIPELINE_TIMEOUT_MS,
+      );
+      timeoutRef.current = timeoutId;
+
+      const releaseIfCurrent = () => {
+        if (requestIdRef.current !== requestId) return;
+        if (timeoutRef.current !== null) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+        if (controllerRef.current === controller) {
+          controllerRef.current = null;
+        }
+      };
+
+      try {
+        const res = await fetch(`${API_BASE}/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            task,
+            lang,
+            feedback,
+            wrong_code: wrongCode,
+            image_b64: imageB64,
+            debug: true,
+          }),
+          signal: controller.signal,
+        });
+
+        if (requestIdRef.current !== requestId) return;
+        releaseIfCurrent();
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.detail || `Server error ${res.status}`);
+        }
+
+        const data = await res.json();
+        if (requestIdRef.current !== requestId) return;
+        dispatch({ type: ACTIONS.PIPELINE_SUCCESS, payload: data });
+      } catch (err) {
+        if (requestIdRef.current !== requestId) return;
+        releaseIfCurrent();
+        const msg =
+          err.name === "AbortError"
+            ? "Request timed out (server took too long to respond)."
+            : err.message;
+        dispatch({ type: ACTIONS.PIPELINE_ERROR, payload: msg });
+      }
+    },
+    [clearInFlight],
+  );
+
   const reset = useCallback(() => {
+    requestIdRef.current += 1;
+    clearInFlight();
     dispatch({ type: ACTIONS.RESET });
-  }, []);
+  }, [clearInFlight]);
+
+  useEffect(
+    () => () => {
+      requestIdRef.current += 1;
+      clearInFlight();
+    },
+    [clearInFlight],
+  );
 
   return { ...state, generate, reset };
 }

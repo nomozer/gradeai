@@ -20,36 +20,48 @@ import { useAgentPipeline } from "./hooks/useAgentPipeline";
 import { useFeedback } from "./hooks/useFeedback";
 
 /* ═════════════════════════════════════════════════════════════════════
-   THEME — light, minimal, clean
+   THEME — Premium Vibrant Light Mode
    ═════════════════════════════════════════════════════════════════════ */
 const T = {
-  bg: "#F8F9FA",
+  bg: "#F8FAFC",
   bgCard: "#FFFFFF",
-  bgElevated: "#F1F3F5",
-  bgHover: "#E9ECEF",
-  bgInput: "#FFFFFF",
+  bgElevated: "#F1F5F9",
+  bgHover: "#E2E8F0",
+  bgInput: "#F8FAFC",
+  bgPanel: "#FFFFFF",
+  bgMuted: "#F1F5F9",
+  nav: "#FFFFFF",
+  paper: "#FFFFFF",
+  paperBorder: "#E2E8F0",
+  paperLine: "#CBD5E1",
 
-  text: "#1A1A2E",
-  textSoft: "#495057",
-  textMute: "#868E96",
-  textFaint: "#ADB5BD",
-  border: "#DEE2E6",
-  borderLight: "#CED4DA",
+  text: "#0F172A",
+  textSoft: "#334155",
+  textMute: "#64748B",
+  textFaint: "#94A3B8",
+  border: "#E2E8F0",
+  borderLight: "#F1F5F9",
 
-  accent: "#7C3AED", // purple
-  accentLight: "#8B5CF6",
-  accentSoft: "rgba(124, 58, 237, 0.08)",
-  accentGlow: "rgba(124, 58, 237, 0.18)",
+  accent: "#4F46E5", // Vibrant Indigo
+  accentLight: "#818CF8",
+  accentDark: "#3730A3",
+  accentSoft: "rgba(79, 70, 229, 0.12)",
+  accentGlow: "rgba(79, 70, 229, 0.25)",
 
-  green: "#16A34A",
-  greenSoft: "rgba(22, 163, 74, 0.08)",
-  red: "#DC2626",
-  redSoft: "rgba(220, 38, 38, 0.06)",
-  amber: "#D97706",
-  amberSoft: "rgba(217, 119, 6, 0.06)",
+  green: "#10B981",
+  greenSoft: "rgba(16, 185, 129, 0.12)",
+  red: "#EF4444",
+  redSoft: "rgba(239, 68, 68, 0.12)",
+  amber: "#F59E0B",
+  amberSoft: "rgba(245, 158, 11, 0.12)",
+  gold: "#FBBF24",
+  goldSoft: "rgba(251, 191, 36, 0.12)",
 
-  font: `"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, sans-serif`,
-  mono: `"JetBrains Mono", "SF Mono", "Fira Code", monospace`,
+  font: `"Plus Jakarta Sans", "Segoe UI", sans-serif`,
+  display: `"Space Grotesk", "Plus Jakarta Sans", sans-serif`,
+  mono: `"IBM Plex Mono", "JetBrains Mono", monospace`,
+  shadowSoft: "0 10px 25px rgba(79, 70, 229, 0.05)",
+  shadowStrong: "0 20px 40px rgba(15, 23, 42, 0.08)",
 };
 
 /* ═════════════════════════════════════════════════════════════════════
@@ -75,7 +87,40 @@ const i18n = {
     imageDrop: "Drop image or PDF here, or click to browse",
     imageChange: "Change file",
     pdfUploaded: "PDF uploaded",
+    uploadInvalidType:
+      "Unsupported file type. Please upload a JPG, PNG, or PDF.",
+    uploadReadError: "The selected file could not be read. Please try again.",
     startGrading: "Start Grading",
+    queueTitle: "Submission Queue",
+    queueSearch: "Search open essays…",
+    queueEmpty: "No essay matches this filter.",
+    deskTitle: "Mirror Teacher Desk",
+    deskDescription:
+      "Open the student script, inspect the paper, and guide the AI rubric loop.",
+    deskBadge: "Human-in-the-loop VLM",
+    paperTitle: "Student Script",
+    paperEmpty: "Upload a scanned page or PDF to begin the review desk.",
+    promptCardTitle: "Assignment Brief",
+    uploadCardTitle: "Submission Intake",
+    rubricPanelTitle: "Rubric Panel",
+    rubricPanelHint:
+      "Upload and score an essay to unlock detailed rubric review.",
+    statusTitle: "Workflow Status",
+    noteTitle: "AI Notes",
+    noFile: "No file yet",
+    sourceTask: "Prompt Sheet",
+    sourceEssay: "Student Paper",
+    sourceTranscript: "AI Transcript",
+    sourceRounds: "Re-grade Rounds",
+    stageReady: "Ready for intake",
+    stageReading: "AI is reading",
+    stageReview: "Awaiting teacher review",
+    stageDone: "Approved",
+    startHint: "The AI will read both the paper and the rubric from this desk.",
+    teacherPanelTitle: "Teacher Controls",
+    approvedTitle: "Finalized Result",
+    approvedHint:
+      "This script has been approved and can be archived or exported.",
     // Step 2
     step2Title: "AI is Reading",
     step2Desc: "The AI model is analyzing the essay. This may take a moment…",
@@ -139,7 +184,38 @@ const i18n = {
     imageDrop: "Thả ảnh hoặc PDF vào đây, hoặc nhấp để chọn",
     imageChange: "Đổi file",
     pdfUploaded: "Đã tải PDF",
+    uploadInvalidType:
+      "Định dạng không hỗ trợ. Vui lòng chọn JPG, PNG hoặc PDF.",
+    uploadReadError: "Không thể đọc tệp đã chọn. Vui lòng thử lại.",
     startGrading: "Bắt Đầu Chấm",
+    queueTitle: "Danh sách bài làm",
+    queueSearch: "Tìm bài đang mở…",
+    queueEmpty: "Không có bài phù hợp với bộ lọc này.",
+    deskTitle: "Bàn Chấm Mirror",
+    deskDescription:
+      "Mở bài làm, quan sát giấy thi và điều hướng vòng chấm AI ngay trên một bàn làm việc.",
+    deskBadge: "Human-in-the-loop VLM",
+    paperTitle: "Bài Làm Học Sinh",
+    paperEmpty: "Tải ảnh quét hoặc PDF để bắt đầu bàn chấm.",
+    promptCardTitle: "Phiếu Đề Bài",
+    uploadCardTitle: "Tiếp Nhận Bài Nộp",
+    rubricPanelTitle: "Bảng Rubric",
+    rubricPanelHint: "Tải và chấm bài để kích hoạt bảng tiêu chí chi tiết.",
+    statusTitle: "Trạng thái quy trình",
+    noteTitle: "Ghi chú AI",
+    noFile: "Chưa có tệp",
+    sourceTask: "Đề bài",
+    sourceEssay: "Bài làm",
+    sourceTranscript: "Bản AI đọc",
+    sourceRounds: "Lượt chấm lại",
+    stageReady: "Sẵn sàng tiếp nhận",
+    stageReading: "AI đang đọc",
+    stageReview: "Chờ giáo viên xem",
+    stageDone: "Đã duyệt",
+    startHint: "AI sẽ đọc cả bài làm lẫn rubric trực tiếp từ bàn chấm này.",
+    teacherPanelTitle: "Điều Khiển Giáo Viên",
+    approvedTitle: "Kết Quả Cuối",
+    approvedHint: "Bài này đã được duyệt và sẵn sàng lưu trữ hoặc xuất.",
     step2Title: "AI Đang Đọc",
     step2Desc: "Mô hình AI đang phân tích bài luận. Xin chờ…",
     step3Title: "Xem Xét & Phản Hồi",
@@ -212,24 +288,26 @@ function parseGrade(raw) {
   }
 }
 
-
 /* ═════════════════════════════════════════════════════════════════════
    GLOBAL STYLES
    ═════════════════════════════════════════════════════════════════════ */
 function GlobalStyles() {
   return (
     <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
       *, *::before, *::after { box-sizing: border-box; }
       html, body { margin: 0; padding: 0; }
       body {
-        background: ${T.bg};
+        background:
+          radial-gradient(circle at top left, rgba(255,255,255,0.95), transparent 32%),
+          radial-gradient(circle at top right, rgba(77, 113, 141, 0.12), transparent 24%),
+          linear-gradient(180deg, #eef3f8 0%, #e6edf5 100%);
         color: ${T.text};
         font-family: ${T.font};
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
+
+      #root { min-height: 100vh; }
 
       ::selection { background: ${T.accent}; color: white; }
 
@@ -243,6 +321,81 @@ function GlobalStyles() {
 
       button { font-family: inherit; cursor: pointer; }
       textarea, input, select { font-family: inherit; }
+
+      .mirror-app {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 74px minmax(0, 1fr);
+        gap: 18px;
+        padding: 18px;
+      }
+
+      .mirror-rail {
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.65);
+        box-shadow: ${T.shadowSoft};
+        backdrop-filter: blur(16px);
+        border-radius: 28px;
+      }
+
+      .mirror-shell {
+        background: rgba(255, 255, 255, 0.86);
+        border: 1px solid rgba(255, 255, 255, 0.72);
+        box-shadow: ${T.shadowStrong};
+        backdrop-filter: blur(18px);
+        border-radius: 30px;
+        overflow: hidden;
+      }
+
+      .mirror-main {
+        min-height: calc(100vh - 36px);
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+
+      .mirror-body {
+        display: grid;
+        grid-template-columns: 244px minmax(0, 1fr);
+        gap: 18px;
+        padding: 18px;
+        min-height: 0;
+      }
+
+      .mirror-workspace {
+        min-width: 0;
+      }
+
+      .workspace-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 336px;
+        gap: 18px;
+        min-height: 0;
+      }
+
+      .workspace-sidebar { min-width: 0; }
+      .workspace-canvas { min-width: 0; }
+
+      .paper-sheet-shadow {
+        box-shadow: 0 28px 54px rgba(45, 65, 84, 0.10);
+      }
+
+      .skeleton-bar {
+        height: 10px;
+        border-radius: 999px;
+        background: linear-gradient(
+          90deg,
+          rgba(215, 224, 232, 0.9) 0%,
+          rgba(241, 245, 249, 0.98) 45%,
+          rgba(215, 224, 232, 0.9) 100%
+        );
+        background-size: 220% 100%;
+        animation: shimmerBar 2.2s linear infinite;
+      }
+
+      @keyframes shimmerBar {
+        0% { background-position: 200% 0; }
+        100% { background-position: -20% 0; }
+      }
 
       @keyframes spin {
         from { transform: rotate(0deg); }
@@ -277,6 +430,36 @@ function GlobalStyles() {
         50% { transform: rotate(180deg); }
         70% { transform: rotate(360deg); }
         100% { transform: rotate(360deg); }
+      }
+
+      @media (max-width: 1180px) {
+        .mirror-app {
+          grid-template-columns: 1fr;
+          padding: 12px;
+        }
+
+        .mirror-rail {
+          display: none;
+        }
+
+        .mirror-main {
+          min-height: calc(100vh - 24px);
+        }
+
+        .mirror-body {
+          grid-template-columns: 1fr;
+        }
+
+        .workspace-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 780px) {
+        .mirror-body {
+          padding: 12px;
+          gap: 12px;
+        }
       }
     `}</style>
   );
@@ -501,7 +684,6 @@ const Icon = {
       <circle cx="11" cy="11" r="2" />
     </svg>
   ),
-
 };
 
 /* ═════════════════════════════════════════════════════════════════════
@@ -764,15 +946,17 @@ function ProgressBar({ completed, total, label }) {
    ═════════════════════════════════════════════════════════════════════ */
 function StepIndicator({ steps, currentStep }) {
   return (
-    <div style={{
-      display: "flex",
-      alignItems: "flex-start",
-      justifyContent: "center",
-      gap: 0,
-      padding: "32px 0 24px",
-      maxWidth: 600,
-      margin: "0 auto",
-    }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        gap: 0,
+        padding: "32px 0 24px",
+        maxWidth: 600,
+        margin: "0 auto",
+      }}
+    >
       {steps.map((step, i) => {
         const stepNum = i + 1;
         const isActive = stepNum === currentStep;
@@ -782,54 +966,74 @@ function StepIndicator({ steps, currentStep }) {
         return (
           <React.Fragment key={i}>
             {i > 0 && (
-              <div style={{
-                flex: 1,
-                height: 3,
-                background: isLineDone ? T.accent : T.border,
-                transition: "background 0.4s ease",
-                marginTop: 16, // Perfect center of 32px circle
-                marginLeft: -4,
-                marginRight: -4,
-                borderRadius: 4,
-                zIndex: 0,
-              }} />
+              <div
+                style={{
+                  flex: 1,
+                  height: 3,
+                  background: isLineDone ? T.accent : T.border,
+                  transition: "background 0.4s ease",
+                  marginTop: 16, // Perfect center of 32px circle
+                  marginLeft: -4,
+                  marginRight: -4,
+                  borderRadius: 4,
+                  zIndex: 0,
+                }}
+              />
             )}
-            <div style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 10,
-              position: "relative",
-              zIndex: 1,
-              width: 80, // Fixed width for labels
-            }}>
-              <div style={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
+            <div
+              style={{
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
-                justifyContent: "center",
-                fontSize: 13,
-                fontWeight: 700,
-                transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                background: isDone ? T.accent : isActive ? T.accentSoft : T.bgCard,
-                color: isDone ? "white" : isActive ? T.accent : T.textFaint,
-                border: `2.5px solid ${isDone ? T.accent : isActive ? T.accent : T.border}`,
-                boxShadow: isActive ? `0 0 0 4px ${T.accentGlow}` : isDone ? "0 4px 10px rgba(124, 58, 237, 0.2)" : "none",
-                cursor: "default",
-              }}>
+                gap: 10,
+                position: "relative",
+                zIndex: 1,
+                width: 80, // Fixed width for labels
+              }}
+            >
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                  background: isDone
+                    ? T.accent
+                    : isActive
+                      ? T.accentSoft
+                      : T.bgCard,
+                  color: isDone ? "white" : isActive ? T.accent : T.textFaint,
+                  border: `2.5px solid ${isDone ? T.accent : isActive ? T.accent : T.border}`,
+                  boxShadow: isActive
+                    ? `0 0 0 4px ${T.accentGlow}`
+                    : isDone
+                      ? "0 4px 10px rgba(124, 58, 237, 0.2)"
+                      : "none",
+                  cursor: "default",
+                }}
+              >
                 {isDone ? <Icon.Check size={16} color="white" /> : stepNum}
               </div>
-              <span style={{
-                fontSize: 10,
-                fontWeight: isActive ? 700 : 500,
-                color: isActive ? T.accent : isDone ? T.textSoft : T.textFaint,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                textAlign: "center",
-                transition: "color 0.3s",
-              }}>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: isActive ? 700 : 500,
+                  color: isActive
+                    ? T.accent
+                    : isDone
+                      ? T.textSoft
+                      : T.textFaint,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  textAlign: "center",
+                  transition: "color 0.3s",
+                }}
+              >
                 {step}
               </span>
             </div>
@@ -854,22 +1058,40 @@ function StepUpload({
 }) {
   const inputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
 
   const handleFile = useCallback(
     (file) => {
-      if (!file) return;
+      if (!file) {
+        setUploadError(null);
+        return;
+      }
       const isPdf =
         file.type === "application/pdf" ||
         file.name.toLowerCase().endsWith(".pdf");
       const isImage = file.type.startsWith("image/");
-      if (!isPdf && !isImage) return; // ignore unsupported file types
+      if (!isPdf && !isImage) {
+        setUploadError(t.uploadInvalidType);
+        return;
+      }
       const reader = new FileReader();
-      reader.onload = () =>
+      reader.onload = () => {
+        setUploadError(null);
         setEssayImage({ dataUrl: reader.result, name: file.name, isPdf });
+      };
+      reader.onerror = () => {
+        setUploadError(t.uploadReadError);
+      };
       reader.readAsDataURL(file);
     },
-    [setEssayImage],
+    [setEssayImage, t.uploadInvalidType, t.uploadReadError],
   );
+
+  const openFilePicker = useCallback(() => {
+    if (!inputRef.current) return;
+    inputRef.current.value = "";
+    inputRef.current.click();
+  }, []);
 
   return (
     <div
@@ -942,7 +1164,7 @@ function StepUpload({
             setDragOver(false);
             handleFile(e.dataTransfer.files?.[0]);
           }}
-          onClick={() => inputRef.current?.click()}
+          onClick={openFilePicker}
           style={{
             border: `2px dashed ${dragOver ? T.accent : T.border}`,
             borderRadius: 12,
@@ -958,7 +1180,10 @@ function StepUpload({
             type="file"
             accept="image/*,.pdf,application/pdf"
             style={{ display: "none" }}
-            onChange={(e) => handleFile(e.target.files?.[0])}
+            onChange={(e) => {
+              handleFile(e.target.files?.[0]);
+              e.target.value = "";
+            }}
           />
           {essayImage ? (
             <div>
@@ -1083,6 +1308,18 @@ function StepUpload({
             </div>
           )}
         </div>
+        {uploadError && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 12,
+              color: T.red,
+              lineHeight: 1.5,
+            }}
+          >
+            {uploadError}
+          </div>
+        )}
       </div>
 
       {/* Submit */}
@@ -1135,15 +1372,22 @@ function StepReview({
 
   if (!grade) return null;
 
+  const trimmedComment = comment.trim();
+  const requiresComment = action && action !== "approve";
   const canSubmitFeedback =
-    action === "approve" || (action && comment.trim().length > 0);
+    action === "approve" || (requiresComment && trimmedComment.length > 0);
+  const canRegrade =
+    pipeline.phase !== "generating" &&
+    !feedbackHook.isSubmitting &&
+    action !== "approve" &&
+    (!requiresComment || trimmedComment.length > 0);
 
   const handleSubmitFeedback = async () => {
     if (!action) return;
-    if (action !== "approve" && !comment.trim()) return;
+    if (requiresComment && !trimmedComment) return;
     const res = await feedbackHook.submit({
       action,
-      comment,
+      comment: trimmedComment,
       task: task || "",
       wrongCode: pipeline.code || "",
       runId: pipeline.runId,
@@ -1155,6 +1399,14 @@ function StepReview({
         onApprove();
       }
     }
+  };
+
+  const handleRegradeClick = () => {
+    if (!canRegrade) return;
+    onRegrade?.({
+      action,
+      comment: trimmedComment,
+    });
   };
 
   const ScoreCard = ({ label, value, color, icon: IconComp }) => {
@@ -1596,7 +1848,10 @@ function StepReview({
           <div style={{ marginBottom: 12 }}>
             <textarea
               value={comment}
-              onChange={(e) => setComment(e.target.value)}
+              onChange={(e) => {
+                setComment(e.target.value);
+                setJustSaved(false);
+              }}
               placeholder={t.feedbackPlaceholder}
               rows={3}
               style={{
@@ -1703,15 +1958,15 @@ function StepReview({
 
         {/* Re-grade button */}
         <button
-          onClick={onRegrade}
-          disabled={pipeline.phase === "generating"}
+          onClick={handleRegradeClick}
+          disabled={!canRegrade}
           style={{
             width: "100%",
             padding: "12px",
             fontSize: 13,
             fontWeight: 600,
-            color: T.accent,
-            background: T.accentSoft,
+            color: canRegrade ? T.accent : T.textFaint,
+            background: canRegrade ? T.accentSoft : T.bgElevated,
             border: `1px solid ${T.accent}`,
             borderRadius: 10,
             transition: "all 0.2s",
@@ -1719,6 +1974,7 @@ function StepReview({
             alignItems: "center",
             justifyContent: "center",
             gap: 8,
+            opacity: canRegrade ? 1 : 0.6,
           }}
         >
           <Icon.RefreshCw size={14} />
@@ -1921,17 +2177,25 @@ function EssayWorkspace({ active, lang, onMeta }) {
   }, [task, lang, essayImage, pipeline, feedbackHook]);
 
   // Re-grade: sends previous AI output as wrong_code for the AI to self-correct
-  const handleRegrade = useCallback(() => {
-    feedbackHook.reset();
-    setRegradeCount((c) => c + 1);
-    pipeline.generate(
-      task,
-      lang,
-      null,
-      pipeline.code || null,
-      essayImage?.dataUrl || null,
-    );
-  }, [task, lang, essayImage, pipeline, feedbackHook]);
+  const handleRegrade = useCallback(
+    ({ action = null, comment = "" } = {}) => {
+      feedbackHook.reset();
+      setRegradeCount((c) => c + 1);
+      const trimmedComment = comment.trim();
+      const feedback =
+        trimmedComment && action && action !== "approve"
+          ? `Teacher action: ${action}\nTeacher note: ${trimmedComment}`
+          : trimmedComment || null;
+      pipeline.generate(
+        task,
+        lang,
+        feedback,
+        pipeline.code || null,
+        essayImage?.dataUrl || null,
+      );
+    },
+    [task, lang, essayImage, pipeline, feedbackHook],
+  );
 
   // Approve: teacher says the grade is correct → move to done
   const handleApprove = useCallback(() => {
@@ -2079,6 +2343,9 @@ export default function HITLEditor() {
   ]);
   const [activeId, setActiveId] = useState(() => null);
 
+  const [selectedSubject, setSelectedSubject] = useState("Môn Tin");
+  const [selectedClass, setSelectedClass] = useState("Lớp 10");
+
   useEffect(() => {
     if (!activeId && tabs.length > 0) setActiveId(tabs[0].id);
   }, [activeId, tabs]);
@@ -2152,99 +2419,170 @@ export default function HITLEditor() {
   const completedCount = tabs.filter((tab) => tab.hasGrade).length;
 
   return (
-    <div style={{ minHeight: "100vh", background: T.bg }}>
+    <div style={{ minHeight: "100vh", background: T.bg, display: "grid", gridTemplateColumns: "240px 1fr" }}>
       <GlobalStyles />
 
-      {/* ─────── HEADER ─────── */}
-      <header
-        style={{
-          padding: "20px 32px",
-          borderBottom: `1px solid ${T.border}`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          background: T.bg,
-          position: "sticky",
-          top: 0,
-          zIndex: 100,
-          backdropFilter: "blur(12px)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              background: `linear-gradient(135deg, ${T.accent}, ${T.accentLight})`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 18,
-              fontWeight: 700,
-              color: "white",
-            }}
-          >
-            M
+      {/* ─────── LEFT SIDEBAR (MÔN & LỚP) ─────── */}
+      <aside style={{
+        background: T.bgElevated,
+        borderRight: `1px solid ${T.border}`,
+        padding: "24px 16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 32,
+        height: "100vh",
+        position: "sticky",
+        top: 0
+      }}>
+        {/* LOGO AREA */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 8px" }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: `linear-gradient(135deg, ${T.accent}, ${T.accentLight})`, display: "flex", alignItems: "center", justifyContent: "center", color: "white", boxShadow: `0 6px 16px ${T.accentGlow}` }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="7 6 2 12 7 18" strokeOpacity={0.4} />
+              <polyline points="17 6 22 12 17 18" strokeOpacity={0.4} />
+              <polyline points="8 12.5 11 15.5 16 9.5" />
+            </svg>
           </div>
           <div>
-            <div
-              style={{
-                fontSize: 16,
-                fontWeight: 700,
-                color: T.text,
-                letterSpacing: "-0.02em",
-              }}
-            >
-              {t.title}
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: T.textFaint,
-                fontWeight: 400,
-              }}
-            >
-              {t.subtitle}
+            <div style={{ fontSize: 15, fontWeight: 700, color: T.text, letterSpacing: "-0.02em" }}>{t.title}</div>
+            <div style={{ fontSize: 11, color: T.textFaint }}>{t.subtitle}</div>
+          </div>
+        </div>
+
+        {/* MÔN HỌC */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: T.textMute, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8, padding: "0 8px" }}>
+            Môn chấm
+          </div>
+          <div style={{ padding: "0 8px" }}>
+            <div style={{ position: "relative" }}>
+              <select
+                value={selectedSubject}
+                onChange={(e) => setSelectedSubject(e.target.value)}
+                style={{
+                  width: "100%",
+                  appearance: "none",
+                  padding: "10px 32px 10px 12px",
+                  borderRadius: 8,
+                  background: T.bgCard,
+                  color: T.text,
+                  fontWeight: 500,
+                  fontSize: 13,
+                  border: `1px solid ${T.borderLight}`,
+                  boxShadow: T.shadowSoft,
+                  cursor: "pointer",
+                  outline: "none",
+                  transition: "border-color 0.2s"
+                }}
+              >
+                {["Môn Tin"].map(sub => (
+                  <option key={sub} value={sub}>{sub}</option>
+                ))}
+              </select>
+              <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: T.textFaint }}>
+                <Icon.ArrowDown size={14} />
+              </div>
             </div>
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button
-            onClick={toggleLang}
-            style={{
-              background: "transparent",
-              border: `1px solid ${T.border}`,
-              color: T.textSoft,
-              padding: "6px 14px",
-              borderRadius: 6,
-              fontSize: 12,
-              fontWeight: 500,
-              transition: "all 0.2s",
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.borderColor = T.accent;
-              e.target.style.color = T.accent;
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.borderColor = T.border;
-              e.target.style.color = T.textSoft;
-            }}
-          >
-            <span
+        {/* LỚP HỌC */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: T.textMute, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8, padding: "0 8px" }}>
+            Phân luồng lớp
+          </div>
+          <div style={{ padding: "0 8px" }}>
+            <div style={{ position: "relative" }}>
+              <select
+                value={selectedClass}
+                onChange={(e) => setSelectedClass(e.target.value)}
+                style={{
+                  width: "100%",
+                  appearance: "none",
+                  padding: "10px 32px 10px 12px",
+                  borderRadius: 8,
+                  background: T.bgCard,
+                  color: T.text,
+                  fontWeight: 500,
+                  fontSize: 13,
+                  border: `1px solid ${T.borderLight}`,
+                  boxShadow: T.shadowSoft,
+                  cursor: "pointer",
+                  outline: "none",
+                  transition: "border-color 0.2s"
+                }}
+              >
+                {["Lớp 10", "Lớp 11", "Lớp 12"].map(cls => (
+                  <option key={cls} value={cls}>{cls}</option>
+                ))}
+              </select>
+              <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: T.textFaint }}>
+                <Icon.ArrowDown size={14} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* ─────── MAIN CONTENT ROW ─────── */}
+      <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+
+        {/* ─────── HEADER ─────── */}
+        <header
+          style={{
+            padding: "20px 32px",
+            borderBottom: `1px solid ${T.border}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            background: T.bg,
+            position: "sticky",
+            top: 0,
+            zIndex: 100,
+            backdropFilter: "blur(12px)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ fontSize: 18, fontWeight: 600, color: T.text }}>
+              {selectedSubject} <span style={{ color: T.textFaint, margin: "0 8px", fontWeight: 400 }}>/</span> {selectedClass}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              onClick={toggleLang}
               style={{
-                display: "inline-flex",
-                verticalAlign: "middle",
-                marginRight: 4,
+                background: "transparent",
+                border: `1px solid ${T.border}`,
+                color: T.textSoft,
+                padding: "6px 14px",
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 500,
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.borderColor = T.accent;
+                e.target.style.color = T.accent;
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.borderColor = T.border;
+                e.target.style.color = T.textSoft;
               }}
             >
-              <Icon.Languages size={13} />
-            </span>
-            {t.langSwitch}
-          </button>
-        </div>
-      </header>
+              <span
+                style={{
+                  display: "inline-flex",
+                  verticalAlign: "middle",
+                  marginRight: 4,
+                }}
+              >
+                <Icon.Languages size={13} />
+              </span>
+              {t.langSwitch}
+            </button>
+          </div>
+        </header>
 
       {/* ─────── TAB BAR + PROGRESS ─────── */}
       <div
@@ -2419,6 +2757,7 @@ export default function HITLEditor() {
       >
         MIRROR · AI Essay Grading Agent
       </footer>
+      </div> {/* END MAIN CONTENT ROW */}
     </div>
   );
 }

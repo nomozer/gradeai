@@ -17,6 +17,7 @@ Research Project: Tác tử AI hỗ trợ chấm điểm tự luận đa phươn
 from __future__ import annotations
 
 import datetime
+import logging
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,9 @@ from sqlalchemy import (
     create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker, mapped_column, Mapped
+
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +162,7 @@ class MemoryManager:
         lesson_text: str,
         feedback_score: float = 3.0,
     ) -> int:
-        """Persist a grading lesson to both SQLite and ChromaDB atomically.
+        """Persist a grading lesson to both SQLite and ChromaDB with compensation.
 
         Args:
             task:          essay topic
@@ -182,12 +186,26 @@ class MemoryManager:
             session.flush()   # flush to get auto-generated ID before commit
             lesson_id = lesson.id
 
-        # Mirror into ChromaDB
-        self._collection.upsert(
-            ids=[str(lesson_id)],
-            documents=[lesson_text],
-            metadatas=[{"lesson_id": lesson_id, "task": task}],
-        )
+        try:
+            # Mirror into ChromaDB
+            self._collection.upsert(
+                ids=[str(lesson_id)],
+                documents=[lesson_text],
+                metadatas=[{"lesson_id": lesson_id, "task": task}],
+            )
+        except Exception:
+            # SQLite committed first, so compensate to keep both stores aligned.
+            try:
+                with self._get_session() as session:
+                    persisted = session.get(Lesson, lesson_id)
+                    if persisted is not None:
+                        session.delete(persisted)
+            except Exception:
+                logger.exception(
+                    "Failed to roll back SQLite lesson %s after Chroma upsert error",
+                    lesson_id,
+                )
+            raise
         return lesson_id
 
     def search_relevant_lessons(
@@ -238,4 +256,3 @@ class MemoryManager:
             session.add(run)
             session.flush()
             return run.id
-

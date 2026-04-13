@@ -237,12 +237,17 @@ class AgentOrchestrator:
             model = _create_model(system_instruction, self._current_model_name())
             try:
                 timeout_secs = int(os.getenv("GEMINI_TIMEOUT", "60"))
+                watchdog_timeout = timeout_secs + 10
                 payload: list[Any] = [prompt]
                 if image_part is not None:
                     payload.insert(0, image_part)
                 response = await asyncio.wait_for(
-                    asyncio.to_thread(model.generate_content, payload),
-                    timeout=timeout_secs,
+                    asyncio.to_thread(
+                        model.generate_content,
+                        payload,
+                        request_options={"timeout": timeout_secs},
+                    ),
+                    timeout=watchdog_timeout,
                 )
                 if not response.candidates:
                     raise ValueError("Model returned no candidates.")
@@ -252,10 +257,13 @@ class AgentOrchestrator:
             except Exception as exc:
                 last_exc = exc
                 err_str = str(exc)
-                is_timeout = isinstance(exc, asyncio.TimeoutError)
+                err_lower = err_str.lower()
+                is_timeout = isinstance(exc, asyncio.TimeoutError) or (
+                    "deadline" in err_lower and "exceed" in err_lower
+                )
                 is_quota = "429" in err_str
                 is_daily_quota = is_quota and (
-                    "PerDay" in err_str or "per_day" in err_str.lower()
+                    "PerDay" in err_str or "per_day" in err_lower
                     or "limit: 0," in err_str
                 )
                 retryable = is_timeout or is_quota or "503" in err_str
