@@ -6,59 +6,74 @@ Tài liệu này hướng dẫn chi tiết cách thiết lập môi trường đ
 
 ## 📋 Yêu cầu hệ thống (Prerequisites)
 
-- **Python 3.11+**: Đảm bảo đã thêm vào PATH. [Tải về](https://www.python.org/downloads/)
-- **Node.js 18+**: Cần thiết để chạy giao diện React. [Tải về](https://nodejs.org/)
-- **Google Gemini API Key**: Yêu cầu quyền truy cập mô hình Vision (1.5 Flash hoặc 1.5 Pro). [Lấy key miễn phí](https://aistudio.google.com/apikey)
+- **Python 3.11+**: Đảm bảo đã thêm vào PATH.
+- **Node.js 18+**: Yêu cầu để vận hành giao diện React chuyên nghiệp.
+- **Google Gemini API Key**: Yêu cầu quyền truy cập mô hình **Gemini 3 Flash** (hoặc Pro). [Lấy key tại Google AI Studio](https://aistudio.google.com/apikey).
+- **Windows OS**: Hệ thống hiện tại được tối ưu hóa cho Windows (sử dụng `.bat` và `taskkill`).
 
 ---
 
 ## ⚡ 1. Khởi chạy nhanh (Recommended)
 
-Hệ thống được thiết kế để tự động hóa tối đa quy trình cài đặt.
+Hệ thống tích hợp sẵn script tự động hóa toàn bộ quy trình:
 
-1.  **Cấu hình API:** Sao chép file `backend/.env.example` thành `backend/.env` (nếu có) hoặc chỉnh sửa trực tiếp `backend/.env`. Điền Key của bạn vào:
-    `GOOGLE_API_KEY=your_key_here`
-2.  **Kích hoạt:** Chạy file `start_hidden.bat` tại thư mục gốc.
+1.  **Cấu hình API**: Mở file `backend/.env` (hoặc tạo mới từ `.env.example`) và điền key:
+    ```env
+    GOOGLE_API_KEY=your_gemini_api_key_here
+    GEMINI_MODEL=gemini-3-flash-preview
+    ```
+2.  **Kích hoạt**: Chạy file `start.bat` tại thư mục gốc bằng cách click đúp.
 
-*Hệ thống sẽ tự động tạo Virtual Environment cho Python, cài đặt thư viện cho cả Backend & Frontend, sau đó mở trình duyệt tại `http://localhost:3000`.*
+_Hệ thống sẽ tự động: Tạo venv -> Cài đặt dependencies (Backend & Frontend) -> Khởi động server -> Mở trình duyệt._
 
 ---
 
 ## 🛠️ 2. Thiết lập thủ công (Manual Setup)
 
-Dành cho các nhà phát triển muốn can thiệp sâu hoặc gỡ lỗi:
+Nếu bạn muốn kiểm soát từng bước hoặc gỡ lỗi:
 
-### Bước 2.1: Backend (FastAPI)
-- `cd backend`
-- `python -m venv venv`
-- `.\venv\Scripts\activate` (Windows)
-- `pip install -r requirements.txt`
-- `uvicorn main:app --reload --port 8000`
+### Bước 2.1: Backend (FastAPI + RAG)
 
-### Bước 2.2: Frontend (React)
-- `cd frontend`
-- `npm install`
-- `npm start`
+```powershell
+cd backend
+python -m venv venv
+.\venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+```
+
+### Bước 2.2: Frontend (React + Stitch)
+
+```powershell
+cd frontend
+npm install
+npm start
+```
 
 ---
 
-## 🔍 3. Xử lý sự cố (Troubleshooting)
+## 🧠 3. Ghi chú về Kiến trúc Bộ nhớ
 
-- **Lỗi Multimodal (Ảnh/PDF):** Đảm bảo API Key của bạn hỗ trợ mô hình Gemini 1.5. Nếu tệp PDF quá lớn, hãy thử giảm số trang hoặc dung lượng.
-- **Lỗi cổng (Port Conflict):** Nếu port 8000 hoặc 3000 bị chiếm dụng, hãy chạy lệnh sau trong PowerShell để giải phóng:
+Hệ thống sử dụng cơ chế **Dual-Storage** để hiện thực hóa Human-in-the-loop:
+
+- **SQLite (`hitl_mirror.db`)**: Lưu trữ thông tin định danh bài làm, điểm số và các chuỗi chấm điểm (Pipeline Runs).
+- **ChromaDB (Vector DB)**: Lưu trữ và chỉ mục hóa nhận xét của giáo viên. Khi chấm bài mới, hệ thống sẽ thực hiện truy vấn ngữ nghĩa (Semantic Search) để tìm bài học liên quan.
+
+> [!NOTE]
+> ChromaDB yêu cầu một số thư viện hệ thống để build indices. Nếu gặp lỗi khi cài đặt `chromadb`, hãy đảm bảo bạn đã cài đặt **Microsoft C++ Build Tools**.
+
+---
+
+## 🔍 4. Xử lý sự cố (Troubleshooting)
+
+- **Lỗi 429 (Resource Exhausted)**: Do API Gemini bị giới hạn quota. Hệ thống sẽ tự động xoay vòng model hoặc thử lại sau vài giây.
+- **Lỗi Port 8000/3000**: Nếu bị chiếm dụng, hãy chạy script sau trong PowerShell (Admin):
   ```powershell
-  Get-NetTCPConnection -LocalPort 8000,3000 | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+  Stop-Process -Id (Get-NetTCPConnection -LocalPort 8000).OwningProcess -Force
+  Stop-Process -Id (Get-NetTCPConnection -LocalPort 3000).OwningProcess -Force
   ```
-- **Lỗi Vite/NPM:** Nếu Frontend không khởi động, hãy xóa thư mục `node_modules` và chạy lại `npm install`.
+- **Lỗi Heartbeat**: Nếu Backend tự đóng ngay khi vừa mở, hãy kiểm tra xem Frontend đã được khởi động đúng chưa. Backend sẽ tự tắt nếu không nhận được signal từ trình duyệt sau 30-60 giây.
 
 ---
 
-## 🛑 4. Cơ chế Quản lý Tài nguyên (Heartbeat)
-
-Để tiết kiệm RAM/CPU và chi phí API, hệ thống tích hợp sẵn cơ chế **Tự động tắt**:
-- Backend sẽ lắng nghe tín hiệu từ Frontend (Heartbeat) mỗi 30 giây.
-- **Khi đóng tab trình duyệt:** Backend sẽ tự động phát hiện và kết thúc toàn bộ tiến trình sau **30-60 giây**.
-- Bạn không cần phải thủ công tắt cửa sổ Terminal.
-
----
-*Tài liệu hướng dẫn vận hành kỹ thuật — Đội ngũ phát triển Antigravity.*
+_Tài liệu hướng dẫn vận hành kỹ thuật — Đội ngũ phát triển GradeAI._

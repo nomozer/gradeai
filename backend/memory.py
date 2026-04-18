@@ -96,6 +96,31 @@ class PipelineRun(Base):
     task: Mapped[str] = mapped_column(Text, nullable=False)
     iterations: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     auto_fixed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # SQLite boolean as int
+    # Links re-grade runs into a chain: run #1 → run #2 → run #3 (approved).
+    # NULL for the first grading of an essay.
+    parent_run_id: Mapped[int] = mapped_column(Integer, nullable=True, default=None)
+
+
+class ApprovedGrade(Base):
+    """Record of a teacher-approved AI grade (positive HITL signal).
+
+    Captures the grades the AI got RIGHT — useful for:
+      - Measuring approval rate over time (research metric)
+      - Building few-shot example pools for future prompts
+      - Proving the HITL loop improves grading quality
+    """
+
+    __tablename__ = "approved_grades"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    timestamp: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        nullable=False,
+    )
+    task: Mapped[str] = mapped_column(Text, nullable=False)
+    grade_json: Mapped[str] = mapped_column(Text, nullable=False)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=True)
 
 
 # ---------------------------------------------------------------------------
@@ -187,10 +212,13 @@ class MemoryManager:
             lesson_id = lesson.id
 
         try:
-            # Mirror into ChromaDB
+            # Mirror into ChromaDB. Embed ``task`` + ``lesson_text`` together so
+            # future-task retrieval works even when the teacher's note is terse
+            # (e.g. "[Câu 1] sai ý a") — the topic context still anchors the vector.
+            embed_text = f"{task}\n{lesson_text}".strip() or lesson_text
             self._collection.upsert(
                 ids=[str(lesson_id)],
-                documents=[lesson_text],
+                documents=[embed_text],
                 metadatas=[{"lesson_id": lesson_id, "task": task}],
             )
         except Exception:
@@ -208,51 +236,147 @@ class MemoryManager:
             raise
         return lesson_id
 
+    # Cosine-distance cutoff for the *semantic* leg of retrieval.
+    # Default embeddings (MiniLM) compress Vietnamese short-text distances
+    # into 0.4–0.7. Empirically ≤ 0.4 catches near-duplicates and slight
+    # rewordings of the same topic while filtering out unrelated Vietnamese
+    # essays (which cluster around 0.48–0.56). Tune if you swap embedding
+    # models to one with stronger Vietnamese coverage.
+    SIMILARITY_DISTANCE_THRESHOLD: float = 0.4
+
     def search_relevant_lessons(
         self, task_description: str, top_k: int = 3
     ) -> list[dict[str, Any]]:
-        """Semantic search via ChromaDB, then hydrate full records from SQLite.
+        """Hybrid retrieval of grading lessons relevant to the current task.
 
-        Args:
-            task_description: Natural-language query to match against stored lessons.
-            top_k: Maximum number of results.
+        Strategy:
+          1. Exact task match via Chroma metadata — always included (this is
+             the "same essay prompt re-uploaded" path that powered the
+             original HITL loop).
+          2. Semantic nearest-neighbour on the lesson text, filtered by
+             ``SIMILARITY_DISTANCE_THRESHOLD``. Lets teacher corrections on
+             one "binary arithmetic" prompt carry over to a different but
+             related one, without polluting unrelated essays.
 
-        Returns:
-            List of lesson dicts ordered by relevance.
+        Exact matches come first (strongest signal); semantic expansions
+        fill any remaining slots up to ``top_k``.
         """
         total = self._collection.count()
-        if total == 0:
+        if total == 0 or not (task_description or "").strip():
             return []
 
-        n_results = min(top_k, total)
-        results = self._collection.query(
-            query_texts=[task_description],
-            n_results=n_results,
-        )
+        seen: set[int] = set()
+        ordered_ids: list[int] = []
 
-        if not results["ids"] or not results["ids"][0]:
+        # Leg 1 — exact task metadata match
+        try:
+            exact = self._collection.get(
+                where={"task": task_description},
+                limit=top_k,
+            )
+            for lid in exact.get("ids", []) or []:
+                try:
+                    i = int(lid)
+                except (TypeError, ValueError):
+                    continue
+                if i not in seen:
+                    seen.add(i)
+                    ordered_ids.append(i)
+        except Exception:
+            logger.exception("Exact-match lesson retrieval failed")
+
+        # Leg 2 — semantic expansion (only if we still have capacity)
+        remaining = top_k - len(ordered_ids)
+        if remaining > 0:
+            try:
+                sem = self._collection.query(
+                    query_texts=[task_description],
+                    n_results=min(top_k * 2, total),
+                )
+                ids = (sem.get("ids") or [[]])[0]
+                distances = (sem.get("distances") or [[]])[0]
+                for lid, dist in zip(ids, distances):
+                    if remaining <= 0:
+                        break
+                    if dist is not None and dist > self.SIMILARITY_DISTANCE_THRESHOLD:
+                        continue
+                    try:
+                        i = int(lid)
+                    except (TypeError, ValueError):
+                        continue
+                    if i in seen:
+                        continue
+                    seen.add(i)
+                    ordered_ids.append(i)
+                    remaining -= 1
+            except Exception:
+                logger.exception("Semantic lesson retrieval failed")
+
+        if not ordered_ids:
             return []
-
-        lesson_ids = [int(lid) for lid in results["ids"][0]]
 
         with self._get_session() as session:
             lessons = (
-                session.query(Lesson).filter(Lesson.id.in_(lesson_ids)).all()
+                session.query(Lesson).filter(Lesson.id.in_(ordered_ids)).all()
             )
             by_id = {les.id: les.to_dict() for les in lessons}
 
-        # Preserve ChromaDB relevance ordering
-        return [by_id[lid] for lid in lesson_ids if lid in by_id]
+        return [by_id[lid] for lid in ordered_ids if lid in by_id]
 
 
     def log_pipeline_run(
-        self, task: str, iterations: int = 1, auto_fixed: bool = False
+        self,
+        task: str,
+        iterations: int = 1,
+        auto_fixed: bool = False,
+        parent_run_id: int | None = None,
     ) -> int:
-        """Record a pipeline execution for research metrics."""
+        """Record a pipeline execution for research metrics.
+
+        Args:
+            parent_run_id: ID of the previous run when this is a teacher-
+                           triggered re-grade, forming a chain for analysis.
+        """
         with self._get_session() as session:
             run = PipelineRun(
-                task=task, iterations=iterations, auto_fixed=int(auto_fixed)
+                task=task,
+                iterations=iterations,
+                auto_fixed=int(auto_fixed),
+                parent_run_id=parent_run_id,
             )
             session.add(run)
             session.flush()
             return run.id
+
+    def save_approved_grade(
+        self, task: str, grade_json: str, run_id: int | None = None
+    ) -> int:
+        """Persist a teacher-approved grade as a positive HITL signal."""
+        with self._get_session() as session:
+            record = ApprovedGrade(
+                task=task, grade_json=grade_json, run_id=run_id,
+            )
+            session.add(record)
+            session.flush()
+            return record.id
+
+    def backfill_correct_code(self, task: str, correct_code: str) -> int:
+        """Fill in ``correct_code`` on lessons that lack it for *task*.
+
+        Called when the teacher approves a grade after one or more
+        revise/reject cycles.  The approved grade JSON is back-propagated
+        to every lesson that was created during those cycles (they were
+        stored with ``correct_code=""`` because the correct answer was
+        not yet known).
+
+        Returns the number of lessons updated.
+        """
+        with self._get_session() as session:
+            lessons = (
+                session.query(Lesson)
+                .filter(Lesson.task == task, Lesson.correct_code == "")
+                .all()
+            )
+            for les in lessons:
+                les.correct_code = correct_code
+            return len(lessons)

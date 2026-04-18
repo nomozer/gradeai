@@ -4,7 +4,7 @@ echo Backend and Frontend are starting hiddenly...
 echo The processes will automatically close 30 seconds after you close the website.
 
 :: Chạy script ẩn
-cscript //nologo run_hidden.vbs
+cscript //nologo run.vbs
 
 echo Services launched. opening browser...
 timeout /t 5 /nobreak > nul

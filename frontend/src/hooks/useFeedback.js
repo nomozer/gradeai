@@ -30,7 +30,7 @@ export function useFeedback() {
   }, []);
 
   const submit = useCallback(
-    async ({ action, comment, task, wrongCode, runId }) => {
+    async ({ action, comment, task, wrongCode, runId, stagedLessons = [] }) => {
       const submitId = submitIdRef.current + 1;
       submitIdRef.current = submitId;
       clearInFlight();
@@ -64,6 +64,7 @@ export function useFeedback() {
             task,
             wrong_code: wrongCode,
             run_id: runId,
+            staged_lessons: stagedLessons,
           }),
           signal: controller.signal,
         });

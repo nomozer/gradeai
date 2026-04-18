@@ -28,9 +28,6 @@ const initialState = {
   newLessonIds: [],
   runId: null,
   error: null,
-  // Transparency: full PromptBundles returned by backend when debug=true
-  coderPrompt: null,
-  criticPrompt: null,
 };
 
 function reducer(state, action) {
@@ -47,8 +44,6 @@ function reducer(state, action) {
         lessonsUsed: [],
         newLessonIds: [],
         runId: null,
-        coderPrompt: null,
-        criticPrompt: null,
         error: null,
         previousLessonIds: state.lessonsUsed.map((l) => l.id),
       };
@@ -68,8 +63,6 @@ function reducer(state, action) {
         runCount: state.runCount + 1,
         newLessonIds,
         runId: action.payload.run_id,
-        coderPrompt: action.payload.coder_prompt || null,
-        criticPrompt: action.payload.critic_prompt || null,
         error: null,
       };
     }
@@ -97,7 +90,7 @@ function reducer(state, action) {
  *   lessonsUsed: Array,
  *   runId: number|null,
  *   error: string|null,
- *   generate: (task, lang, feedback, wrongCode, imageB64) => Promise<void>,
+ *   generate: (task, lang, feedback, wrongCode, imageB64, taskPdfB64) => Promise<void>,
  *   reset: () => void
  * }}
  */
@@ -125,6 +118,7 @@ export function useAgentPipeline() {
       feedback = null,
       wrongCode = null,
       imageB64 = null,
+      taskPdfB64 = null,
     ) => {
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
@@ -160,7 +154,85 @@ export function useAgentPipeline() {
             feedback,
             wrong_code: wrongCode,
             image_b64: imageB64,
-            debug: true,
+            task_pdf_b64: taskPdfB64,
+          }),
+          signal: controller.signal,
+        });
+
+        if (requestIdRef.current !== requestId) return;
+        releaseIfCurrent();
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.detail || `Server error ${res.status}`);
+        }
+
+        const data = await res.json();
+        if (requestIdRef.current !== requestId) return;
+        dispatch({ type: ACTIONS.PIPELINE_SUCCESS, payload: data });
+      } catch (err) {
+        if (requestIdRef.current !== requestId) return;
+        releaseIfCurrent();
+        const msg =
+          err.name === "AbortError"
+            ? "Request timed out (server took too long to respond)."
+            : err.message;
+        dispatch({ type: ACTIONS.PIPELINE_ERROR, payload: msg });
+      }
+    },
+    [clearInFlight],
+  );
+
+  // Atomic HITL re-grade: saves teacher feedback as a lesson then re-runs
+  // the pipeline in a single /api/regrade call.
+  const regrade = useCallback(
+    async ({
+      task,
+      lang = "en",
+      action,
+      comment,
+      wrongCode = null,
+      imageB64 = null,
+      taskPdfB64 = null,
+      runId = null,
+    }) => {
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+      clearInFlight();
+      dispatch({ type: ACTIONS.PIPELINE_START });
+
+      const controller = new AbortController();
+      controllerRef.current = controller;
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        PIPELINE_TIMEOUT_MS,
+      );
+      timeoutRef.current = timeoutId;
+
+      const releaseIfCurrent = () => {
+        if (requestIdRef.current !== requestId) return;
+        if (timeoutRef.current !== null) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+        if (controllerRef.current === controller) {
+          controllerRef.current = null;
+        }
+      };
+
+      try {
+        const res = await fetch(`${API_BASE}/regrade`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            task,
+            lang,
+            action,
+            comment,
+            wrong_code: wrongCode,
+            image_b64: imageB64,
+            task_pdf_b64: taskPdfB64,
+            run_id: runId,
           }),
           signal: controller.signal,
         });
@@ -203,5 +275,5 @@ export function useAgentPipeline() {
     [clearInFlight],
   );
 
-  return { ...state, generate, reset };
+  return { ...state, generate, regrade, reset };
 }
