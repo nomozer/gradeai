@@ -8,7 +8,7 @@ Tài liệu này hướng dẫn chi tiết cách thiết lập môi trường đ
 
 - **Python 3.11+**: Đảm bảo đã thêm vào PATH.
 - **Node.js 18+**: Yêu cầu để vận hành giao diện React chuyên nghiệp.
-- **Google Gemini API Key**: Yêu cầu quyền truy cập mô hình **Gemini 3 Flash** (hoặc Pro). [Lấy key tại Google AI Studio](https://aistudio.google.com/apikey).
+- **Google Gemini API Key**: Yêu cầu mô hình **Gemini 1.5 Flash** (hoặc Pro). Hệ thống đã được cấu hình tối ưu để tận dụng Context Window lớn và giới hạn đầu ra **16,384 tokens**.
 - **Windows OS**: Hệ thống hiện tại được tối ưu hóa cho Windows (sử dụng `.bat` và `taskkill`).
 
 ---
@@ -67,6 +67,7 @@ Hệ thống sử dụng cơ chế **Dual-Storage** để hiện thực hóa Hum
 ## 🔍 4. Xử lý sự cố (Troubleshooting)
 
 - **Lỗi 429 (Resource Exhausted)**: Do API Gemini bị giới hạn quota. Hệ thống sẽ tự động xoay vòng model hoặc thử lại sau vài giây.
+- **Lỗi Transcript bị cắt cụt**: Hệ thống đã nâng cấp `max_output_tokens` lên **16,384**. Nếu vẫn bị cắt, hãy kiểm tra xem bài làm có quá dài (vượt quá 50 trang) hay không và liên hệ quản trị viên.
 - **Lỗi Port 8000/3000**: Nếu bị chiếm dụng, hãy chạy script sau trong PowerShell (Admin):
   ```powershell
   Stop-Process -Id (Get-NetTCPConnection -LocalPort 8000).OwningProcess -Force

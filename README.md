@@ -14,9 +14,12 @@ Hệ thống được thiết kế dưới dạng **Professional Desk** với qu
 ## ✨ Điểm nổi bật phiên bản Professional
 
 - 🏗️ **Wizard Workflow (5 Bước):** Quy trình chấm điểm tiêu chuẩn: Tải lên → AI Phân tích → Giáo viên Review → Tinh chỉnh (HITL) → Hoàn tất.
-- 📄 **VLM Multimodal mạnh mẽ:** Nhận diện và phân tích trực tiếp từ ảnh chụp bài làm (chữ in & viết tay) hoặc tệp PDF. Khả năng đọc hiểu sơ đồ tư duy, công thức toán học và biểu đồ.
+- 📸 **Trình đối soát văn bản (Transparent Transcript):** Chế độ "Mindless Text Photocopier" kết hợp quy trình tự đối soát (Post-copy Verification) giúp AI chép lại 100% nguyên văn bài làm, bảo toàn từng lỗi chính tả, chữ viết xấu để giáo viên có bằng chứng đối soát không thể tranh cãi (Legal Evidence Layer).
+- 🧬 **Hỗ trợ STEM & Ký hiệu chuyên sâu:** Nhận diện và bảo toàn chính xác các ký hiệu toán học đặc biệt (trị tuyệt đối `|x|`, số nhị phân, logic toán, chỉ số dưới/trên), đảm bảo không làm mất ý nghĩa kỹ thuật của bài làm.
 - 🧠 **Hệ thống Bộ nhớ RAG (Learning from Feedback):** Sử dụng SQLite + ChromaDB để lưu trữ nhận xét của giáo viên. AI sẽ tự động tra cứu các bài học cũ để áp dụng cho các bài làm mới cùng chủ đề.
+- 🤝 **Giọng điệu Mentor (Constructive Tone):** AI được cấu hình để đưa ra nhận xét với tư cách là người đồng hành tận tâm, tập trung vào việc khích lệ và gợi ý cải thiện thay vì chỉ trích lỗi sai.
 - 🔄 **Vòng lặp Chấm lại (Iterative Re-grading):** Giáo viên có thể yêu cầu AI chấm lại kèm phản hồi chi tiết. AI sẽ sử dụng phản hồi này như một ràng buộc (Constraint) hàng đầu để sửa đổi kết quả.
+- 🚀 **Mở rộng quy mô (Scalable context):** Hỗ trợ lên đến 16,384 tokens cho kết quả đầu ra, cho phép xử lý các bài luận dài và phức tạp mà không bị cắt cụt nội dung.
 
 ---
 
