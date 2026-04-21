@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 
 from memory import MemoryManager
 from prompt_orchestrator import PromptOrchestrator
+from system_prompts import ANALYZE_COMMENT_SYSTEM, ANALYZE_COMMENT_USER_TEMPLATE, Subject
 
 load_dotenv(override=True)
 
@@ -238,9 +239,11 @@ def _parse_grade_json(text: str) -> dict[str, Any]:
         "transcript": transcript,
         "scores": {"content": 0, "argument": 0, "expression": 0, "creativity": 0},
         "overall": 0,
-        "strengths": [],
-        "weaknesses": ["Unparseable grader output"],
         "comment": comment or cleaned[:400],
+        "per_question_feedback": [],
+        "strengths": [],
+        "weaknesses": ["unparseable JSON salvaged from partial response"],
+        "salvaged": True,
     }
 
 
@@ -308,9 +311,19 @@ class AgentOrchestrator:
         return override if override else CANDIDATE_MODELS[self._model_idx]
 
     def _rotate_model(self) -> None:
-        """Advance to the next candidate (no-op when GEMINI_MODEL is pinned)."""
+        """Advance to the next candidate.
+
+        No-op when GEMINI_MODEL env var is pinned, or when only a single
+        candidate is configured (rotating to itself buys nothing).
+        """
         if os.getenv("GEMINI_MODEL", "").strip():
             return  # pinned — don't rotate
+        if len(CANDIDATE_MODELS) <= 1:
+            logger.warning(
+                "[HITL] Quota exhausted on %s — no fallback model configured",
+                CANDIDATE_MODELS[self._model_idx],
+            )
+            return
         next_idx = (self._model_idx + 1) % len(CANDIDATE_MODELS)
         logger.warning(
             "[HITL] Quota exhausted on %s — rotating to %s",
@@ -440,18 +453,17 @@ class AgentOrchestrator:
     async def run_pipeline(
         self,
         task: str,
-        lang: str = "en",
         feedback: str | None = None,
         wrong_code: str | None = None,
         image_b64: str | None = None,
         task_pdf_b64: str | None = None,
         parent_run_id: int | None = None,
+        subject: Subject | str | None = None,
     ) -> PipelineResult:
         """Execute the end-to-end VLM Grading pipeline (single Gemini call).
 
         Args:
             task:       Essay topic / question / rubric description.
-            lang:       Language code ('en' or 'vi').
             feedback:   Optional teacher feedback to inject on a re-grade.
             wrong_code: AI's previous (incorrect) grade JSON, shown to the
                         Grader so it can self-correct.
@@ -459,6 +471,9 @@ class AgentOrchestrator:
                         if omitted, the Grader works from the topic alone.
             parent_run_id: ID of the previous pipeline run when this is a
                         teacher-triggered re-grade (forms a chain).
+            subject:    Optional explicit subject family from the UI. When
+                        omitted, PromptOrchestrator falls back to keyword
+                        detection from ``task``.
 
         Steps:
             1. Build Grader PromptBundle (system + lessons + topic [+ feedback]).
@@ -500,7 +515,7 @@ class AgentOrchestrator:
         grader_bundle = self.prompts.build_prompt(
             task=task,
             feedback=effective_feedback,
-            lang=lang,
+            subject=subject,
         )
 
         # 2 — Call Grader VLM (multimodal: text prompt + task PDF + essay image).
@@ -536,7 +551,6 @@ class AgentOrchestrator:
         question: str,
         student_answer: str,
         teacher_comment: str,
-        lang: str = "vi",
     ) -> dict[str, str]:
         """Analyze a teacher's comment and distill it into a reusable lesson.
 
@@ -552,43 +566,12 @@ class AgentOrchestrator:
         """
         _configure_genai()
 
-        if lang == "vi":
-            system = (
-                "Bạn là trợ lý phân tích chấm điểm bài tự luận. "
-                "Nhiệm vụ: đọc nhận xét của giáo viên rồi sinh 2 phiên bản đầu ra. "
-                "PHIÊN BẢN 1 (analysis): lời phản hồi ngắn gọn dành cho giáo viên đọc, "
-                "tối đa 30 từ cho mỗi lỗi. "
-                "PHIÊN BẢN 2 (lesson): QUY TẮC CHẤM ngắn gọn (≤50 từ) dạng mệnh lệnh "
-                "để AI học lần sau — viết ở dạng 'Khi gặp ..., cần ...' hoặc "
-                "'Tránh ...'. Phải độc lập với bài cụ thể, có thể tái sử dụng cho "
-                "bài tương tự. Trả về JSON hợp lệ có đúng 2 khóa: analysis, lesson. "
-                "Cả hai bằng tiếng Việt."
-            )
-            prompt = (
-                f"Đề bài / Câu hỏi:\n{question}\n\n"
-                f"Câu trả lời học sinh:\n{student_answer}\n\n"
-                f"Nhận xét của giáo viên:\n{teacher_comment}\n\n"
-                'Trả về JSON: {"analysis": "...", "lesson": "..."}'
-            )
-        else:
-            system = (
-                "You are an essay-grading analysis assistant. "
-                "Task: read the teacher's comment and produce TWO outputs. "
-                "OUTPUT 1 (analysis): a short reply the teacher will read, "
-                "≤30 words per identified error. "
-                "OUTPUT 2 (lesson): a concise GRADING RULE (≤50 words) in "
-                "imperative form for the AI to learn from next time — write it "
-                "as 'When X, do Y' or 'Avoid Z'. It must be independent of this "
-                "specific essay so it generalises to similar submissions. "
-                "Return valid JSON with exactly two keys: analysis, lesson. "
-                "Both in English."
-            )
-            prompt = (
-                f"Question / prompt:\n{question}\n\n"
-                f"Student answer:\n{student_answer}\n\n"
-                f"Teacher comment:\n{teacher_comment}\n\n"
-                'Return JSON: {"analysis": "...", "lesson": "..."}'
-            )
+        system = ANALYZE_COMMENT_SYSTEM
+        prompt = ANALYZE_COMMENT_USER_TEMPLATE.format(
+            question=question,
+            student_answer=student_answer,
+            teacher_comment=teacher_comment,
+        )
 
         raw = await self._call_with_retry(system, prompt, json_mode=True)
         try:

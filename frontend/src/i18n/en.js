@@ -112,6 +112,8 @@ export const en = {
   regrade: "Re-grade with Corrections",
   regradeHint: "Your feedback will be saved and the AI will re-grade with your corrections",
   feedbackSaving: "Saving…",
+  finalizeSaving: "Saving final grade…",
+  finalizeSaveError: "Could not save the finalized grade. Please try again.",
   needComment: "Please provide an explanation for revision or rejection.",
   // Step 4
   step4Title: "Re-grading",

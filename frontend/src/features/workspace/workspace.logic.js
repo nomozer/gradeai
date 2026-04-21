@@ -32,3 +32,49 @@ export function taskFromPdfName(name) {
   if (!name) return "";
   return name.replace(/\.pdf$/i, "").replace(/[_-]+/g, " ");
 }
+
+/** Stable task descriptor used for backend retrieval/logging. */
+export function buildTaskContext(name, selectedSubject, selectedClass) {
+  const label = taskFromPdfName(name);
+  const parts = [selectedSubject, selectedClass, label].filter(Boolean);
+  return parts.join(" · ");
+}
+
+/** Map UI subject labels to backend subject codes. */
+export function subjectCodeFromSelection(selectedSubject) {
+  const folded = String(selectedSubject || "").toLowerCase();
+  if (
+    folded.includes("tin") ||
+    folded.includes("toán") ||
+    folded.includes("toan") ||
+    folded.includes("lý") ||
+    folded.includes("ly") ||
+    folded.includes("stem")
+  ) {
+    return "stem";
+  }
+  if (
+    folded.includes("ngoại ngữ") ||
+    folded.includes("ngoai ngu") ||
+    folded.includes("english") ||
+    folded.includes("language")
+  ) {
+    return "language";
+  }
+  if (
+    folded.includes("lịch sử") ||
+    folded.includes("lich su") ||
+    folded.includes("gdcd") ||
+    folded.includes("history")
+  ) {
+    return "history";
+  }
+  if (
+    folded.includes("văn") ||
+    folded.includes("van") ||
+    folded.includes("literature")
+  ) {
+    return "literature";
+  }
+  return null;
+}

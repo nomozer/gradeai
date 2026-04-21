@@ -21,6 +21,7 @@ export function parseGrade(raw) {
       per_question_feedback: Array.isArray(p.per_question_feedback)
         ? p.per_question_feedback
         : [],
+      salvaged: Boolean(p.salvaged),
       subject: p.subject || "literature",
     };
   } catch {

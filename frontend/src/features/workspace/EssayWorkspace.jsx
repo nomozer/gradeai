@@ -12,13 +12,21 @@ import { ErrorBoundary } from "../../components/primitives/ErrorBoundary";
 import { StepUpload } from "../upload/StepUpload";
 import { StepReview } from "../review/StepReview";
 import {
+  buildTaskContext,
   deriveDisplayStep,
   nextStepOnPhaseChange,
   stepAfterGrade,
+  subjectCodeFromSelection,
   taskFromPdfName,
 } from "./workspace.logic";
 
-export function EssayWorkspace({ active, lang, onMeta }) {
+export function EssayWorkspace({
+  active,
+  lang,
+  selectedSubject,
+  selectedClass,
+  onMeta,
+}) {
   const t = i18n[lang];
   const pipeline = useAgentPipeline();
   const feedbackHook = useFeedback();
@@ -30,9 +38,18 @@ export function EssayWorkspace({ active, lang, onMeta }) {
   // Finalized score lives here (not inside ResultCard) so it survives tab switches.
   // Reset whenever a new AI grade arrives — regrade invalidates the previous finalization.
   const [finalizedResult, setFinalizedResult] = useState(null);
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [finalizeError, setFinalizeError] = useState(null);
 
-
-  const task = useMemo(() => taskFromPdfName(taskPdf?.name), [taskPdf]);
+  const taskLabel = useMemo(() => taskFromPdfName(taskPdf?.name), [taskPdf]);
+  const task = useMemo(
+    () => buildTaskContext(taskPdf?.name, selectedSubject, selectedClass),
+    [taskPdf, selectedSubject, selectedClass],
+  );
+  const subject = useMemo(
+    () => subjectCodeFromSelection(selectedSubject),
+    [selectedSubject],
+  );
 
   // Parse grade when pipeline returns
   useEffect(() => {
@@ -40,6 +57,8 @@ export function EssayWorkspace({ active, lang, onMeta }) {
     if (g) {
       setGrade(g);
       setFinalizedResult(null);
+      setIsFinalizing(false);
+      setFinalizeError(null);
       setStep((s) => stepAfterGrade(s));
     }
   }, [pipeline.code]);
@@ -50,7 +69,7 @@ export function EssayWorkspace({ active, lang, onMeta }) {
   }, [pipeline.phase, pipeline.error]);
 
   // Report tab metadata
-  const label = useMemo(() => task.slice(0, 30), [task]);
+  const label = useMemo(() => taskLabel.slice(0, 30), [taskLabel]);
 
   useEffect(() => {
     onMeta({ label, phase: pipeline.phase, step, hasGrade: step === 5 });
@@ -60,20 +79,22 @@ export function EssayWorkspace({ active, lang, onMeta }) {
 
   const handleRun = useCallback(() => {
     feedbackHook.reset();
+    setIsFinalizing(false);
+    setFinalizeError(null);
     pipeline.generate(
       task, lang, null, null,
       essayImage?.dataUrl || null,
       taskPdf?.dataUrl || null,
+      subject,
     );
-  }, [task, lang, essayImage, taskPdf, pipeline, feedbackHook]);
+  }, [task, lang, essayImage, taskPdf, pipeline, feedbackHook, subject]);
 
 
 
   const handleApprove = useCallback(() => setStep(5), []);
 
   // Persist the finalized grade and capture AI↔teacher score delta as a
-  // HITL lesson. Fire-and-forget: the UI locks regardless of network result;
-  // we only log failures so the teacher can inspect the console if needed.
+  // HITL lesson. The UI only locks after the backend confirms persistence.
   const persistFinalizedGrade = useCallback(
     async (payload) => {
       const toNum = (v) => {
@@ -96,7 +117,7 @@ export function EssayWorkspace({ active, lang, onMeta }) {
         overall: teacherOverall ?? grade?.overall ?? null,
       };
       try {
-        await fetch("/api/finalize-grade", {
+        const res = await fetch("/api/finalize-grade", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -108,13 +129,24 @@ export function EssayWorkspace({ active, lang, onMeta }) {
             teacher_scores: teacherScores,
             approved_grade_json: JSON.stringify(finalGrade),
             run_id: pipeline.runId,
+            subject,
           }),
         });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(
+            body.detail ||
+              t.finalizeSaveError ||
+              "Could not save the finalized grade. Please try again.",
+          );
+        }
+        return await res.json().catch(() => ({}));
       } catch (err) {
         console.warn("[HITL] finalize-grade persist failed:", err);
+        throw err;
       }
     },
-    [grade, task, lang, pipeline.runId],
+    [grade, task, lang, pipeline.runId, subject, t],
   );
 
   const displayStep = deriveDisplayStep(step);
@@ -181,14 +213,32 @@ export function EssayWorkspace({ active, lang, onMeta }) {
             grade={grade}
             t={t}
             finalized={finalizedResult}
-            onFinalize={(payload) => {
-              setFinalizedResult({
-                ...payload,
-                finalizedAt: new Date().toISOString(),
-              });
-              persistFinalizedGrade(payload);
+            isFinalizing={isFinalizing}
+            finalizeError={finalizeError}
+            onFinalize={async (payload) => {
+              if (isFinalizing) return;
+              setIsFinalizing(true);
+              setFinalizeError(null);
+              try {
+                await persistFinalizedGrade(payload);
+                setFinalizedResult({
+                  ...payload,
+                  finalizedAt: new Date().toISOString(),
+                });
+              } catch (err) {
+                setFinalizeError(
+                  err?.message ||
+                    t.finalizeSaveError ||
+                    "Không thể lưu điểm cuối cùng. Vui lòng thử lại.",
+                );
+              } finally {
+                setIsFinalizing(false);
+              }
             }}
-            onEdit={() => setFinalizedResult(null)}
+            onEdit={() => {
+              setFinalizedResult(null);
+              setFinalizeError(null);
+            }}
           />
         </ErrorBoundary>
       )}

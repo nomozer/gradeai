@@ -106,6 +106,8 @@ export const vi = {
   regrade: "Chấm Lại",
   regradeHint: "Phản hồi sẽ được lưu và AI sẽ chấm lại với sửa đổi của bạn",
   feedbackSaving: "Đang lưu…",
+  finalizeSaving: "Đang lưu điểm…",
+  finalizeSaveError: "Không thể lưu điểm cuối cùng. Vui lòng thử lại.",
   needComment: "Vui lòng giải thích khi Sửa hoặc Từ chối.",
   step4Title: "Đang Chấm Lại",
   step4Desc: "AI đang đọc lại với sửa đổi của bạn…",

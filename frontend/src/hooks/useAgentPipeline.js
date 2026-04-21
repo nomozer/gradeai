@@ -119,6 +119,7 @@ export function useAgentPipeline() {
       wrongCode = null,
       imageB64 = null,
       taskPdfB64 = null,
+      subject = null,
     ) => {
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
@@ -155,6 +156,7 @@ export function useAgentPipeline() {
             wrong_code: wrongCode,
             image_b64: imageB64,
             task_pdf_b64: taskPdfB64,
+            subject,
           }),
           signal: controller.signal,
         });
@@ -195,6 +197,7 @@ export function useAgentPipeline() {
       imageB64 = null,
       taskPdfB64 = null,
       runId = null,
+      subject = null,
     }) => {
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
@@ -233,6 +236,7 @@ export function useAgentPipeline() {
             image_b64: imageB64,
             task_pdf_b64: taskPdfB64,
             run_id: runId,
+            subject,
           }),
           signal: controller.signal,
         });

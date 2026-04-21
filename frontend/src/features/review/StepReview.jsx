@@ -33,14 +33,72 @@ function parseIntoQuestions(source) {
   const regex = /(?=(?:Câu|Question|Câu hỏi)\s*\d+\s*[:：])/i;
   const parts = source.split(regex).filter((p) => p.trim());
   if (parts.length <= 1) {
-    return [{ idx: 0, label: "", body: source.trim() }];
+    return [{ idx: 0, label: "", num: null, body: source.trim() }];
   }
   return parts.map((part, i) => {
-    const match = part.match(/^((?:Câu|Question|Câu hỏi)\s*\d+\s*[:：])\s*/i);
+    const match = part.match(/^((?:Câu|Question|Câu hỏi)\s*(\d+)\s*[:：])\s*/i);
     const label = match ? match[1] : `#${i + 1}`;
+    const num = match ? parseInt(match[2], 10) : null;
     const body = match ? part.slice(match[0].length).trim() : part.trim();
-    return { idx: i, label, body };
+    return { idx: i, label, num, body };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Align transcript parts with AI comment parts BY QUESTION NUMBER.
+//
+// Positional pairing (studentAnswers[i] ↔ aiComments[i]) silently mis-aligns
+// when the grader drops or adds a "Câu N:" segment on one side — the comment
+// for Câu 3 ends up next to the student answer for Câu 2. The prompt tries
+// to force matched counts but VLM compliance isn't 100%, so the UI needs its
+// own safety net.
+//
+// Strategy: if BOTH sides have numeric "Câu N:" labels, union the numbers
+// and pair by number — any missing side surfaces as an empty placeholder
+// instead of shifting everything after it. Otherwise fall back to the old
+// positional pairing (happens with salvage output or a single unlabeled blob).
+// ---------------------------------------------------------------------------
+function alignByQuestionNumber(studentParts, commentParts) {
+  const studentNumbered =
+    studentParts.length > 0 && studentParts.every((p) => p.num !== null);
+  const commentNumbered =
+    commentParts.length > 0 && commentParts.every((p) => p.num !== null);
+
+  if (!studentNumbered || !commentNumbered) {
+    const count = Math.max(studentParts.length, commentParts.length, 1);
+    return Array.from({ length: count }, (_, i) => ({
+      num: i + 1,
+      student: studentParts[i] || { idx: i, label: "", num: null, body: "" },
+      ai: commentParts[i] || { idx: i, label: "", num: null, body: "" },
+    }));
+  }
+
+  const byNum = (parts) => {
+    const map = new Map();
+    for (const p of parts) if (!map.has(p.num)) map.set(p.num, p);
+    return map;
+  };
+  const studentMap = byNum(studentParts);
+  const commentMap = byNum(commentParts);
+  const nums = Array.from(
+    new Set([...studentMap.keys(), ...commentMap.keys()]),
+  ).sort((a, b) => a - b);
+
+  return nums.map((num) => ({
+    num,
+    student: studentMap.get(num) || {
+      idx: num - 1,
+      label: `Câu ${num}`,
+      num,
+      body: "",
+    },
+    ai: commentMap.get(num) || {
+      idx: num - 1,
+      label: `Câu ${num}`,
+      num,
+      body: "",
+    },
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -583,16 +641,21 @@ export function StepReview({
 
   if (!grade) return null;
 
-  // Parse student answers (transcript) and AI comments separately
-  const studentAnswers = parseIntoQuestions(grade.transcript);
-  const aiComments = parseIntoQuestions(grade.comment);
-  const questionCount = Math.max(studentAnswers.length, aiComments.length, 1);
+  // Parse student answers (transcript) and AI comments separately, then
+  // align them by "Câu N:" number so a dropped segment on one side can't
+  // shift everything else out of place.
+  const studentParts = parseIntoQuestions(grade.transcript);
+  const commentParts = parseIntoQuestions(grade.comment);
+  const questionPairs = alignByQuestionNumber(studentParts, commentParts);
+  const questionCount = Math.max(questionPairs.length, 1);
 
   // Detect salvage-mode output (grader produced unparseable JSON).
   const weaknesses = Array.isArray(grade.weaknesses) ? grade.weaknesses : [];
-  const isSalvaged = weaknesses.some(
-    (w) => typeof w === "string" && w.toLowerCase().includes("unparseable"),
-  );
+  const isSalvaged =
+    Boolean(grade.salvaged) ||
+    weaknesses.some(
+      (w) => typeof w === "string" && w.toLowerCase().includes("unparseable"),
+    );
 
   // Subject metadata — applied rubric profile (literature/stem/language/history)
   const subject = grade.subject || "literature";
@@ -618,7 +681,10 @@ export function StepReview({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             question: task || "",
-            student_answer: (studentAnswers[qIdx]?.body || "").slice(0, 2000),
+            student_answer: (questionPairs[qIdx]?.student?.body || "").slice(
+              0,
+              2000,
+            ),
             teacher_comment: text,
             lang: "vi",
           }),
@@ -642,18 +708,23 @@ export function StepReview({
       }
       setAnalyzingQ(null);
     },
-    [task, studentAnswers],
+    [task, questionPairs],
   );
 
   // Collect staged lessons (one per AI bubble that produced a distilled rule).
   // These go to the backend as the structured HITL payload — richer than the
   // aggregated free-form comment.
+  // Resolve the display row's index back to the real question number from
+  // the aligned pair — falls back to idx+1 only when alignment is missing.
+  const refForIdx = (idx) =>
+    questionPairs[Number(idx)]?.num ?? Number(idx) + 1;
+
   const stagedLessons = Object.entries(commentThreads).flatMap(([idx, msgs]) =>
     msgs
       .filter((m) => m.type === "ai" && m.lesson)
       .map((m) => ({
         lesson_text: m.lesson,
-        question_ref: `Câu ${Number(idx) + 1}`,
+        question_ref: `Câu ${refForIdx(idx)}`,
       })),
   );
 
@@ -663,7 +734,7 @@ export function StepReview({
     .flatMap(([idx, msgs]) =>
       msgs
         .filter((m) => m.type === "teacher")
-        .map((m) => `[Câu ${Number(idx) + 1}] ${m.text}`),
+        .map((m) => `[Câu ${refForIdx(idx)}] ${m.text}`),
     )
     .join("\n");
 
@@ -676,6 +747,7 @@ export function StepReview({
       task: task || "",
       wrongCode: pipeline.code || "",
       runId: pipeline.runId,
+      subject,
     });
     if (res && onApprove) onApprove();
   };
@@ -877,17 +949,15 @@ export function StepReview({
           {t.noContent || "Không có nội dung để hiển thị."}
         </div>
       ) : (
-        Array.from({ length: questionCount }).map((_, i) => (
+        questionPairs.map((pair, i) => (
           <QuestionBox
-            key={i}
+            key={pair.num}
             studentAnswer={
-              studentAnswers[i] || {
-                idx: i,
-                label: `Câu ${i + 1}`,
-                body: "",
-              }
+              pair.student.body || pair.student.label
+                ? pair.student
+                : { idx: i, label: `Câu ${pair.num}`, num: pair.num, body: "" }
             }
-            aiComment={aiComments[i] || { idx: i, label: "", body: "" }}
+            aiComment={pair.ai}
             questionIdx={i}
             comments={commentThreads[i] || []}
             onSendComment={(text) => handleSendComment(i, text)}

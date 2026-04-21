@@ -68,6 +68,8 @@ export default function HITLEditor() {
               key={tab.id}
               active={tab.id === activeId}
               lang={lang}
+              selectedSubject={selectedSubject}
+              selectedClass={selectedClass}
               onMeta={(meta) => updateMeta(tab.id, meta)}
             />
           ))}

@@ -9,12 +9,12 @@ Research Project: Tác tử AI hỗ trợ chấm điểm tự luận đa phươn
 
 from __future__ import annotations
 
-import asyncio
 import os
 import subprocess
 import sys
 import time
 import threading
+import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -35,7 +35,7 @@ for _stream in (sys.stdout, sys.stderr):
 from agent import AgentOrchestrator
 from hitl_logger import log_event as log_hitl_event
 from memory import MemoryManager
-from prompt_orchestrator import PromptOrchestrator
+from prompt_orchestrator import PromptOrchestrator, resolve_subject
 
 # ---------------------------------------------------------------------------
 # Heartbeat — auto-shutdown when the frontend tab is closed
@@ -125,6 +125,36 @@ prompt_orch = PromptOrchestrator(
 )
 orchestrator = AgentOrchestrator(memory=memory, prompt_orchestrator=prompt_orch)
 
+
+# ---------------------------------------------------------------------------
+# Helpers (shared by multiple endpoints)
+# ---------------------------------------------------------------------------
+
+
+def _subject_label(task: str | None, subject: str | None = None) -> str:
+    """ChromaDB subject label for a task or explicit subject hint."""
+    if not (task or subject):
+        return ""
+    return resolve_subject(task or "", subject).value
+
+
+def _pipeline_http_error(exc: Exception) -> HTTPException:
+    """Map a pipeline exception to a 504 (timeout) or 502 (upstream) HTTPException.
+
+    Keeps the UI's timeout-vs-upstream distinction intact instead of flattening
+    everything to 502. Shared by /api/generate and /api/regrade.
+    """
+    detail = str(exc)
+    detail_lower = detail.lower()
+    status_code = 504 if (
+        "504" in detail
+        or "timed out" in detail_lower
+        or "gateway timeout" in detail_lower
+        or "deadline" in detail_lower
+    ) else 502
+    print(f"[API ERROR] {traceback.format_exc()}")
+    return HTTPException(status_code=status_code, detail=detail)
+
 # ---------------------------------------------------------------------------
 # Request / Response schemas
 # ---------------------------------------------------------------------------
@@ -139,7 +169,6 @@ class GenerateRequest(BaseModel):
     """
 
     task: str = Field(..., min_length=1, description="Essay topic / rubric")
-    lang: str = Field(default="en", description="Language code: 'en' or 'vi'")
     feedback: str | None = Field(
         default=None,
         description="Optional teacher feedback injected into the grader prompt (re-grade round)",
@@ -155,6 +184,10 @@ class GenerateRequest(BaseModel):
     task_pdf_b64: str | None = Field(
         default=None,
         description="Base64-encoded PDF of the exam prompt (data URL). Gemini reads the rubric/topic directly from this document.",
+    )
+    subject: str | None = Field(
+        default=None,
+        description="Optional explicit subject hint from the UI (e.g. stem, history).",
     )
 
 
@@ -195,6 +228,7 @@ class FeedbackRequest(BaseModel):
     wrong_code: str = Field(default="")
     run_id: int | None = None
     staged_lessons: list[StagedLesson] = Field(default_factory=list)
+    subject: str | None = None
 
 
 class FeedbackResponse(BaseModel):
@@ -220,7 +254,6 @@ class AnalyzeCommentRequest(BaseModel):
     teacher_comment: str = Field(
         ..., min_length=1, description="Teacher's annotation"
     )
-    lang: str = Field(default="vi")
 
 
 class AnalyzeCommentResponse(BaseModel):
@@ -242,13 +275,13 @@ class FinalizeGradeRequest(BaseModel):
     """
 
     task: str = Field(..., min_length=1)
-    lang: str = Field(default="vi")
     ai_overall: float | None = None
     teacher_overall: float | None = None
     ai_scores: dict[str, float] = Field(default_factory=dict)
     teacher_scores: dict[str, float] = Field(default_factory=dict)
     approved_grade_json: str = Field(default="")
     run_id: int | None = None
+    subject: str | None = None
 
 
 class FinalizeGradeResponse(BaseModel):
@@ -265,13 +298,13 @@ class RegradeRequest(BaseModel):
     """
 
     task: str = Field(..., min_length=1, description="Essay topic / rubric")
-    lang: str = Field(default="en")
     action: str = Field(..., description='"revise" | "reject"')
     comment: str = Field(..., min_length=1, description="Teacher correction note")
     wrong_code: str = Field(default="", description="Previous AI grade JSON")
     image_b64: str | None = None
     task_pdf_b64: str | None = None
     run_id: int | None = None
+    subject: str | None = None
 
 
 class RegradeResponse(BaseModel):
@@ -300,11 +333,11 @@ async def generate(req: GenerateRequest):
     try:
         result = await orchestrator.run_pipeline(
             req.task,
-            lang=req.lang,
             feedback=req.feedback,
             wrong_code=req.wrong_code,
             image_b64=req.image_b64,
             task_pdf_b64=req.task_pdf_b64,
+            subject=req.subject,
         )
         return GenerateResponse(
             code=result.code,
@@ -313,18 +346,7 @@ async def generate(req: GenerateRequest):
             run_id=result.run_id,
         )
     except Exception as exc:
-        # Preserve timeout semantics for the UI instead of flattening everything to 502.
-        import traceback
-        detail = str(exc)
-        detail_lower = detail.lower()
-        status_code = 504 if (
-            "504" in detail
-            or "timed out" in detail_lower
-            or "gateway timeout" in detail_lower
-            or "deadline" in detail_lower
-        ) else 502
-        print(f"[API ERROR] {traceback.format_exc()}")
-        raise HTTPException(status_code=status_code, detail=detail) from exc
+        raise _pipeline_http_error(exc) from exc
 
 
 @app.post("/api/regrade", response_model=RegradeResponse)
@@ -356,27 +378,28 @@ async def regrade(req: RegradeRequest):
         correct_code="",
         lesson_text=comment,
         score=score,
+        subject=_subject_label(req.task, req.subject),
+    )
+    log_hitl_event(
+        action,
+        task=req.task,
+        lesson_id=lesson_id,
+        via="regrade",
+        run_id=req.run_id,
     )
 
     # 2 — Build feedback text for the Grader prompt
     feedback_text = f"Teacher action: {action}\nTeacher note: {comment}"
-    effective_feedback = feedback_text
-    if req.wrong_code and req.wrong_code.strip():
-        wrong_section = (
-            f"Previous AI grade (had issues):\n```json\n{req.wrong_code.strip()}\n```"
-        )
-        effective_feedback = f"{wrong_section}\n\n{feedback_text}"
-
     # 3 — Re-run pipeline
     try:
         result = await orchestrator.run_pipeline(
             req.task,
-            lang=req.lang,
-            feedback=effective_feedback,
+            feedback=feedback_text,
             wrong_code=req.wrong_code,
             image_b64=req.image_b64,
             task_pdf_b64=req.task_pdf_b64,
             parent_run_id=req.run_id,
+            subject=req.subject,
         )
         return RegradeResponse(
             code=result.code,
@@ -386,17 +409,7 @@ async def regrade(req: RegradeRequest):
             lesson_id=lesson_id,
         )
     except Exception as exc:
-        import traceback
-        detail = str(exc)
-        detail_lower = detail.lower()
-        status_code = 504 if (
-            "504" in detail
-            or "timed out" in detail_lower
-            or "gateway timeout" in detail_lower
-            or "deadline" in detail_lower
-        ) else 502
-        print(f"[API ERROR] {traceback.format_exc()}")
-        raise HTTPException(status_code=status_code, detail=detail) from exc
+        raise _pipeline_http_error(exc) from exc
 
 
 @app.post("/api/feedback", response_model=FeedbackResponse)
@@ -424,6 +437,8 @@ async def feedback(req: FeedbackRequest):
         )
 
     if action == "approve":
+        # Auto-detect subject for ChromaDB label
+        _subject = _subject_label(req.task, req.subject)
         approved_id = None
         grade = req.wrong_code.strip()
         if grade:
@@ -457,6 +472,7 @@ async def feedback(req: FeedbackRequest):
                     correct_code=grade,
                     lesson_text=f"{prefix}{text}",
                     score=3.5,  # per-question distilled rule > raw annotation (3.0)
+                    subject=_subject,
                 )
                 lesson_ids.append(lid)
         else:
@@ -469,6 +485,7 @@ async def feedback(req: FeedbackRequest):
                         correct_code=grade,
                         lesson_text=note,
                         score=3.0,
+                        subject=_subject,
                     )
                 )
 
@@ -506,6 +523,14 @@ async def feedback(req: FeedbackRequest):
         correct_code="",  # no teacher-edited corrected grade from this endpoint
         lesson_text=req.comment.strip(),
         score=score,
+        subject=_subject_label(req.task, req.subject),
+    )
+    log_hitl_event(
+        action,
+        task=req.task,
+        lesson_id=lesson_id,
+        via="feedback",
+        run_id=req.run_id,
     )
     return FeedbackResponse(
         action=action,
@@ -560,55 +585,41 @@ async def finalize_grade(req: FinalizeGradeRequest):
     # 2 — Persist the approved grade (research-grade audit log).
     approved_id: int | None = None
     if req.approved_grade_json.strip():
-        approved_id = memory.save_approved_grade(
+        approved_id = memory.find_approved_grade(
             task=req.task,
             grade_json=req.approved_grade_json.strip(),
             run_id=req.run_id,
         )
+        if approved_id is None:
+            approved_id = memory.save_approved_grade(
+                task=req.task,
+                grade_json=req.approved_grade_json.strip(),
+                run_id=req.run_id,
+            )
 
     # 3 — If any rubric delta is non-trivial, auto-generate a lesson that
     # captures the numeric correction so future grading runs can learn the
     # AI's tendency (e.g. "tends to overgrade expression by ~2 points").
     delta_lesson_id: int | None = None
     if deltas or (overall_delta is not None and abs(overall_delta) >= OVERALL_THRESHOLD):
-        if req.lang == "vi":
-            parts = ["Hiệu chỉnh điểm của giáo viên cho bài tương tự:"]
-            if overall_delta is not None and abs(overall_delta) >= 0.5:
-                direction = "giảm" if overall_delta < 0 else "tăng"
-                parts.append(
-                    f"- Tổng điểm: AI chấm {req.ai_overall} → giáo viên {direction} "
-                    f"còn {req.teacher_overall} (chênh {overall_delta:+}). "
-                )
-            for key, d in deltas.items():
-                direction = "hạ" if d < 0 else "nâng"
-                parts.append(
-                    f"- {key}: AI {req.ai_scores.get(key)} → giáo viên {direction} "
-                    f"{req.teacher_scores.get(key)} (chênh {d:+}). "
-                )
+        parts = ["Hiệu chỉnh điểm của giáo viên cho bài tương tự:"]
+        if overall_delta is not None and abs(overall_delta) >= 0.5:
+            direction = "giảm" if overall_delta < 0 else "tăng"
             parts.append(
-                "Khi gặp bài tương tự, cần điều chỉnh theo hướng này để khớp "
-                "với chuẩn chấm của giáo viên."
+                f"- Tổng điểm: AI chấm {req.ai_overall} → giáo viên {direction} "
+                f"còn {req.teacher_overall} (chênh {overall_delta:+}). "
             )
-            lesson_text = "\n".join(parts)
-        else:
-            parts = ["Teacher score adjustment on a similar essay:"]
-            if overall_delta is not None and abs(overall_delta) >= 0.5:
-                direction = "lowered" if overall_delta < 0 else "raised"
-                parts.append(
-                    f"- Overall: AI gave {req.ai_overall} → teacher {direction} "
-                    f"to {req.teacher_overall} ({overall_delta:+})."
-                )
-            for key, d in deltas.items():
-                direction = "down" if d < 0 else "up"
-                parts.append(
-                    f"- {key}: AI {req.ai_scores.get(key)} → teacher adjusted "
-                    f"{direction} to {req.teacher_scores.get(key)} ({d:+})."
-                )
+        for key, d in deltas.items():
+            direction = "hạ" if d < 0 else "nâng"
             parts.append(
-                "On similar essays, calibrate scores in this direction to match "
-                "the teacher's rubric."
+                f"- {key}: AI {req.ai_scores.get(key)} → giáo viên {direction} "
+                f"{req.teacher_scores.get(key)} (chênh {d:+}). "
             )
-            lesson_text = "\n".join(parts)
+        parts.append(
+            "Khi gặp bài tương tự, cần điều chỉnh theo hướng này để khớp "
+            "với chuẩn chấm của giáo viên."
+        )
+        lesson_text = "\n".join(parts)
 
         delta_lesson_id = prompt_orch.ingest_feedback(
             task=req.task,
@@ -616,6 +627,7 @@ async def finalize_grade(req: FinalizeGradeRequest):
             correct_code=req.approved_grade_json.strip(),
             lesson_text=lesson_text,
             score=4.0,  # stronger than per-Q annotations (3.5), weaker than reject (5.0)
+            subject=_subject_label(req.task, req.subject),
         )
 
     deltas_out = dict(deltas)
@@ -655,7 +667,6 @@ async def analyze_comment(req: AnalyzeCommentRequest):
             question=req.question,
             student_answer=req.student_answer,
             teacher_comment=req.teacher_comment,
-            lang=req.lang,
         )
         lesson_text = result.get("lesson", "")
         log_hitl_event(

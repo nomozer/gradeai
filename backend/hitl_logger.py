@@ -79,7 +79,15 @@ def _build_logger() -> logging.Logger:
     log.propagate = False  # keep uvicorn access log clean
 
     _LOG_DIR.mkdir(parents=True, exist_ok=True)
-    file_h = logging.FileHandler(_LOG_FILE, encoding="utf-8")
+    # Rotate at 5 MB, keep 5 back-files → caps disk at ~30 MB while preserving
+    # ~months of history given our event volume (≤1 KB/event, a few events per
+    # graded essay). jq / pandas happily glob over hitl_events.jsonl* together.
+    file_h = logging.handlers.RotatingFileHandler(
+        _LOG_FILE,
+        encoding="utf-8",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=5,
+    )
     file_h.setFormatter(_JsonlFormatter())
     log.addHandler(file_h)
 

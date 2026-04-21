@@ -8,21 +8,40 @@
  *        [gạch: xxx]  → orange strikethrough pill (content visible)
  *        [a|b]        → yellow ambiguity pill
  *
- *   2. Soft line-breaks after ' ⇒ ' or ' → ' so chains of reasoning
+ *   2. Figure/diagram wrappers → blue block pill so the teacher spots
+ *      non-text elements in the transcript and can jump to "Xem ảnh gốc":
+ *        [Hình vẽ: △ABC cân tại A, AB = AC = 5cm, ...]
+ *        [Figure: ...]  [Sơ đồ: ...]  [Diagram: ...]
+ *        [Bảng: ...]    [Table: ...]  [Mind map: ...]
+ *
+ *   3. Soft line-breaks after ' ⇒ ' or ' → ' so chains of reasoning
  *      read like real step-by-step work.
  *
- *   3. Math-only (subject === "stem") tokens:
+ *   4. Math-only (subject === "stem") tokens:
  *        x^2, x^{n+1}   → <sup>
  *        a_1, v_{max}   → <sub>
  *        sqrt(x+1)      → √(x+1)
  *
- * Universal: markers + soft-breaks run for ALL subjects (Văn/Sử/Ngoại ngữ
- * cũng có thể có [?] / [gạch]). Math tokens only run for STEM.
- * Zero deps, inline styles — safe drop-in for a pre-wrap <div>.
+ * Universal: markers + figures + soft-breaks run for ALL subjects (Văn/Sử/
+ * Ngoại ngữ cũng có thể có [?] / [gạch] / [Sơ đồ]). Math tokens only run
+ * for STEM. Zero deps, inline styles — safe drop-in for a pre-wrap <div>.
  */
 
-const TOKEN_RE =
-  /(\[\?\]|\[gạch(?::\s*[^\]]*)?\]|\[[^|\]\n]+\|[^|\]\n]+\]|sqrt\([^)]*\)|\^\{[^}]+\}|\^[A-Za-z0-9+\-]|_\{[^}]+\}|_[A-Za-z0-9+\-])/g;
+const FIGURE_LABELS = "Hình vẽ|Figure|Sơ đồ|Diagram|Bảng|Table|Mind map";
+const FIGURE_RE = new RegExp(`^\\[(${FIGURE_LABELS}):\\s*([\\s\\S]*)\\]$`, "i");
+
+const TOKEN_RE = new RegExp(
+  "(" +
+    "\\[\\?\\]|" +
+    "\\[gạch(?::\\s*[^\\]]*)?\\]|" +
+    `\\[(?:${FIGURE_LABELS}):[^\\]]*\\]|` +
+    "\\[[^|\\]\\n]+\\|[^|\\]\\n]+\\]|" +
+    "sqrt\\([^)]*\\)|" +
+    "\\^\\{[^}]+\\}|\\^[A-Za-z0-9+\\-]|" +
+    "_\\{[^}]+\\}|_[A-Za-z0-9+\\-]" +
+  ")",
+  "g",
+);
 
 const pillBase = {
   display: "inline-block",
@@ -43,6 +62,29 @@ const S = {
     textDecoration: "line-through",
   },
   ambig: { ...pillBase, background: "#fef3c7", color: "#854d0e" },
+  figure: {
+    display: "inline-block",
+    padding: "4px 10px",
+    borderRadius: 6,
+    background: "#dbeafe",
+    color: "#1e3a8a",
+    border: "1px solid #93c5fd",
+    fontSize: "0.9em",
+    fontWeight: 500,
+    lineHeight: 1.5,
+    maxWidth: "100%",
+    wordBreak: "break-word",
+    verticalAlign: "baseline",
+  },
+  figureLabel: {
+    display: "inline-block",
+    marginRight: 6,
+    fontSize: "0.78em",
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    opacity: 0.75,
+  },
   arrow: { color: "#6366f1", fontWeight: 600 },
 };
 
@@ -69,6 +111,19 @@ function renderToken(tok, isStem, key) {
     return (
       <span key={key} style={S.strike} title="Học sinh gạch bỏ chữ này">
         {inner}
+      </span>
+    );
+  }
+  const figMatch = tok.match(FIGURE_RE);
+  if (figMatch) {
+    return (
+      <span
+        key={key}
+        style={S.figure}
+        title="Hình vẽ / sơ đồ — đối chiếu với ảnh gốc để xác nhận"
+      >
+        <span style={S.figureLabel}>{figMatch[1]}</span>
+        {figMatch[2]}
       </span>
     );
   }
@@ -115,11 +170,11 @@ export function formatTranscript(text, subject) {
   const lines = String(text).split("\n");
   const out = [];
   lines.forEach((line, li) => {
-    // Split on ' ⇒ ' or ' → ' — whitespace-bordered arrows only.
-    const segments = line.split(/\s+([⇒→])\s+/);
+    // Split on ' ⇒ ', ' → ', or ' ⇔ ' — whitespace-bordered arrows only.
+    const segments = line.split(/\s+([⇒→⇔])\s+/);
     segments.forEach((seg, si) => {
       const key = `${li}-${si}`;
-      if (seg === "⇒" || seg === "→") {
+      if (seg === "⇒" || seg === "→" || seg === "⇔") {
         out.push("\n  ");
         out.push(
           <span key={`a-${key}`} style={S.arrow}>

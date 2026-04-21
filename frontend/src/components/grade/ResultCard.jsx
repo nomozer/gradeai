@@ -6,7 +6,7 @@ import { scoreColor } from "../../features/review/StepReview.logic";
 // ---------------------------------------------------------------------------
 // Editable Score Row — teacher can adjust each rubric dimension
 // ---------------------------------------------------------------------------
-function EditableScore({ label, value, onChange, icon: IconComp }) {
+function EditableScore({ label, value, onChange, icon: IconComp, disabled = false }) {
   const c = scoreColor(value, T);
   return (
     <div
@@ -34,6 +34,7 @@ function EditableScore({ label, value, onChange, icon: IconComp }) {
           max={10}
           step={0.5}
           value={value}
+          disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
           style={{
             width: 52,
@@ -48,8 +49,12 @@ function EditableScore({ label, value, onChange, icon: IconComp }) {
             outline: "none",
             fontFamily: T.mono,
             transition: "border-color 0.2s",
+            opacity: disabled ? 0.6 : 1,
+            cursor: disabled ? "not-allowed" : "text",
           }}
-          onFocus={(e) => (e.target.style.borderColor = T.accent)}
+          onFocus={(e) => {
+            if (!disabled) e.target.style.borderColor = T.accent;
+          }}
           onBlur={(e) => (e.target.style.borderColor = T.border)}
         />
         <span
@@ -70,7 +75,15 @@ function EditableScore({ label, value, onChange, icon: IconComp }) {
 // ---------------------------------------------------------------------------
 // ResultCard — Final step: teacher reviews AI scores and finalizes them.
 // ---------------------------------------------------------------------------
-export function ResultCard({ grade, t, finalized, onFinalize, onEdit }) {
+export function ResultCard({
+  grade,
+  t,
+  finalized,
+  onFinalize,
+  onEdit,
+  isFinalizing = false,
+  finalizeError = null,
+}) {
   const locked = !!finalized;
   // Local editable state initialized from AI-generated scores
   const [scores, setScores] = useState(() => ({
@@ -101,7 +114,7 @@ export function ResultCard({ grade, t, finalized, onFinalize, onEdit }) {
   };
 
   const handleFinalize = () => {
-    if (onFinalize) {
+    if (onFinalize && !isFinalizing) {
       onFinalize({ scores, overall });
     }
   };
@@ -171,17 +184,22 @@ export function ResultCard({ grade, t, finalized, onFinalize, onEdit }) {
             gap: 6,
             fontSize: 13,
             fontFamily: T.mono,
-            color: locked ? T.green : T.amber,
+            color: locked ? T.green : isFinalizing ? T.accent : T.amber,
             padding: "6px 16px",
-            background: locked ? T.greenSoft : T.amberSoft,
+            background: locked ? T.greenSoft : isFinalizing ? T.accentSoft : T.amberSoft,
             borderRadius: 20,
-            border: `1px solid ${locked ? T.green : T.amber}`,
+            border: `1px solid ${locked ? T.green : isFinalizing ? T.accent : T.amber}`,
           }}
         >
           {locked ? (
             <>
               <Icon.Check size={13} color={T.green} />
               {t.done || "Đã hoàn thành"}
+            </>
+          ) : isFinalizing ? (
+            <>
+              <Icon.RefreshCw size={13} color={T.accent} />
+              {t.finalizeSaving || "Đang lưu điểm…"}
             </>
           ) : (
             <>
@@ -203,8 +221,10 @@ export function ResultCard({ grade, t, finalized, onFinalize, onEdit }) {
             lineHeight: 1.6,
           }}
         >
-          {t.finalizeInstruction ||
-            'Vui lòng kiểm tra và chỉnh sửa điểm bên dưới. Nhấn "Xác nhận điểm" để hoàn tất.'}
+          {isFinalizing
+            ? (t.finalizeSaving || "Đang lưu điểm cuối cùng. Vui lòng chờ…")
+            : t.finalizeInstruction ||
+              'Vui lòng kiểm tra và chỉnh sửa điểm bên dưới. Nhấn "Xác nhận điểm" để hoàn tất.'}
         </div>
       )}
 
@@ -312,6 +332,7 @@ export function ResultCard({ grade, t, finalized, onFinalize, onEdit }) {
               max={10}
               step={0.5}
               value={overall}
+              disabled={isFinalizing}
               onChange={(e) => setOverall(e.target.value)}
               style={{
                 width: 130,
@@ -327,8 +348,12 @@ export function ResultCard({ grade, t, finalized, onFinalize, onEdit }) {
                 fontFamily: T.mono,
                 fontVariantNumeric: "tabular-nums",
                 transition: "border-color 0.2s",
+                opacity: isFinalizing ? 0.6 : 1,
+                cursor: isFinalizing ? "not-allowed" : "text",
               }}
-              onFocus={(e) => (e.target.style.borderColor = T.accent)}
+              onFocus={(e) => {
+                if (!isFinalizing) e.target.style.borderColor = T.accent;
+              }}
               onBlur={(e) => (e.target.style.borderColor = T.border)}
             />
             <span style={{ fontSize: 20, color: T.textFaint }}>
@@ -489,16 +514,37 @@ export function ResultCard({ grade, t, finalized, onFinalize, onEdit }) {
       {/* Finalize button */}
       {!locked && (
         <div style={{ textAlign: "center" }}>
+          {finalizeError && (
+            <div
+              style={{
+                maxWidth: 520,
+                margin: "0 auto 14px",
+                padding: "12px 14px",
+                background: T.redSoft,
+                border: `1px solid ${T.red}`,
+                borderRadius: 10,
+                fontSize: 14,
+                color: T.red,
+                lineHeight: 1.55,
+              }}
+            >
+              <span style={{ display: "inline-flex", verticalAlign: "middle", marginRight: 6 }}>
+                <Icon.AlertTriangle size={13} color={T.red} />
+              </span>
+              {finalizeError || t.finalizeSaveError || "Không thể lưu điểm cuối cùng. Vui lòng thử lại."}
+            </div>
+          )}
           <button
             onClick={handleFinalize}
+            disabled={isFinalizing}
             style={{
               padding: "14px 56px",
               fontSize: 16,
-              color: "#fff",
-              background: T.green,
+              color: isFinalizing ? T.textFaint : "#fff",
+              background: isFinalizing ? T.bgElevated : T.green,
               border: "none",
               borderRadius: 10,
-              cursor: "pointer",
+              cursor: isFinalizing ? "not-allowed" : "pointer",
               transition: "all 0.2s",
               display: "inline-flex",
               alignItems: "center",
@@ -506,11 +552,19 @@ export function ResultCard({ grade, t, finalized, onFinalize, onEdit }) {
               fontWeight: 600,
               boxShadow: T.shadowSoft,
             }}
-            onMouseEnter={(e) => (e.target.style.transform = "translateY(-1px)")}
+            onMouseEnter={(e) => {
+              if (!isFinalizing) e.target.style.transform = "translateY(-1px)";
+            }}
             onMouseLeave={(e) => (e.target.style.transform = "translateY(0)")}
           >
-            <Icon.Check size={16} color="#fff" />
-            {t.confirmScores || "Xác nhận điểm"}
+            {isFinalizing ? (
+              <Icon.RefreshCw size={16} color={T.textFaint} />
+            ) : (
+              <Icon.Check size={16} color="#fff" />
+            )}
+            {isFinalizing
+              ? (t.finalizeSaving || "Đang lưu…")
+              : (t.confirmScores || "Xác nhận điểm")}
           </button>
         </div>
       )}

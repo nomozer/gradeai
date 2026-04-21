@@ -29,6 +29,8 @@ from sqlalchemy import (
     Integer,
     Text,
     create_engine,
+    inspect,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker, mapped_column, Mapped
 
@@ -60,6 +62,9 @@ class Lesson(Base):
     wrong_code: Mapped[str] = mapped_column(Text, nullable=False)
     correct_code: Mapped[str] = mapped_column(Text, nullable=False)
     lesson_text: Mapped[str] = mapped_column(Text, nullable=False)
+    # Subject label for ChromaDB pre-filtering (literature/stem/language/history).
+    # Empty string means "unknown / legacy" — compatible with old rows.
+    subject: Mapped[str] = mapped_column(Text, nullable=False, default="")
     # BUG-2 FIX: Replace deprecated datetime.utcnow with timezone-aware now().
     timestamp: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -75,6 +80,7 @@ class Lesson(Base):
             "wrong_code": self.wrong_code,
             "correct_code": self.correct_code,
             "lesson_text": self.lesson_text,
+            "subject": self.subject,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
             "feedback_score": self.feedback_score,
         }
@@ -150,6 +156,7 @@ class MemoryManager:
             connect_args={"check_same_thread": False},
         )
         Base.metadata.create_all(self._engine)
+        self._migrate_legacy_schema()
         # BUG-3 FIX: sessionmaker produces context-manager-compatible sessions in SQLAlchemy 2.x
         # when used with `with self._SessionLocal() as session:` syntax.
         self._SessionLocal = sessionmaker(bind=self._engine, expire_on_commit=False)
@@ -163,6 +170,29 @@ class MemoryManager:
         )
 
     # ---- helpers ----------------------------------------------------------
+
+    def _migrate_legacy_schema(self) -> None:
+        """Add columns introduced after the initial schema on legacy DBs.
+
+        ``Base.metadata.create_all()`` only creates MISSING tables — it never
+        alters an existing one. For columns added after v1 (e.g. ``subject``
+        on ``lessons``), probe the live schema on startup and ``ALTER TABLE``
+        if needed. SQLite supports ADD COLUMN since 3.2, so this is cheap.
+        """
+        inspector = inspect(self._engine)
+        if not inspector.has_table("lessons"):
+            return  # fresh DB — create_all() already produced the correct shape
+
+        existing = {c["name"] for c in inspector.get_columns("lessons")}
+        if "subject" not in existing:
+            with self._engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE lessons "
+                        "ADD COLUMN subject TEXT NOT NULL DEFAULT ''"
+                    )
+                )
+            logger.info("Migrated legacy 'lessons' table: added 'subject' column")
 
     @contextmanager
     def _get_session(self):
@@ -186,6 +216,7 @@ class MemoryManager:
         correct_code: str,
         lesson_text: str,
         feedback_score: float = 3.0,
+        subject: str = "",
     ) -> int:
         """Persist a grading lesson to both SQLite and ChromaDB with compensation.
 
@@ -195,6 +226,9 @@ class MemoryManager:
             correct_code:  teacher's corrected grade JSON (or empty)
             lesson_text:   teacher's instructional note
             feedback_score: 1.0–5.0 priority weight (higher = stronger constraint)
+            subject:       subject label (literature/stem/language/history) for
+                           ChromaDB pre-filtering — speeds up retrieval by
+                           narrowing the search space before vector similarity.
 
         Returns:
             The auto-generated lesson ID.
@@ -206,6 +240,7 @@ class MemoryManager:
                 correct_code=correct_code,
                 lesson_text=lesson_text,
                 feedback_score=feedback_score,
+                subject=subject,
             )
             session.add(lesson)
             session.flush()   # flush to get auto-generated ID before commit
@@ -216,10 +251,13 @@ class MemoryManager:
             # future-task retrieval works even when the teacher's note is terse
             # (e.g. "[Câu 1] sai ý a") — the topic context still anchors the vector.
             embed_text = f"{task}\n{lesson_text}".strip() or lesson_text
+            meta: dict[str, Any] = {"lesson_id": lesson_id, "task": task}
+            if subject:
+                meta["subject"] = subject
             self._collection.upsert(
                 ids=[str(lesson_id)],
                 documents=[embed_text],
-                metadatas=[{"lesson_id": lesson_id, "task": task}],
+                metadatas=[meta],
             )
         except Exception:
             # SQLite committed first, so compensate to keep both stores aligned.
@@ -245,21 +283,31 @@ class MemoryManager:
     SIMILARITY_DISTANCE_THRESHOLD: float = 0.4
 
     def search_relevant_lessons(
-        self, task_description: str, top_k: int = 3
+        self, task_description: str, top_k: int = 3, subject: str = ""
     ) -> list[dict[str, Any]]:
         """Hybrid retrieval of grading lessons relevant to the current task.
 
-        Strategy:
+        Strategy (3-leg, subject-aware):
           1. Exact task match via Chroma metadata — always included (this is
              the "same essay prompt re-uploaded" path that powered the
              original HITL loop).
-          2. Semantic nearest-neighbour on the lesson text, filtered by
-             ``SIMILARITY_DISTANCE_THRESHOLD``. Lets teacher corrections on
-             one "binary arithmetic" prompt carry over to a different but
-             related one, without polluting unrelated essays.
+          2. Subject-scoped semantic search — narrows the vector search to
+             lessons of the SAME subject (e.g. only "stem" or only
+             "literature"). This dramatically reduces the search space and
+             removes cross-subject noise (a Math rule shouldn't pollute a
+             Literature essay retrieval).
+          3. Fallback full-collection semantic search — if subject-scoped
+             search didn't fill all slots (e.g. very few lessons for this
+             subject), fall back to a global search as a safety net.
 
-        Exact matches come first (strongest signal); semantic expansions
-        fill any remaining slots up to ``top_k``.
+        Exact matches come first (strongest signal); subject-scoped
+        expansions next; global fallback fills any remaining slots.
+
+        Args:
+            task_description: The essay topic text.
+            top_k:           Maximum number of lessons to return.
+            subject:         Subject label (e.g. 'stem', 'literature') for
+                             pre-filtering. Empty string skips subject filter.
         """
         total = self._collection.count()
         if total == 0 or not (task_description or "").strip():
@@ -268,7 +316,7 @@ class MemoryManager:
         seen: set[int] = set()
         ordered_ids: list[int] = []
 
-        # Leg 1 — exact task metadata match
+        # --- Leg 1 — exact task metadata match --------------------------------
         try:
             exact = self._collection.get(
                 where={"task": task_description},
@@ -285,7 +333,35 @@ class MemoryManager:
         except Exception:
             logger.exception("Exact-match lesson retrieval failed")
 
-        # Leg 2 — semantic expansion (only if we still have capacity)
+        # --- Leg 2 — subject-scoped semantic search ---------------------------
+        remaining = top_k - len(ordered_ids)
+        if remaining > 0 and subject:
+            try:
+                sem = self._collection.query(
+                    query_texts=[task_description],
+                    n_results=min(top_k * 2, total),
+                    where={"subject": subject},
+                )
+                ids = (sem.get("ids") or [[]])[0]
+                distances = (sem.get("distances") or [[]])[0]
+                for lid, dist in zip(ids, distances):
+                    if remaining <= 0:
+                        break
+                    if dist is not None and dist > self.SIMILARITY_DISTANCE_THRESHOLD:
+                        continue
+                    try:
+                        i = int(lid)
+                    except (TypeError, ValueError):
+                        continue
+                    if i in seen:
+                        continue
+                    seen.add(i)
+                    ordered_ids.append(i)
+                    remaining -= 1
+            except Exception:
+                logger.exception("Subject-scoped semantic retrieval failed")
+
+        # --- Leg 3 — fallback global semantic search --------------------------
         remaining = top_k - len(ordered_ids)
         if remaining > 0:
             try:
@@ -310,7 +386,7 @@ class MemoryManager:
                     ordered_ids.append(i)
                     remaining -= 1
             except Exception:
-                logger.exception("Semantic lesson retrieval failed")
+                logger.exception("Global semantic lesson retrieval failed")
 
         if not ordered_ids:
             return []
@@ -359,6 +435,32 @@ class MemoryManager:
             session.add(record)
             session.flush()
             return record.id
+
+    def find_approved_grade(
+        self,
+        *,
+        task: str,
+        grade_json: str,
+        run_id: int | None = None,
+    ) -> int | None:
+        """Return an existing approved-grade ID for the same logical artifact.
+
+        Used to prevent duplicate audit rows when the teacher clicks
+        "approve" and then finalizes without changing any scores.
+        """
+        with self._get_session() as session:
+            query = (
+                session.query(ApprovedGrade.id)
+                .filter(
+                    ApprovedGrade.task == task,
+                    ApprovedGrade.grade_json == grade_json,
+                )
+            )
+            if run_id is None:
+                query = query.filter(ApprovedGrade.run_id.is_(None))
+            else:
+                query = query.filter(ApprovedGrade.run_id == run_id)
+            return query.scalar()
 
     def backfill_correct_code(self, task: str, correct_code: str) -> int:
         """Fill in ``correct_code`` on lessons that lack it for *task*.
