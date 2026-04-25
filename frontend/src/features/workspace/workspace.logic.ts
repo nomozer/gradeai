@@ -1,4 +1,4 @@
-import type { Subject } from "../../types";
+import type { BackendSubject } from "../../types";
 
 /**
  * Pure helpers for EssayWorkspace — step transition logic.
@@ -53,40 +53,23 @@ export function buildTaskContext(
 /** Map UI subject labels to backend subject codes. */
 export function subjectCodeFromSelection(
   selectedSubject: string,
-): Subject | null {
+): BackendSubject | null {
   const folded = String(selectedSubject || "").toLowerCase();
   if (
     folded.includes("tin") ||
+    folded.includes("lập trình") ||
+    folded.includes("lap trinh") ||
+    folded.includes("computer") ||
+    folded.includes("cs")
+  ) {
+    return "cs";
+  }
+  if (
     folded.includes("toán") ||
     folded.includes("toan") ||
-    folded.includes("lý") ||
-    folded.includes("ly") ||
-    folded.includes("stem")
+    folded.includes("math")
   ) {
-    return "stem";
-  }
-  if (
-    folded.includes("ngoại ngữ") ||
-    folded.includes("ngoai ngu") ||
-    folded.includes("english") ||
-    folded.includes("language")
-  ) {
-    return "language";
-  }
-  if (
-    folded.includes("lịch sử") ||
-    folded.includes("lich su") ||
-    folded.includes("gdcd") ||
-    folded.includes("history")
-  ) {
-    return "history";
-  }
-  if (
-    folded.includes("văn") ||
-    folded.includes("van") ||
-    folded.includes("literature")
-  ) {
-    return "literature";
+    return "math";
   }
   return null;
 }

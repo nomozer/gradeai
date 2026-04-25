@@ -4,7 +4,9 @@ import { Icon } from "../../components/ui/Icon";
 import { formatTranscript } from "../../lib/mathFormat";
 import { analyzeComment } from "../../api";
 import type {
+  BackendSubject,
   CommentThreads,
+  CommentVerdict,
   EssayFile,
   Grade,
   I18nStrings,
@@ -15,9 +17,6 @@ import type {
 import type { UseAgentPipelineResult } from "../../hooks/useAgentPipeline";
 import type { UseFeedbackResult } from "../../hooks/useFeedback";
 
-// ---------------------------------------------------------------------------
-// Minimal Markdown → HTML parser (no external lib needed)
-// ---------------------------------------------------------------------------
 function parseMarkdown(md: string): string {
   if (!md) return "";
   const html = md
@@ -61,10 +60,75 @@ function parseIntoQuestions(source: string | null | undefined): QuestionPart[] {
   });
 }
 
+function normalizeAiAnalysisText(
+  value: string | null | undefined,
+  t: I18nStrings,
+): string {
+  const trimmed = String(value || "").trim();
+  const fallback = String(
+    t.aiAnalyzeFallback ?? "AI chưa phân tích được nhận xét này. Vui lòng thử lại.",
+  );
+  if (!trimmed) return fallback;
+  // Reject obvious broken JSON fragments such as `{`, `"`, `{ "`.
+  if (/^[\s{}[\]",:]+$/.test(trimmed)) return fallback;
+  return trimmed;
+}
+
+function clipText(value: string | null | undefined, maxLen: number): string {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  if (normalized.length <= maxLen) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxLen - 1)).trimEnd()}…`;
+}
+
 interface QuestionPair {
   num: number;
   student: QuestionPart;
   ai: QuestionPart;
+}
+
+function buildAnalyzeQuestionContext(
+  task: string | null | undefined,
+  pair: QuestionPair | undefined,
+): string {
+  const parts: string[] = [];
+  const taskLine = clipText(task, 180);
+  const questionLabel = clipText(
+    pair?.student?.label || pair?.ai?.label || "",
+    60,
+  );
+  const aiSummary = clipText(pair?.ai?.body, 500);
+
+  if (taskLine) parts.push(`Bối cảnh bài: ${taskLine}`);
+  if (questionLabel) parts.push(`Câu đang xét: ${questionLabel}`);
+  if (aiSummary) parts.push(`Nhận xét AI hiện tại: ${aiSummary}`);
+
+  return parts.join("\n");
+}
+
+/**
+ * Find the most recent AI lesson the teacher hasn't actively rejected.
+ *
+ * Verdict gating:
+ *   - "agree" / "partial":  always stageable
+ *   - "dispute":            only stageable when teacher explicitly chose
+ *                           ``disputeDecision === "apply"``. This is the
+ *                           anti-poison guard — AI flagged the teacher
+ *                           comment as wrong, so we won't write a lesson
+ *                           into HITL memory unless the teacher overrides.
+ */
+function getStageableLesson(messages: ThreadMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message?.type !== "ai") continue;
+    const lesson = String(message.lesson || "").trim();
+    if (!lesson) continue;
+    if (message.verdict === "dispute" && message.disputeDecision !== "apply") {
+      return "";
+    }
+    return lesson;
+  }
+  return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -122,11 +186,31 @@ function alignByQuestionNumber(
 interface CommentThreadProps {
   comments: ThreadMessage[];
   onSend: (text: string) => void;
+  /** Fires when teacher decides on a disputed AI lesson. */
+  onDisputeDecide: (msgIdx: number, decision: "apply" | "skip") => void;
   isLoading: boolean;
   t: I18nStrings;
 }
 
-function CommentThread({ comments, onSend, isLoading, t }: CommentThreadProps) {
+/** Color/icon styling per AI verdict — kept in one place so dispute UI
+ *  stays consistent across bubble + badge + decision panel. */
+function verdictStyle(verdict: CommentVerdict | undefined) {
+  if (verdict === "dispute") {
+    return { bg: T.redSoft, accent: T.red, label: "AI" };
+  }
+  if (verdict === "partial") {
+    return { bg: T.amberSoft, accent: T.amber, label: "AI" };
+  }
+  return { bg: T.accentSoft, accent: T.accent, label: "AI" };
+}
+
+function CommentThread({
+  comments,
+  onSend,
+  onDisputeDecide,
+  isLoading,
+  t,
+}: CommentThreadProps) {
   const [input, setInput] = useState("");
 
   const handleSend = () => {
@@ -153,53 +237,176 @@ function CommentThread({ comments, onSend, isLoading, t }: CommentThreadProps) {
             flexDirection: "column",
             gap: 6,
             marginBottom: 8,
-            maxHeight: 240,
+            maxHeight: 320,
             overflowY: "auto",
             paddingRight: 4,
           }}
         >
           {comments.map((c, i) => {
             const isTeacher = c.type === "teacher";
+            const vstyle = isTeacher
+              ? { bg: T.amberSoft, accent: T.amber, label: "GV" }
+              : verdictStyle(c.verdict);
+            const isDispute = !isTeacher && c.verdict === "dispute";
+            const isPartial = !isTeacher && c.verdict === "partial";
+            const skipped = isDispute && c.disputeDecision === "skip";
+
             return (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  padding: "8px 10px",
-                  background: isTeacher ? T.amberSoft : T.accentSoft,
-                  borderLeft: `3px solid ${isTeacher ? T.amber : T.accent}`,
-                  borderRadius: "0 8px 8px 0",
-                }}
-              >
+              <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <div
                   style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: "50%",
-                    background: isTeacher ? T.amber : T.accent,
                     display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 10,
-                    color: "#fff",
-                    fontWeight: 700,
-                    flexShrink: 0,
-                    marginTop: 1,
+                    gap: 8,
+                    padding: "8px 10px",
+                    background: vstyle.bg,
+                    borderLeft: `3px solid ${vstyle.accent}`,
+                    borderRadius: "0 8px 8px 0",
+                    opacity: skipped ? 0.55 : 1,
                   }}
                 >
-                  {isTeacher ? "GV" : "AI"}
+                  <div
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: "50%",
+                      background: vstyle.accent,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 10,
+                      color: "#fff",
+                      fontWeight: 700,
+                      flexShrink: 0,
+                      marginTop: 1,
+                    }}
+                  >
+                    {vstyle.label}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {(isDispute || isPartial) && (
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: vstyle.accent,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                          marginBottom: 4,
+                        }}
+                      >
+                        <Icon.AlertTriangle size={11} color={vstyle.accent} />
+                        {isDispute
+                          ? String(t.verdictDisputeTitle ?? "AI không đồng tình")
+                          : String(t.verdictPartialBadge ?? "AI đồng tình một phần")}
+                      </div>
+                    )}
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: T.textSoft,
+                        lineHeight: 1.55,
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      {c.text}
+                    </div>
+                  </div>
                 </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: T.textSoft,
-                    lineHeight: 1.55,
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {c.text}
-                </div>
+
+                {isDispute && c.disputeDecision === undefined && (
+                  <div
+                    style={{
+                      marginLeft: 30,
+                      padding: "8px 10px",
+                      background: T.bgCard,
+                      border: `1px dashed ${T.red}`,
+                      borderRadius: 8,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, color: T.textSoft }}>
+                      {String(
+                        t.verdictDisputeHint ??
+                          "AI cho rằng nhận xét này có thể không khớp bài làm thực tế. Đọc kỹ phân tích trên rồi chọn:",
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button
+                        onClick={() => onDisputeDecide(i, "skip")}
+                        style={{
+                          flex: 1,
+                          padding: "6px 10px",
+                          background: T.bgElevated,
+                          color: T.textSoft,
+                          border: `1px solid ${T.border}`,
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {String(
+                          t.verdictDisputeSkip ?? "Bỏ qua, không lưu bài học",
+                        )}
+                      </button>
+                      <button
+                        onClick={() => onDisputeDecide(i, "apply")}
+                        style={{
+                          flex: 1,
+                          padding: "6px 10px",
+                          background: T.red,
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {String(
+                          t.verdictDisputeApply ?? "Vẫn áp dụng nhận xét",
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {isDispute && c.disputeDecision === "apply" && (
+                  <div
+                    style={{
+                      marginLeft: 30,
+                      fontSize: 11,
+                      color: T.red,
+                      fontStyle: "italic",
+                    }}
+                  >
+                    <Icon.Check size={10} color={T.red} />{" "}
+                    {String(
+                      t.verdictDisputeApplied ??
+                        "Đã chọn áp dụng — bài học sẽ lưu khi duyệt.",
+                    )}
+                  </div>
+                )}
+                {isDispute && c.disputeDecision === "skip" && (
+                  <div
+                    style={{
+                      marginLeft: 30,
+                      fontSize: 11,
+                      color: T.textFaint,
+                      fontStyle: "italic",
+                    }}
+                  >
+                    {String(
+                      t.verdictDisputeSkipped ??
+                        "Đã bỏ qua — bài học KHÔNG lưu vào bộ nhớ.",
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -290,6 +497,7 @@ interface QuestionBoxProps {
   questionIdx: number;
   comments: ThreadMessage[];
   onSendComment: (text: string) => void;
+  onDisputeDecide: (msgIdx: number, decision: "apply" | "skip") => void;
   isAnalyzing: boolean;
   t: I18nStrings;
   subject: Subject | string;
@@ -301,6 +509,7 @@ function QuestionBox({
   questionIdx,
   comments,
   onSendComment,
+  onDisputeDecide,
   isAnalyzing,
   t,
   subject,
@@ -492,6 +701,7 @@ function QuestionBox({
           <CommentThread
             comments={comments}
             onSend={onSendComment}
+            onDisputeDecide={onDisputeDecide}
             isLoading={isAnalyzing}
             t={t}
           />
@@ -616,6 +826,7 @@ interface StepReviewProps {
   pipeline: UseAgentPipelineResult;
   feedbackHook: UseFeedbackResult;
   onApprove: () => void;
+  backendSubject: BackendSubject | null;
   task: string;
   t: I18nStrings;
   essayImage: EssayFile | null;
@@ -626,6 +837,7 @@ export function StepReview({
   pipeline,
   feedbackHook,
   onApprove,
+  backendSubject,
   task,
   t,
   essayImage,
@@ -687,14 +899,11 @@ export function StepReview({
 
       setAnalyzingQ(qIdx);
       try {
+        const pair = questionPairs[qIdx];
         const data = await analyzeComment({
-          question: task || "",
-          student_answer: (questionPairs[qIdx]?.student?.body || "").slice(
-            0,
-            2000,
-          ),
+          question: buildAnalyzeQuestionContext(task, pair),
+          student_answer: (pair?.student?.body || "").slice(0, 2000),
           teacher_comment: text,
-          lang: "vi",
         });
         setCommentThreads((prev) => ({
           ...prev,
@@ -702,8 +911,9 @@ export function StepReview({
             ...(prev[qIdx] || []),
             {
               type: "ai",
-              text: data.analysis,
+              text: normalizeAiAnalysisText(data.analysis, t),
               lesson: (data.lesson || "").trim(),
+              verdict: data.verdict,
             },
           ],
         }));
@@ -712,12 +922,31 @@ export function StepReview({
       }
       setAnalyzingQ(null);
     },
-    [task, questionPairs],
+    [task, questionPairs, t],
+  );
+
+  /**
+   * Teacher decides whether to apply or skip a disputed AI lesson.
+   * Mutates the message in-place by index — the dispute UI only renders
+   * decision buttons when ``disputeDecision`` is undefined, so subsequent
+   * clicks are inert.
+   */
+  const handleDisputeDecide = useCallback(
+    (qIdx: number, msgIdx: number, decision: "apply" | "skip") => {
+      setCommentThreads((prev) => {
+        const msgs = prev[qIdx];
+        if (!msgs || !msgs[msgIdx]) return prev;
+        const next = msgs.slice();
+        next[msgIdx] = { ...next[msgIdx], disputeDecision: decision };
+        return { ...prev, [qIdx]: next };
+      });
+    },
+    [],
   );
 
   if (!grade) return null;
 
-  const questionCount = Math.max(questionPairs.length, 1);
+  const questionCount = questionPairs.length;
 
   const weaknesses = Array.isArray(grade.weaknesses) ? grade.weaknesses : [];
   const isSalvaged =
@@ -726,23 +955,29 @@ export function StepReview({
       (w) => typeof w === "string" && w.toLowerCase().includes("unparseable"),
     );
 
+  // ``subject`` is still threaded into QuestionBox for math-aware transcript
+  // formatting (formatTranscript). The user-facing badge that used to show
+  // subjectName has been removed — Sidebar already displays the subject
+  // selection, and grade.subject is hard-stamped to "stem" so the badge was
+  // surfacing the wrong label anyway.
   const subject: Subject | string = grade.subject || "literature";
-  const subjectName =
-    (t.subjectNames?.[subject as Subject] as string | undefined) ||
-    (t.subjectNames?.literature as string | undefined) ||
-    String(subject);
 
   const refForIdx = (idx: number | string) =>
     questionPairs[Number(idx)]?.num ?? Number(idx) + 1;
 
   const stagedLessons: StagedLesson[] = Object.entries(commentThreads).flatMap(
-    ([idx, msgs]) =>
-      msgs
-        .filter((m) => m.type === "ai" && m.lesson)
-        .map((m) => ({
-          lesson_text: m.lesson as string,
+    ([idx, msgs]) => {
+      // getStageableLesson returns "" for disputed lessons that the
+      // teacher hasn't explicitly applied — that's the anti-poison guard.
+      const lessonText = getStageableLesson(msgs);
+      if (!lessonText) return [];
+      return [
+        {
+          lesson_text: lessonText,
           question_ref: `Câu ${refForIdx(idx)}`,
-        })),
+        },
+      ];
+    },
   );
 
   const aggregatedNote = Object.entries(commentThreads)
@@ -762,7 +997,7 @@ export function StepReview({
       task: task || "",
       wrongCode: pipeline.code || "",
       runId: pipeline.runId,
-      subject,
+      subject: backendSubject,
     });
     if (res && onApprove) onApprove();
   };
@@ -791,25 +1026,53 @@ export function StepReview({
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {stagedLessons.length > 0 && (
+            // Lightbulb-with-counter: a compact replacement for the old
+            // "X bài học đang chờ lưu" pill. ``key`` is set to the count so
+            // React remounts the wrapper on every increment, replaying the
+            // ``lessonPop`` keyframe — gives the teacher a quick visual cue
+            // that a new lesson was just staged from their last comment.
             <span
+              key={stagedLessons.length}
+              title={`${stagedLessons.length} ${
+                t.lessonsStaged ?? "bài học chờ lưu khi duyệt"
+              }`}
+              aria-label={`${stagedLessons.length} ${
+                t.lessonsStaged ?? "bài học chờ lưu khi duyệt"
+              }`}
               style={{
+                position: "relative",
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 6,
-                fontSize: 12,
-                fontFamily: T.mono,
-                color: T.accent,
-                padding: "4px 12px",
-                background: T.accentSoft,
-                borderRadius: 20,
-                border: `1px solid ${T.accent}`,
-                letterSpacing: "0.04em",
+                justifyContent: "center",
+                width: 28,
+                height: 28,
+                animation: "lessonPop 0.32s ease-out",
               }}
-              title="Các quy tắc đã chưng cất từ nhận xét của bạn — sẽ lưu khi duyệt."
             >
-              <Icon.Award size={11} color={T.accent} />
-              {stagedLessons.length}{" "}
-              {String(t.lessonsStaged ?? "bài học đang chờ lưu")}
+              <Icon.Lightbulb size={20} color={T.amber} />
+              <span
+                style={{
+                  position: "absolute",
+                  top: -4,
+                  right: -6,
+                  minWidth: 16,
+                  height: 16,
+                  padding: "0 4px",
+                  borderRadius: 8,
+                  background: T.amber,
+                  color: "#fff",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  fontFamily: T.mono,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  lineHeight: 1,
+                  boxShadow: T.shadowSoft,
+                }}
+              >
+                {stagedLessons.length}
+              </span>
             </span>
           )}
         </div>
@@ -851,25 +1114,6 @@ export function StepReview({
                 : String(t.viewOriginal ?? "Xem ảnh gốc")}
             </button>
           )}
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              fontSize: 12,
-              fontFamily: T.mono,
-              color: T.accent,
-              padding: "4px 12px",
-              background: T.accentSoft,
-              borderRadius: 20,
-              border: `1px solid ${T.accent}`,
-              letterSpacing: "0.04em",
-            }}
-            title={String(t.subjectLabel ?? "Subject")}
-          >
-            <Icon.Award size={11} color={T.accent} />
-            {String(t.subjectLabel ?? "Môn")}: {subjectName}
-          </span>
         </div>
       </div>
 
@@ -977,6 +1221,9 @@ export function StepReview({
             questionIdx={i}
             comments={commentThreads[i] || []}
             onSendComment={(text) => handleSendComment(i, text)}
+            onDisputeDecide={(msgIdx, decision) =>
+              handleDisputeDecide(i, msgIdx, decision)
+            }
             isAnalyzing={analyzingQ === i}
             t={t}
             subject={subject}

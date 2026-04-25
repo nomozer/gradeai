@@ -8,8 +8,8 @@ Tài liệu này hướng dẫn chi tiết cách thiết lập môi trường đ
 
 - **Python 3.11+**: Đảm bảo đã thêm vào PATH.
 - **Node.js 18+**: Yêu cầu để vận hành giao diện React chuyên nghiệp.
-- **Google Gemini API Key**: Yêu cầu mô hình **Gemini 1.5 Flash** (hoặc Pro). Hệ thống đã được cấu hình tối ưu để tận dụng Context Window lớn và giới hạn đầu ra **16,384 tokens**.
-- **Windows OS**: Hệ thống hiện tại được tối ưu hóa cho Windows (sử dụng `.bat` và `taskkill`).
+- **Google Gemini API Key**: Mặc định dùng **Gemini 3 Flash Preview** (`gemini-3-flash-preview`), tự động fallback xuống **Gemini 2.5 Flash** khi quota cạn. Có thể pin model bằng env `GEMINI_MODEL`. Hệ thống đã cấu hình tối ưu để tận dụng Context Window lớn và giới hạn đầu ra **16,384 tokens**.
+- **Windows OS**: Hệ thống hiện tại được tối ưu hóa cho Windows; chạy dự án qua `npm run dev`.
 
 ---
 
@@ -22,9 +22,12 @@ Hệ thống tích hợp sẵn script tự động hóa toàn bộ quy trình:
     GOOGLE_API_KEY=your_gemini_api_key_here
     GEMINI_MODEL=gemini-3-flash-preview
     ```
-2.  **Kích hoạt**: Chạy file `start.bat` tại thư mục gốc bằng cách click đúp.
+2.  **Kích hoạt**: Tại thư mục gốc dự án, chạy:
+    ```powershell
+    npm run dev
+    ```
 
-_Hệ thống sẽ tự động: Tạo venv -> Cài đặt dependencies (Backend & Frontend) -> Khởi động server -> Mở trình duyệt._
+_Lệnh này sẽ khởi động đồng thời backend FastAPI (port 8000, `DEV_MODE=1`) và frontend Vite (port 3000)._
 
 ---
 
@@ -47,7 +50,7 @@ uvicorn main:app --reload --port 8000
 ```powershell
 cd frontend
 npm install
-npm start
+npm run dev
 ```
 
 ---

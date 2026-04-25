@@ -24,7 +24,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-_LOG_DIR = Path(__file__).resolve().parent / "data"
+# ``__file__`` is at ``backend/memory/logger.py`` — go up TWO levels to
+# reach ``backend/`` then into the shared ``data/`` directory.
+_LOG_DIR = Path(__file__).resolve().parent.parent / "data"
 _LOG_FILE = _LOG_DIR / "hitl_events.jsonl"
 
 
@@ -49,7 +51,7 @@ class _JsonlFormatter(logging.Formatter):
             }:
                 continue
             payload[key] = value
-        return json.dumps(payload, ensure_ascii=False)
+        return json.dumps(payload, ensure_ascii=False, default=str)
 
 
 class _ConsoleFormatter(logging.Formatter):

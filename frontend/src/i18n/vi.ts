@@ -134,4 +134,12 @@ export const vi: I18nStrings = {
   salvagedTitle: "Kết quả chấm chưa đầy đủ",
   salvagedBody:
     "Mô hình đã trả về JSON không hợp lệ — nội dung bên dưới được trích xuất từng phần. Hãy kiểm tra kỹ trước khi duyệt, hoặc chấm lại bài.",
+  verdictDisputeTitle: "AI không đồng tình",
+  verdictDisputeHint:
+    "AI cho rằng nhận xét này có thể không khớp bài làm thực tế. Đọc kỹ phân tích trên rồi chọn:",
+  verdictDisputeApply: "Vẫn áp dụng nhận xét",
+  verdictDisputeSkip: "Bỏ qua, không lưu bài học",
+  verdictDisputeApplied: "Đã chọn áp dụng — bài học sẽ lưu khi duyệt.",
+  verdictDisputeSkipped: "Đã bỏ qua — bài học KHÔNG lưu vào bộ nhớ.",
+  verdictPartialBadge: "AI đồng tình một phần",
 };

@@ -1,5 +1,5 @@
 import { apiPost, type RequestOptions } from "./client";
-import type { FinalizeGradeResponse, Subject } from "../types";
+import type { BackendSubject, FinalizeGradeResponse } from "../types";
 
 export interface FinalizeGradeRequest {
   task: string;
@@ -10,7 +10,7 @@ export interface FinalizeGradeRequest {
   teacher_scores: Record<string, number>;
   approved_grade_json: string;
   run_id: number | null;
-  subject?: Subject | string | null;
+  subject?: BackendSubject | null;
 }
 
 export function finalizeGrade(

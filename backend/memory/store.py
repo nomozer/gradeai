@@ -32,6 +32,7 @@ from sqlalchemy import (
     inspect,
     text,
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker, mapped_column, Mapped
 
 
@@ -146,7 +147,11 @@ class MemoryManager:
 
     def __init__(self, db_dir: Path | None = None) -> None:
         if db_dir is None:
-            db_dir = Path(__file__).resolve().parent / "data"
+            # ``__file__`` is at ``backend/memory/store.py`` — go up TWO
+            # levels to reach ``backend/`` then into ``data/``. After the
+            # domain-folder restructure the file lives one level deeper
+            # than the original ``backend/memory.py``.
+            db_dir = Path(__file__).resolve().parent.parent / "data"
         db_dir.mkdir(parents=True, exist_ok=True)
 
         # --- SQLite ---
@@ -193,6 +198,33 @@ class MemoryManager:
                     )
                 )
             logger.info("Migrated legacy 'lessons' table: added 'subject' column")
+
+        # UNIQUE INDEX on approved_grades — prevents the finalize_grade race
+        # where two concurrent requests both pass "not found" and both
+        # insert the same row. COALESCE(run_id, -1) collapses NULL into a
+        # sentinel so SQLite's NULL-is-distinct semantics don't let two
+        # rows with run_id=NULL slip through.
+        #
+        # Wrapped in try/except because a legacy DB MAY already contain
+        # duplicate rows that would block creation. In that case we log a
+        # warning and let save_approved_grade continue without DB-level
+        # dedup — callers keep working, duplicates just won't be prevented.
+        try:
+            with self._engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS "
+                        "uq_approved_task_grade_run ON approved_grades("
+                        "task, grade_json, COALESCE(run_id, -1))"
+                    )
+                )
+        except Exception:
+            logger.warning(
+                "Could not create UNIQUE INDEX on approved_grades — "
+                "duplicate rows may already exist; idempotent save will "
+                "degrade gracefully",
+                exc_info=True,
+            )
 
     @contextmanager
     def _get_session(self):
@@ -282,6 +314,54 @@ class MemoryManager:
     # models to one with stronger Vietnamese coverage.
     SIMILARITY_DISTANCE_THRESHOLD: float = 0.4
 
+    def _semantic_leg(
+        self,
+        query: str,
+        total: int,
+        top_k: int,
+        seen: set[int],
+        ordered_ids: list[int],
+        *,
+        where: dict[str, Any] | None = None,
+        label: str = "semantic",
+    ) -> None:
+        """Run one semantic-search leg, appending new hits in-place.
+
+        Both the subject-scoped and the global-fallback legs share the same
+        Chroma query shape and same id/distance filtering — they only
+        differ in the ``where`` clause. This helper keeps the retrieval
+        logic DRY so the main method reads as "exact → subject → global".
+        """
+        remaining = top_k - len(ordered_ids)
+        if remaining <= 0:
+            return
+        try:
+            kwargs: dict[str, Any] = {
+                "query_texts": [query],
+                "n_results": min(top_k * 2, total),
+            }
+            if where:
+                kwargs["where"] = where
+            sem = self._collection.query(**kwargs)
+            ids = (sem.get("ids") or [[]])[0]
+            distances = (sem.get("distances") or [[]])[0]
+            for lid, dist in zip(ids, distances):
+                if remaining <= 0:
+                    break
+                if dist is not None and dist > self.SIMILARITY_DISTANCE_THRESHOLD:
+                    continue
+                try:
+                    i = int(lid)
+                except (TypeError, ValueError):
+                    continue
+                if i in seen:
+                    continue
+                seen.add(i)
+                ordered_ids.append(i)
+                remaining -= 1
+        except Exception:
+            logger.exception("%s lesson retrieval failed", label)
+
     def search_relevant_lessons(
         self, task_description: str, top_k: int = 3, subject: str = ""
     ) -> list[dict[str, Any]]:
@@ -292,13 +372,10 @@ class MemoryManager:
              the "same essay prompt re-uploaded" path that powered the
              original HITL loop).
           2. Subject-scoped semantic search — narrows the vector search to
-             lessons of the SAME subject (e.g. only "stem" or only
-             "literature"). This dramatically reduces the search space and
-             removes cross-subject noise (a Math rule shouldn't pollute a
-             Literature essay retrieval).
+             lessons of the SAME subject (math vs cs). Dramatically reduces
+             the search space and removes cross-subject noise.
           3. Fallback full-collection semantic search — if subject-scoped
-             search didn't fill all slots (e.g. very few lessons for this
-             subject), fall back to a global search as a safety net.
+             search didn't fill all slots, fall back to a global search.
 
         Exact matches come first (strongest signal); subject-scoped
         expansions next; global fallback fills any remaining slots.
@@ -306,8 +383,8 @@ class MemoryManager:
         Args:
             task_description: The essay topic text.
             top_k:           Maximum number of lessons to return.
-            subject:         Subject label (e.g. 'stem', 'literature') for
-                             pre-filtering. Empty string skips subject filter.
+            subject:         Subject label for pre-filtering. Empty string
+                             skips subject filter.
         """
         total = self._collection.count()
         if total == 0 or not (task_description or "").strip():
@@ -316,7 +393,7 @@ class MemoryManager:
         seen: set[int] = set()
         ordered_ids: list[int] = []
 
-        # --- Leg 1 — exact task metadata match --------------------------------
+        # Leg 1 — exact task metadata match.
         try:
             exact = self._collection.get(
                 where={"task": task_description},
@@ -333,60 +410,19 @@ class MemoryManager:
         except Exception:
             logger.exception("Exact-match lesson retrieval failed")
 
-        # --- Leg 2 — subject-scoped semantic search ---------------------------
-        remaining = top_k - len(ordered_ids)
-        if remaining > 0 and subject:
-            try:
-                sem = self._collection.query(
-                    query_texts=[task_description],
-                    n_results=min(top_k * 2, total),
-                    where={"subject": subject},
-                )
-                ids = (sem.get("ids") or [[]])[0]
-                distances = (sem.get("distances") or [[]])[0]
-                for lid, dist in zip(ids, distances):
-                    if remaining <= 0:
-                        break
-                    if dist is not None and dist > self.SIMILARITY_DISTANCE_THRESHOLD:
-                        continue
-                    try:
-                        i = int(lid)
-                    except (TypeError, ValueError):
-                        continue
-                    if i in seen:
-                        continue
-                    seen.add(i)
-                    ordered_ids.append(i)
-                    remaining -= 1
-            except Exception:
-                logger.exception("Subject-scoped semantic retrieval failed")
+        # Leg 2 — subject-scoped semantic search (only when a subject was given).
+        if subject:
+            self._semantic_leg(
+                task_description, total, top_k, seen, ordered_ids,
+                where={"subject": subject},
+                label="Subject-scoped semantic",
+            )
 
-        # --- Leg 3 — fallback global semantic search --------------------------
-        remaining = top_k - len(ordered_ids)
-        if remaining > 0:
-            try:
-                sem = self._collection.query(
-                    query_texts=[task_description],
-                    n_results=min(top_k * 2, total),
-                )
-                ids = (sem.get("ids") or [[]])[0]
-                distances = (sem.get("distances") or [[]])[0]
-                for lid, dist in zip(ids, distances):
-                    if remaining <= 0:
-                        break
-                    if dist is not None and dist > self.SIMILARITY_DISTANCE_THRESHOLD:
-                        continue
-                    try:
-                        i = int(lid)
-                    except (TypeError, ValueError):
-                        continue
-                    if i in seen:
-                        continue
-                    seen.add(i)
-                    ordered_ids.append(i)
-                    remaining -= 1
-            except Exception:
-                logger.exception("Global semantic lesson retrieval failed")
+        # Leg 3 — global fallback semantic search.
+        self._semantic_leg(
+            task_description, total, top_k, seen, ordered_ids,
+            label="Global semantic",
+        )
 
         if not ordered_ids:
             return []
@@ -427,40 +463,42 @@ class MemoryManager:
     def save_approved_grade(
         self, task: str, grade_json: str, run_id: int | None = None
     ) -> int:
-        """Persist a teacher-approved grade as a positive HITL signal."""
+        """Persist a teacher-approved grade as a positive HITL signal.
+
+        Idempotent under the UNIQUE INDEX added in ``_migrate_legacy_schema``:
+        if a row with the same ``(task, grade_json, run_id)`` already exists,
+        returns that row's ID instead of inserting a duplicate. Race-safe —
+        two concurrent calls both attempt INSERT; the DB rejects the loser
+        with IntegrityError, which we catch and convert to a SELECT.
+
+        Replaces the old find-then-save pattern in main.finalize_grade that
+        had a classic check-then-act race (both requests passed the find,
+        both inserted).
+        """
         with self._get_session() as session:
             record = ApprovedGrade(
                 task=task, grade_json=grade_json, run_id=run_id,
             )
             session.add(record)
-            session.flush()
-            return record.id
-
-    def find_approved_grade(
-        self,
-        *,
-        task: str,
-        grade_json: str,
-        run_id: int | None = None,
-    ) -> int | None:
-        """Return an existing approved-grade ID for the same logical artifact.
-
-        Used to prevent duplicate audit rows when the teacher clicks
-        "approve" and then finalizes without changing any scores.
-        """
-        with self._get_session() as session:
-            query = (
-                session.query(ApprovedGrade.id)
-                .filter(
+            try:
+                session.flush()
+                return record.id
+            except IntegrityError:
+                session.rollback()
+                query = session.query(ApprovedGrade.id).filter(
                     ApprovedGrade.task == task,
                     ApprovedGrade.grade_json == grade_json,
                 )
-            )
-            if run_id is None:
-                query = query.filter(ApprovedGrade.run_id.is_(None))
-            else:
-                query = query.filter(ApprovedGrade.run_id == run_id)
-            return query.scalar()
+                if run_id is None:
+                    query = query.filter(ApprovedGrade.run_id.is_(None))
+                else:
+                    query = query.filter(ApprovedGrade.run_id == run_id)
+                existing_id = query.scalar()
+                if existing_id is None:
+                    # UNIQUE violated but row not found — integrity is
+                    # genuinely broken (DB corruption / schema mismatch).
+                    raise
+                return existing_id
 
     def backfill_correct_code(self, task: str, correct_code: str) -> int:
         """Fill in ``correct_code`` on lessons that lack it for *task*.

@@ -41,3 +41,7 @@ backend/data/
 # Build
 frontend/build/
 frontend/dist/
+
+# Project specific
+test/
+CLAUDE.md

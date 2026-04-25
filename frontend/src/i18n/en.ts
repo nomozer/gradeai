@@ -145,4 +145,12 @@ export const en: I18nStrings = {
   salvagedTitle: "Grading output incomplete",
   salvagedBody:
     "The model returned invalid JSON — the content below was salvaged partially. Review carefully before approving, or request a re-grade.",
+  verdictDisputeTitle: "AI disagrees",
+  verdictDisputeHint:
+    "AI thinks this comment may not match the actual student work. Read the analysis above, then choose:",
+  verdictDisputeApply: "Apply the comment anyway",
+  verdictDisputeSkip: "Skip, don't save this lesson",
+  verdictDisputeApplied: "Marked to apply — the lesson will save on approve.",
+  verdictDisputeSkipped: "Skipped — the lesson will NOT be saved to memory.",
+  verdictPartialBadge: "AI partially agrees",
 };

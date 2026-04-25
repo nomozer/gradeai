@@ -128,7 +128,7 @@ export function StepUpload({
           <input
             ref={taskInputRef}
             type="file"
-            accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            accept=".pdf,application/pdf"
             style={{ display: "none" }}
             onChange={(e) => {
               handleTaskFile(e.target.files?.[0]);
@@ -182,9 +182,7 @@ export function StepUpload({
                       letterSpacing: "0.1em",
                     }}
                   >
-                    {taskPdf.name?.toLowerCase().endsWith(".docx")
-                      ? "DOCX"
-                      : "PDF"}
+                    PDF
                   </div>
                 </div>
                 <div
@@ -220,7 +218,7 @@ export function StepUpload({
               <div
                 style={{ fontSize: 13, color: T.textFaint, marginTop: 6 }}
               >
-                PDF, DOCX
+                PDF
               </div>
             </div>
           )}
@@ -405,7 +403,8 @@ export function StepUpload({
           fontSize: 17,
           color: canSubmit ? T.bgCard : T.textMute,
           background: canSubmit ? T.accent : T.bgCard,
-          border: canSubmit ? "none" : `1px solid ${T.border}`,
+          border: `1px solid ${canSubmit ? T.accent : T.border}`,
+          borderRadius: 6,
           transition: "all 0.2s",
         }}
       >

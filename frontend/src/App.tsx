@@ -6,7 +6,7 @@
  * only composes.
  */
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { i18n } from "./i18n";
 import { GlobalStyles } from "./theme/GlobalStyles";
 import { useLang } from "./hooks/useLang";
@@ -31,7 +31,26 @@ export default function App() {
     updateMeta,
   } = useTabs();
 
-  const [selectedSubject, setSelectedSubject] = useState<string>("Môn Tin");
+  // Hydrate subject from localStorage so a returning teacher does not have
+  // to re-pick. First-time users start with "" (no selection) and the
+  // workspace renders a waiting state until they choose — guarantees every
+  // saved lesson is stamped with the correct subject (cs/math).
+  const [selectedSubject, setSelectedSubjectState] = useState<string>(() => {
+    try {
+      return localStorage.getItem("hitl.selectedSubject") || "";
+    } catch {
+      return "";
+    }
+  });
+  const setSelectedSubject = useCallback((value: string) => {
+    setSelectedSubjectState(value);
+    try {
+      localStorage.setItem("hitl.selectedSubject", value);
+    } catch {
+      // localStorage may be disabled in private mode — best-effort persist.
+    }
+  }, []);
+
   const [selectedClass, setSelectedClass] = useState<string>("Lớp 10");
 
   useHeartbeat();

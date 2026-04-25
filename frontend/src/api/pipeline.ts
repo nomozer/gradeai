@@ -1,8 +1,8 @@
 import { apiPost, type RequestOptions } from "./client";
 import type {
+  BackendSubject,
   FeedbackAction,
   GenerateResponse,
-  Subject,
 } from "../types";
 
 export interface GenerateRequest {
@@ -12,7 +12,7 @@ export interface GenerateRequest {
   wrong_code?: string | null;
   image_b64?: string | null;
   task_pdf_b64?: string | null;
-  subject?: Subject | string | null;
+  subject?: BackendSubject | null;
 }
 
 export interface RegradeRequest {
@@ -24,7 +24,7 @@ export interface RegradeRequest {
   image_b64?: string | null;
   task_pdf_b64?: string | null;
   run_id?: number | null;
-  subject?: Subject | string | null;
+  subject?: BackendSubject | null;
 }
 
 export function generate(

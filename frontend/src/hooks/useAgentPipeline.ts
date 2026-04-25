@@ -5,12 +5,11 @@
 import { useReducer, useCallback, useEffect, useRef } from "react";
 import { ApiError, generate as apiGenerate, regrade as apiRegrade } from "../api";
 import type {
-  Critique,
+  BackendSubject,
   FeedbackAction,
   GenerateResponse,
   Lesson,
   PipelinePhase,
-  Subject,
 } from "../types";
 
 // Intentionally generous so the client does not need to mirror backend retry math.
@@ -34,7 +33,6 @@ type Action =
 interface State {
   phase: PipelinePhase;
   code: string | null;
-  critique: Critique | null;
   lessonsUsed: Lesson[];
   runCount: number;
   previousLessonIds: number[];
@@ -46,7 +44,6 @@ interface State {
 const initialState: State = {
   phase: "idle",
   code: null,
-  critique: null,
   lessonsUsed: [],
   // runCount + previousLessonIds let the UI highlight NEW lessons appearing
   // on a rerun — the core visual cue of the HITL learning loop.
@@ -67,7 +64,6 @@ function reducer(state: State, action: Action): State {
         ...state,
         phase: "generating",
         code: null,
-        critique: null,
         lessonsUsed: [],
         newLessonIds: [],
         runId: null,
@@ -85,7 +81,6 @@ function reducer(state: State, action: Action): State {
         ...state,
         phase: "done",
         code: action.payload.code,
-        critique: action.payload.critique,
         lessonsUsed: lessons,
         runCount: state.runCount + 1,
         newLessonIds,
@@ -116,7 +111,7 @@ export interface RegradeInput {
   imageB64?: string | null;
   taskPdfB64?: string | null;
   runId?: number | null;
-  subject?: Subject | string | null;
+  subject?: BackendSubject | null;
 }
 
 export interface UseAgentPipelineResult extends State {
@@ -127,7 +122,7 @@ export interface UseAgentPipelineResult extends State {
     wrongCode?: string | null,
     imageB64?: string | null,
     taskPdfB64?: string | null,
-    subject?: Subject | string | null,
+    subject?: BackendSubject | null,
   ) => Promise<void>;
   regrade: (input: RegradeInput) => Promise<void>;
   reset: () => void;
@@ -205,7 +200,7 @@ export function useAgentPipeline(): UseAgentPipelineResult {
       wrongCode: string | null = null,
       imageB64: string | null = null,
       taskPdfB64: string | null = null,
-      subject: Subject | string | null = null,
+      subject: BackendSubject | null = null,
     ): Promise<void> => {
       const { requestId, controller, releaseIfCurrent } = beginRequest();
 

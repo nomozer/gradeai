@@ -10,10 +10,10 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { ApiError, submitFeedback } from "../api";
 import type {
+  BackendSubject,
   FeedbackAction,
   FeedbackResponse,
   StagedLesson,
-  Subject,
 } from "../types";
 
 const FEEDBACK_TIMEOUT_MS = 30000;
@@ -25,7 +25,7 @@ export interface FeedbackSubmitInput {
   wrongCode: string;
   runId: number | null;
   stagedLessons?: StagedLesson[];
-  subject?: Subject | string | null;
+  subject?: BackendSubject | null;
 }
 
 export interface UseFeedbackResult {

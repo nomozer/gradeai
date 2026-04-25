@@ -16,15 +16,8 @@ export interface StagedLesson {
   question_ref: string;
 }
 
-export interface Critique {
-  issues?: Array<Record<string, unknown>>;
-  severity?: string;
-  suggestion?: string;
-}
-
 export interface GenerateResponse {
   code: string;
-  critique: Critique;
   lessons_used: Lesson[];
   run_id: number | null;
 }
@@ -40,6 +33,15 @@ export interface FeedbackResponse {
 export interface AnalyzeCommentResponse {
   analysis: string;
   lesson: string;
+  /**
+   * AI's judgment vs the student work:
+   *   - "agree":   teacher comment is correct
+   *   - "partial": teacher partially correct, conditions apply
+   *   - "dispute": AI thinks teacher misread the student's work — UI
+   *                should require explicit confirmation before staging
+   *                the lesson into HITL memory
+   */
+  verdict: "agree" | "partial" | "dispute";
 }
 
 export interface FinalizeGradeResponse {

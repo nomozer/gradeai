@@ -38,6 +38,85 @@ interface EssayWorkspaceProps {
   onMeta: (meta: TabMeta) => void;
 }
 
+/**
+ * Empty-state hero shown while the teacher has not picked a subject in the
+ * Sidebar. Pairs with the Sidebar's pulsing dropdown — together they form a
+ * "look-here" cue without resorting to a blocking modal.
+ */
+function WaitingForSubjectHero() {
+  return (
+    <div
+      style={{
+        maxWidth: 560,
+        margin: "80px auto 0",
+        padding: "40px 32px",
+        background: T.bgCard,
+        border: `1px solid ${T.border}`,
+        borderRadius: 16,
+        boxShadow: T.shadowSoft,
+        textAlign: "center",
+        animation: "fadeUp 0.4s ease-out",
+      }}
+    >
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 72,
+          height: 72,
+          borderRadius: "50%",
+          background: T.accentSoft,
+          marginBottom: 18,
+        }}
+      >
+        <Icon.Lightbulb size={36} color={T.amber} />
+      </div>
+      <h2
+        style={{
+          fontFamily: T.display,
+          fontSize: 22,
+          fontWeight: 600,
+          color: T.text,
+          margin: "0 0 10px",
+          letterSpacing: "-0.01em",
+        }}
+      >
+        Hãy chọn môn để bắt đầu chấm
+      </h2>
+      <p
+        style={{
+          fontSize: 14,
+          color: T.textSoft,
+          lineHeight: 1.6,
+          margin: "0 auto 24px",
+          maxWidth: 420,
+        }}
+      >
+        AI sử dụng prompt riêng cho Toán hoặc Tin để chấm chính xác và để bộ
+        nhớ HITL tích lũy đúng nhóm môn. Chọn ở thanh bên để mở khoá tải đề
+        và bài làm.
+      </p>
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          fontSize: 13,
+          color: T.accent,
+          fontFamily: T.mono,
+          letterSpacing: "0.04em",
+        }}
+      >
+        <span style={{ animation: "arrowNudge 1.4s ease-in-out infinite" }}>
+          <Icon.ArrowLeft size={16} color={T.accent} />
+        </span>
+        <span>Chọn ở thanh bên trái</span>
+      </div>
+    </div>
+  );
+}
+
 export function EssayWorkspace({
   active,
   lang,
@@ -178,6 +257,20 @@ export function EssayWorkspace({
     String(t.stepDone ?? ""),
   ];
 
+  // Gate the entire wizard until a subject is chosen. The Sidebar is the
+  // single source of truth for which subject prompt the backend will use,
+  // and a missing/wrong choice silently corrupts HITL memory (lessons
+  // stamped under the wrong subject) — same root cause as the 60-row DB
+  // drift we just cleaned up. Better to require an explicit pick once per
+  // first-time session; localStorage persists it for return visits.
+  if (!selectedSubject) {
+    return (
+      <div style={{ padding: "0 32px 40px", display: active ? "block" : "none" }}>
+        <WaitingForSubjectHero />
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: "0 32px 40px", display: active ? "block" : "none" }}>
       <StepIndicator steps={stepLabels} currentStep={displayStep} />
@@ -238,6 +331,7 @@ export function EssayWorkspace({
             pipeline={pipeline}
             feedbackHook={feedbackHook}
             onApprove={handleApprove}
+            backendSubject={subject}
             task={task}
             t={t}
             essayImage={essayImage}

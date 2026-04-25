@@ -71,7 +71,18 @@ export function Sidebar({
         >
           Môn chấm
         </div>
-        <div style={{ position: "relative" }}>
+        <div
+          style={{
+            position: "relative",
+            // Pulse the dropdown border when no subject is selected so the
+            // teacher's eye is drawn here from the waiting hero in the
+            // main pane. Once a subject is picked this dies down.
+            borderRadius: 6,
+            animation: !selectedSubject
+              ? "subjectPrompt 1.6s ease-in-out infinite"
+              : "none",
+          }}
+        >
           <select
             value={selectedSubject}
             onChange={(e) => onSubjectChange(e.target.value)}
@@ -80,14 +91,18 @@ export function Sidebar({
               appearance: "none",
               padding: "10px 30px 10px 12px",
               background: T.bg,
-              color: T.text,
+              color: selectedSubject ? T.text : T.textFaint,
               fontSize: 15,
-              border: `1px solid ${T.border}`,
+              border: `1px solid ${selectedSubject ? T.border : T.accent}`,
+              borderRadius: 6,
               cursor: "pointer",
               outline: "none",
             }}
           >
-            {["Môn Tin"].map((sub) => (
+            <option value="" disabled>
+              — Chọn môn —
+            </option>
+            {["Môn Tin", "Môn Toán"].map((sub) => (
               <option key={sub} value={sub}>
                 {sub}
               </option>
@@ -121,7 +136,7 @@ export function Sidebar({
         >
           Phân luồng lớp
         </div>
-        <div style={{ position: "relative" }}>
+        <div style={{ position: "relative", borderRadius: 6 }}>
           <select
             value={selectedClass}
             onChange={(e) => onClassChange(e.target.value)}
@@ -133,6 +148,7 @@ export function Sidebar({
               color: T.text,
               fontSize: 15,
               border: `1px solid ${T.border}`,
+              borderRadius: 6,
               cursor: "pointer",
               outline: "none",
             }}

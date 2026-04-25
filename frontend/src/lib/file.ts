@@ -13,15 +13,6 @@ export function isPdfFile(file: File | null | undefined): boolean {
   );
 }
 
-export function isDocxFile(file: File | null | undefined): boolean {
-  if (!file) return false;
-  return (
-    file.type ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    file.name.toLowerCase().endsWith(".docx")
-  );
-}
-
 export function isImageFile(file: File | null | undefined): boolean {
   return !!file && typeof file.type === "string" && file.type.startsWith("image/");
 }

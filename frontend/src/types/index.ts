@@ -7,6 +7,7 @@
 
 export type {
   Subject,
+  BackendSubject,
   Lang,
   PipelinePhase,
   FeedbackAction,
@@ -25,7 +26,6 @@ export type {
 export type {
   Lesson,
   StagedLesson,
-  Critique,
   GenerateResponse,
   FeedbackResponse,
   AnalyzeCommentResponse,
@@ -34,7 +34,7 @@ export type {
 
 export type { Tab, TabMeta, TabsAction, TabsState } from "./tabs";
 
-export type { ThreadMessage, CommentThreads } from "./review";
+export type { ThreadMessage, CommentThreads, CommentVerdict } from "./review";
 
 export type {
   SubjectLabelSet,

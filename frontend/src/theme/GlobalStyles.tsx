@@ -58,6 +58,19 @@ export function GlobalStyles() {
         40%      { transform: scaleY(1); opacity: 1; }
         50%, 100% { transform: scaleY(1); opacity: 1; }
       }
+      @keyframes lessonPop {
+        0%   { transform: scale(0.6); opacity: 0; }
+        60%  { transform: scale(1.18); opacity: 1; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      @keyframes subjectPrompt {
+        0%, 100% { box-shadow: 0 0 0 0 ${T.accentSoft}; }
+        50%      { box-shadow: 0 0 0 6px ${T.accentSoft}; }
+      }
+      @keyframes arrowNudge {
+        0%, 100% { transform: translateX(0); }
+        50%      { transform: translateX(-6px); }
+      }
     `}</style>
   );
 }

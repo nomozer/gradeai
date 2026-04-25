@@ -35,19 +35,50 @@ Hệ thống được thiết kế dưới dạng **Professional Desk** với qu
 
 ## 🛠️ Cấu trúc dự án
 
+Backend đã tách theo **domain folder** (mỗi thư mục ≈ một chương báo cáo); frontend chuyển sang **TypeScript** với root composer `App.tsx` thay cho `HITLEditor.jsx` cũ.
+
 ```text
 project/
-├── backend/
-│   ├── main.py                # API FastAPI & Điều phối hệ thống
-│   ├── agent.py               # Orchestrator quản lý VLM & Retry logic
-│   ├── prompt_orchestrator.py # Xây dựng Prompt động & Tích hợp bài học
-│   ├── memory.py              # Quản lý bộ nhớ kép (SQLite + ChromaDB)
-│   └── data/                  # Lưu trữ DB và Logs hệ thống
-├── frontend/
-│   ├── src/HITLEditor.jsx     # Giao diện chính (Wizard UI)
-│   └── src/components/        # Các module giao diện Stitch
-├── start.bat                  # Script khởi chạy nhanh cho Windows
-└── README_SETUP.md            # Hướng dẫn cài đặt kỹ thuật
+├── backend/                              # FastAPI, Python 3.11+
+│   ├── main.py                           # Bootstrap + 5 endpoint handlers
+│   ├── api/                              # Tầng HTTP
+│   │   ├── schemas.py                    #   Pydantic Request/Response (10 model)
+│   │   └── heartbeat.py                  #   /api/heartbeat + watchdog auto-shutdown
+│   ├── grading/                          # Tác tử chấm điểm (Gemini VLM)
+│   │   ├── agent.py                      #   AgentOrchestrator + run_pipeline
+│   │   ├── vlm_client.py                 #   GeminiClient + model rotation + retry
+│   │   ├── file_processor.py             #   Image/PDF decode + compress + rasterize
+│   │   ├── grade_parser.py               #   JSON parse + salvage + comment fallback
+│   │   └── prompt_orchestrator.py        #   Prompt assembly + lesson injection
+│   ├── memory/                           # Bộ nhớ HITL
+│   │   ├── store.py                      #   Dual-store SQLite + ChromaDB (3-leg retrieval)
+│   │   └── logger.py                     #   JSONL audit log (rotating)
+│   ├── prompts/                          # System prompt theo môn
+│   │   ├── base.py                       #   Persona + Rules 1–7, 9b, 10 (shared)
+│   │   ├── math.py                       #   Rule 8 + 9 cho Toán
+│   │   ├── cs.py                         #   Rule 8 + 9 cho Tin học
+│   │   └── __init__.py                   #   Registry + detect_subject()
+│   ├── data/                             # SQLite + Chroma + JSONL + prompt_logs
+│   └── requirements.txt
+├── frontend/                             # React 18 + Vite + TypeScript
+│   ├── index.html
+│   ├── tsconfig.json + vite.config.js
+│   └── src/
+│       ├── index.tsx + App.tsx           # Entry + root composer (Wizard 5 bước)
+│       ├── api/                          # apiPost client + endpoint helpers (typed)
+│       ├── components/                   # layout/ (Sidebar, AppHeader, TabBar, …)
+│       │                                 # ui/ (Icon, ErrorBoundary, LoadingSpinner, …)
+│       ├── features/                     # upload/ · review/ · workspace/
+│       │                                 # mỗi feature = Component + .logic.ts thuần
+│       ├── hooks/                        # useAgentPipeline, useFeedback, useHeartbeat,
+│       │                                 # useTabs, useLang
+│       ├── lib/                          # file, grade, mathFormat, tabs (helpers thuần)
+│       ├── theme/ + i18n/ + types/       # Design tokens · en/vi · TS types
+│       └── vite-env.d.ts
+├── package.json                          # Entry point root: npm run dev
+├── scripts/dev.cjs                       # Spawn backend + frontend song song (dev)
+├── test/                                 # Fixtures: test/cs/ + test/math/ (PDF đề + đáp án)
+└── README_SETUP.md                       # Hướng dẫn cài đặt kỹ thuật
 ```
 
 ---

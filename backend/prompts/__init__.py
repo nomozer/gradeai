@@ -1,0 +1,121 @@
+"""
+prompts — Subject-aware prompt package.
+
+Public API consumed by prompt_orchestrator / agent:
+
+    GRADER_SYSTEM[subject]         — full system prompt for each subject
+    ANALYZE_COMMENT_SYSTEM         — HITL comment-analysis system instruction
+    ANALYZE_COMMENT_USER_TEMPLATE  — HITL comment-analysis user template
+    RUBRIC_LABELS                  — 4-rubric STEM labels (shared)
+    DEFAULT_SUBJECT                — fallback when detection finds nothing
+    detect_subject(task, hint)     — pick subject from explicit hint or
+                                     keyword-match on task text
+
+Adding a new subject (e.g. phys):
+    1. Create prompts/phys.py with _RULE_8_PHYS + _RULE_9_PHYS and call
+       ``compose_grader_system()`` from base.py to build GRADER_SYSTEM_PHYS.
+    2. Import + register here:
+           from .phys import GRADER_SYSTEM_PHYS
+           GRADER_SYSTEM["phys"] = GRADER_SYSTEM_PHYS
+    3. Add keyword hints to ``detect_subject`` so task text routes correctly.
+"""
+
+from __future__ import annotations
+
+import re
+
+from .base import (
+    ANALYZE_COMMENT_SYSTEM,
+    ANALYZE_COMMENT_USER_TEMPLATE,
+    RUBRIC_LABELS,
+)
+from .math import GRADER_SYSTEM_MATH
+from .cs import GRADER_SYSTEM_CS
+
+
+# Registry of subject → full system prompt. Keys are the canonical subject
+# codes used throughout the backend (and sent by the frontend `subject`
+# field, if set). Keep in sync with ``detect_subject`` below.
+GRADER_SYSTEM: dict[str, str] = {
+    "math": GRADER_SYSTEM_MATH,
+    "cs":   GRADER_SYSTEM_CS,
+}
+
+# Fallback when no explicit hint + no keyword match in task text.
+# "cs" chosen because the frontend Sidebar currently defaults to "Môn Tin".
+DEFAULT_SUBJECT: str = "cs"
+
+
+# ---------------------------------------------------------------------------
+# Subject detection — explicit hint > task keywords > DEFAULT_SUBJECT.
+# ---------------------------------------------------------------------------
+
+_CS_KEYWORDS = (
+    "tin học", "tin hoc", "môn tin", "mon tin",
+    "lập trình", "lap trinh", "thuật toán", "thuat toan",
+    "pseudo", "python", "c++", "pascal", "sql",
+    "kiểu dữ liệu", "kieu du lieu", "vòng lặp", "vong lap",
+)
+
+_MATH_KEYWORDS = (
+    "toán học", "toan hoc", "môn toán", "mon toan",
+    "phương trình", "phuong trinh", "bất phương trình", "bat phuong trinh",
+    "đại số", "dai so", "hình học", "hinh hoc",
+    "giải tích", "giai tich", "đạo hàm", "dao ham",
+    "tích phân", "tich phan", "ma trận", "ma tran",
+    "bài toán", "bai toan", "chứng minh", "chung minh",
+)
+
+# UI metadata prefix produced by ``buildTaskContext`` on the frontend:
+#   "Môn Tin · Lớp 10 · <real task>"
+# Stripped before keyword scoring so a "Môn Tin" prefix doesn't add a free
+# CS point that biases the count when the actual task body is math.
+_UI_PREFIX_RE = re.compile(
+    r"^\s*môn\s+\S+\s*·\s*lớp\s+\d+\s*·\s*",
+    re.IGNORECASE,
+)
+
+
+def detect_subject(task: str, hint: str | None = None) -> str:
+    """Resolve the subject for a grading call.
+
+    Priority order:
+      1. ``hint`` — if it's a known subject code, use it directly.
+         (Frontend sends this via the request's ``subject`` field.)
+      2. Keyword score on ``task`` text — count substring matches against each
+         subject's keyword list, pick the higher count. Tie → DEFAULT_SUBJECT.
+      3. ``DEFAULT_SUBJECT`` — fallback when no keyword matches at all.
+
+    Returns a key that's guaranteed to exist in ``GRADER_SYSTEM``.
+
+    The previous implementation used first-match-wins (``any(k in t for k in
+    _CS_KEYWORDS)`` checked before MATH), which mis-classified tasks whose
+    text contained both lists' keywords. In particular, frontend tasks built
+    by ``buildTaskContext`` always begin with ``"Môn Tin · Lớp 10 · …"``,
+    matching the CS keyword ``"môn tin"`` regardless of the body, so a task
+    body of ``"ĐỀ TOÁN: phương trình bậc 2"`` was still classified as CS.
+    Score-based counting makes math-heavy bodies tip the scale toward math
+    even when the prefix tags it as Tin.
+    """
+    if hint and hint in GRADER_SYSTEM:
+        return hint
+
+    t = (task or "").lower()
+    body = _UI_PREFIX_RE.sub("", t).strip() or t
+    cs_score = sum(1 for k in _CS_KEYWORDS if k in body)
+    math_score = sum(1 for k in _MATH_KEYWORDS if k in body)
+    if cs_score > math_score:
+        return "cs"
+    if math_score > cs_score:
+        return "math"
+    return DEFAULT_SUBJECT
+
+
+__all__ = [
+    "GRADER_SYSTEM",
+    "ANALYZE_COMMENT_SYSTEM",
+    "ANALYZE_COMMENT_USER_TEMPLATE",
+    "RUBRIC_LABELS",
+    "DEFAULT_SUBJECT",
+    "detect_subject",
+]
