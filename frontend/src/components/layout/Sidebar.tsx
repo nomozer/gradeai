@@ -78,9 +78,7 @@ export function Sidebar({
             // teacher's eye is drawn here from the waiting hero in the
             // main pane. Once a subject is picked this dies down.
             borderRadius: 6,
-            animation: !selectedSubject
-              ? "subjectPrompt 1.6s ease-in-out infinite"
-              : "none",
+            animation: !selectedSubject ? "subjectPrompt 1.6s ease-in-out infinite" : "none",
           }}
         >
           <select
@@ -102,7 +100,7 @@ export function Sidebar({
             <option value="" disabled>
               — Chọn môn —
             </option>
-            {["Môn Tin", "Môn Toán"].map((sub) => (
+            {["Môn Tin", "Môn Toán", "Môn Vật lý"].map((sub) => (
               <option key={sub} value={sub}>
                 {sub}
               </option>

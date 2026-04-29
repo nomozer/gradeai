@@ -7,10 +7,7 @@ const IMAGE_MAX_BYTES = 1_500_000;
 
 export function isPdfFile(file: File | null | undefined): boolean {
   if (!file) return false;
-  return (
-    file.type === "application/pdf" ||
-    file.name.toLowerCase().endsWith(".pdf")
-  );
+  return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 }
 
 export function isImageFile(file: File | null | undefined): boolean {
@@ -57,16 +54,9 @@ export async function readOptimizedUploadDataUrl(
   const longestEdge = Math.max(image.naturalWidth || 0, image.naturalHeight || 0);
 
   // Resize and Compression logic
-  const scale =
-    longestEdge > IMAGE_MAX_DIMENSION ? IMAGE_MAX_DIMENSION / longestEdge : 1;
-  const width = Math.max(
-    1,
-    Math.round((image.naturalWidth || image.width || 1) * scale),
-  );
-  const height = Math.max(
-    1,
-    Math.round((image.naturalHeight || image.height || 1) * scale),
-  );
+  const scale = longestEdge > IMAGE_MAX_DIMENSION ? IMAGE_MAX_DIMENSION / longestEdge : 1;
+  const width = Math.max(1, Math.round((image.naturalWidth || image.width || 1) * scale));
+  const height = Math.max(1, Math.round((image.naturalHeight || image.height || 1) * scale));
 
   const canvas = document.createElement("canvas");
   canvas.width = width;

@@ -1,17 +1,12 @@
 import { isPdfFile, isImageFile } from "../../lib/file";
 import type { I18nStrings, Lang } from "../../types";
 
-export type ValidationResult =
-  | { ok: true; isPdf?: boolean }
-  | { ok: false; error: string | null };
+export type ValidationResult = { ok: true; isPdf?: boolean } | { ok: false; error: string | null };
 
 /**
  * Validate a prompt file (PDF only).
  */
-export function validateTaskFile(
-  file: File | null | undefined,
-  lang: Lang,
-): ValidationResult {
+export function validateTaskFile(file: File | null | undefined, lang: Lang): ValidationResult {
   if (!file) return { ok: false, error: null };
   if (!isPdfFile(file)) {
     return {
@@ -28,10 +23,7 @@ export function validateTaskFile(
 /**
  * Validate a student essay file (PDF or image).
  */
-export function validateEssayFile(
-  file: File | null | undefined,
-  t: I18nStrings,
-): ValidationResult {
+export function validateEssayFile(file: File | null | undefined, t: I18nStrings): ValidationResult {
   if (!file) return { ok: false, error: null };
   const isPdf = isPdfFile(file);
   const isImage = isImageFile(file);

@@ -17,9 +17,5 @@ export function finalizeGrade(
   req: FinalizeGradeRequest,
   options?: RequestOptions,
 ): Promise<FinalizeGradeResponse> {
-  return apiPost<FinalizeGradeRequest, FinalizeGradeResponse>(
-    "/finalize-grade",
-    req,
-    options,
-  );
+  return apiPost<FinalizeGradeRequest, FinalizeGradeResponse>("/finalize-grade", req, options);
 }

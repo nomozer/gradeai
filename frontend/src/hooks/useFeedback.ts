@@ -9,12 +9,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { ApiError, submitFeedback } from "../api";
-import type {
-  BackendSubject,
-  FeedbackAction,
-  FeedbackResponse,
-  StagedLesson,
-} from "../types";
+import type { BackendSubject, FeedbackAction, FeedbackResponse, StagedLesson } from "../types";
 
 const FEEDBACK_TIMEOUT_MS = 30000;
 

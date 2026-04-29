@@ -48,11 +48,7 @@ export function TabBar({
         {tabs.map((tab, i) => {
           const isActive = tab.id === activeId;
           const statusColor =
-            tab.phase === "generating"
-              ? T.amber
-              : tab.hasGrade
-                ? T.gold
-                : T.textFaint;
+            tab.phase === "generating" ? T.amber : tab.hasGrade ? T.gold : T.textFaint;
           return (
             <button
               key={tab.id}
@@ -77,8 +73,7 @@ export function TabBar({
                   height: 6,
                   borderRadius: "50%",
                   background: statusColor,
-                  animation:
-                    tab.phase === "generating" ? "pulse 1.4s infinite" : undefined,
+                  animation: tab.phase === "generating" ? "pulse 1.4s infinite" : undefined,
                 }}
               />
               <span>{tab.label || `${String(t.essayN ?? "Essay")} ${i + 1}`}</span>

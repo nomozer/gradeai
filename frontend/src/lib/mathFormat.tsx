@@ -120,11 +120,7 @@ function renderToken(tok: string, isStem: boolean, key: string): ReactNode {
   const figMatch = tok.match(FIGURE_RE);
   if (figMatch) {
     return (
-      <span
-        key={key}
-        style={S.figure}
-        title="Hình vẽ / sơ đồ — đối chiếu với ảnh gốc để xác nhận"
-      >
+      <span key={key} style={S.figure} title="Hình vẽ / sơ đồ — đối chiếu với ảnh gốc để xác nhận">
         <span style={S.figureLabel}>{figMatch[1]}</span>
         {figMatch[2]}
       </span>

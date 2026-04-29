@@ -46,14 +46,7 @@ export const Icon = {
     </svg>
   ),
   Star: ({ size = 14, color = "currentColor", style }: IconProps) => (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill={color}
-      stroke="none"
-      style={style}
-    >
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} stroke="none" style={style}>
       <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8l-6.2 4.5 2.4-7.4L2 9.4h7.6z" />
     </svg>
   ),

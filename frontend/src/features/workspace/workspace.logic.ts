@@ -12,11 +12,7 @@ export function deriveDisplayStep(step: number): number {
 }
 
 /** Compute next step when pipeline phase changes. */
-export function nextStepOnPhaseChange(
-  step: number,
-  phase: string,
-  error: string | null,
-): number {
+export function nextStepOnPhaseChange(step: number, phase: string, error: string | null): number {
   if (phase === "generating") {
     if (step === 1) return 2;
     if (step === 3) return 4;
@@ -51,9 +47,7 @@ export function buildTaskContext(
 }
 
 /** Map UI subject labels to backend subject codes. */
-export function subjectCodeFromSelection(
-  selectedSubject: string,
-): BackendSubject | null {
+export function subjectCodeFromSelection(selectedSubject: string): BackendSubject | null {
   const folded = String(selectedSubject || "").toLowerCase();
   if (
     folded.includes("tin") ||
@@ -64,12 +58,18 @@ export function subjectCodeFromSelection(
   ) {
     return "cs";
   }
-  if (
-    folded.includes("toán") ||
-    folded.includes("toan") ||
-    folded.includes("math")
-  ) {
+  if (folded.includes("toán") || folded.includes("toan") || folded.includes("math")) {
     return "math";
+  }
+  if (
+    folded.includes("lý") ||
+    folded.includes("ly") ||
+    folded.includes("vật lý") ||
+    folded.includes("vat ly") ||
+    folded.includes("physics") ||
+    folded.includes("phys")
+  ) {
+    return "phys";
   }
   return null;
 }

@@ -185,9 +185,7 @@ export function StepUpload({
                     PDF
                   </div>
                 </div>
-                <div
-                  style={{ fontSize: 15, color: T.textSoft, fontWeight: 500 }}
-                >
+                <div style={{ fontSize: 15, color: T.textSoft, fontWeight: 500 }}>
                   {String(t.promptUploaded ?? "")}
                 </div>
               </div>
@@ -210,16 +208,10 @@ export function StepUpload({
               <div style={{ marginBottom: 10, opacity: 0.4 }}>
                 <Icon.FileText size={36} color={T.textMute} />
               </div>
-              <div
-                style={{ fontSize: 17, color: T.textSoft, fontWeight: 500 }}
-              >
+              <div style={{ fontSize: 17, color: T.textSoft, fontWeight: 500 }}>
                 {String(t.promptDrop ?? "")}
               </div>
-              <div
-                style={{ fontSize: 13, color: T.textFaint, marginTop: 6 }}
-              >
-                PDF
-              </div>
+              <div style={{ fontSize: 13, color: T.textFaint, marginTop: 6 }}>PDF</div>
             </div>
           )}
         </div>
@@ -371,23 +363,15 @@ export function StepUpload({
               <div style={{ marginBottom: 12, opacity: 0.45 }}>
                 <Icon.Upload size={44} color={T.textMute} />
               </div>
-              <div
-                style={{ fontSize: 17, color: T.textSoft, fontWeight: 500 }}
-              >
+              <div style={{ fontSize: 17, color: T.textSoft, fontWeight: 500 }}>
                 {String(t.imageDrop ?? "")}
               </div>
-              <div
-                style={{ fontSize: 13, color: T.textFaint, marginTop: 6 }}
-              >
-                JPG, PNG, PDF
-              </div>
+              <div style={{ fontSize: 13, color: T.textFaint, marginTop: 6 }}>JPG, PNG, PDF</div>
             </div>
           )}
         </div>
         {uploadError && (
-          <div
-            style={{ marginTop: 8, fontSize: 14, color: T.red, lineHeight: 1.5 }}
-          >
+          <div style={{ marginTop: 8, fontSize: 14, color: T.red, lineHeight: 1.5 }}>
             {uploadError}
           </div>
         )}

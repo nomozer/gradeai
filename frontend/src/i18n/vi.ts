@@ -131,8 +131,7 @@ export const vi: I18nStrings = {
   sendComment: "Gửi",
   aiAnalyzing: "AI đang phân tích...",
   noIssues: "Không có vấn đề cần báo cáo.",
-  noCommentSalvaged:
-    "Phản hồi cho câu này bị cắt — hãy đối chiếu bài làm hoặc chấm lại.",
+  noCommentSalvaged: "Phản hồi cho câu này bị cắt — hãy đối chiếu bài làm hoặc chấm lại.",
   salvagedTitle: "Kết quả chấm chưa đầy đủ",
   salvagedBody:
     "Mô hình đã trả về JSON không hợp lệ — nội dung bên dưới được trích xuất từng phần. Hãy kiểm tra kỹ trước khi duyệt, hoặc chấm lại bài.",

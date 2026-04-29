@@ -74,9 +74,7 @@ function reducer(state: State, action: Action): State {
     case ACTIONS.PIPELINE_SUCCESS: {
       const lessons = action.payload.lessons_used || [];
       const prev = new Set(state.previousLessonIds);
-      const newLessonIds = lessons
-        .map((l) => l.id)
-        .filter((id) => !prev.has(id));
+      const newLessonIds = lessons.map((l) => l.id).filter((id) => !prev.has(id));
       return {
         ...state,
         phase: "done",
@@ -172,10 +170,7 @@ export function useAgentPipeline(): UseAgentPipelineResult {
 
     const controller = new AbortController();
     controllerRef.current = controller;
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      PIPELINE_TIMEOUT_MS,
-    );
+    const timeoutId = setTimeout(() => controller.abort(), PIPELINE_TIMEOUT_MS);
     timeoutRef.current = timeoutId;
 
     const releaseIfCurrent = () => {

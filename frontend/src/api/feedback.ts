@@ -27,20 +27,12 @@ export function submitFeedback(
   req: FeedbackRequest,
   options?: RequestOptions,
 ): Promise<FeedbackResponse> {
-  return apiPost<FeedbackRequest, FeedbackResponse>(
-    "/feedback",
-    req,
-    options,
-  );
+  return apiPost<FeedbackRequest, FeedbackResponse>("/feedback", req, options);
 }
 
 export function analyzeComment(
   req: AnalyzeCommentRequest,
   options?: RequestOptions,
 ): Promise<AnalyzeCommentResponse> {
-  return apiPost<AnalyzeCommentRequest, AnalyzeCommentResponse>(
-    "/analyze-comment",
-    req,
-    options,
-  );
+  return apiPost<AnalyzeCommentRequest, AnalyzeCommentResponse>("/analyze-comment", req, options);
 }

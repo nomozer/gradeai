@@ -46,10 +46,8 @@ export const T = {
   display: `"Fraunces", Georgia, "Times New Roman", serif`,
   mono: `"JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace`,
 
-  shadowSoft:
-    "0 1px 3px rgba(44, 46, 58, 0.04), 0 8px 24px -12px rgba(44, 46, 58, 0.08)",
-  shadowStrong:
-    "0 2px 6px rgba(44, 46, 58, 0.06), 0 20px 40px -16px rgba(44, 46, 58, 0.12)",
+  shadowSoft: "0 1px 3px rgba(44, 46, 58, 0.04), 0 8px 24px -12px rgba(44, 46, 58, 0.08)",
+  shadowStrong: "0 2px 6px rgba(44, 46, 58, 0.06), 0 20px 40px -16px rgba(44, 46, 58, 0.12)",
 } as const;
 
 export type Theme = typeof T;

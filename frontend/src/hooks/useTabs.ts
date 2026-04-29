@@ -19,15 +19,9 @@ export function useTabs(): UseTabsResult {
   const [state, dispatch] = useReducer(tabsReducer, undefined, init);
 
   const addTab = useCallback(() => dispatch({ type: "ADD" }), []);
-  const closeTab = useCallback(
-    (id: string) => dispatch({ type: "CLOSE", id }),
-    [],
-  );
+  const closeTab = useCallback((id: string) => dispatch({ type: "CLOSE", id }), []);
   const clearAll = useCallback(() => dispatch({ type: "CLEAR" }), []);
-  const setActive = useCallback(
-    (id: string) => dispatch({ type: "SET_ACTIVE", id }),
-    [],
-  );
+  const setActive = useCallback((id: string) => dispatch({ type: "SET_ACTIVE", id }), []);
   const updateMeta = useCallback(
     (id: string, meta: TabMeta) => dispatch({ type: "UPDATE_META", id, meta }),
     [],

@@ -28,16 +28,14 @@ export const en: I18nStrings = {
   queueSearch: "Search open essays…",
   queueEmpty: "No essay matches this filter.",
   deskTitle: "Mirror Teacher Desk",
-  deskDescription:
-    "Open the student script, inspect the paper, and guide the AI rubric loop.",
+  deskDescription: "Open the student script, inspect the paper, and guide the AI rubric loop.",
   deskBadge: "Human-in-the-loop VLM",
   paperTitle: "Student Script",
   paperEmpty: "Upload a scanned page or PDF to begin the review desk.",
   promptCardTitle: "Assignment Brief",
   uploadCardTitle: "Submission Intake",
   rubricPanelTitle: "Rubric Panel",
-  rubricPanelHint:
-    "Upload and score an essay to unlock detailed rubric review.",
+  rubricPanelHint: "Upload and score an essay to unlock detailed rubric review.",
   statusTitle: "Workflow Status",
   noteTitle: "AI Notes",
   noFile: "No file yet",
@@ -52,8 +50,7 @@ export const en: I18nStrings = {
   startHint: "The AI will read both the paper and the rubric from this desk.",
   teacherPanelTitle: "Teacher Controls",
   approvedTitle: "Finalized Result",
-  approvedHint:
-    "This script has been approved and can be archived or exported.",
+  approvedHint: "This script has been approved and can be archived or exported.",
   // Step 2
   step2Title: "AI is Reading",
   step2Desc: "The AI model is analyzing the essay. This may take a moment…",
@@ -110,8 +107,7 @@ export const en: I18nStrings = {
   feedbackPlaceholder: "Explain what needs to change…",
   approveAndFinish: "Approve & Finish",
   regrade: "Re-grade with Corrections",
-  regradeHint:
-    "Your feedback will be saved and the AI will re-grade with your corrections",
+  regradeHint: "Your feedback will be saved and the AI will re-grade with your corrections",
   feedbackSaving: "Saving…",
   finalizeSaving: "Saving final grade…",
   finalizeSaveError: "Could not save the finalized grade. Please try again.",

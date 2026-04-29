@@ -46,9 +46,7 @@ export function tabsReducer(state: TabsState, action: TabsAction): TabsState {
     case "UPDATE_META":
       return {
         ...state,
-        tabs: state.tabs.map((x) =>
-          x.id === action.id ? { ...x, ...action.meta } : x,
-        ),
+        tabs: state.tabs.map((x) => (x.id === action.id ? { ...x, ...action.meta } : x)),
       };
     default:
       return state;

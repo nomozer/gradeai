@@ -22,20 +22,14 @@ export function parseGrade(raw: unknown): Grade | null {
       strengths: Array.isArray(p.strengths) ? p.strengths.slice() : [],
       weaknesses: Array.isArray(p.weaknesses) ? p.weaknesses.slice() : [],
       comment:
-        typeof p.comment === "string"
-          ? p.comment
-          : p.comment
-            ? JSON.stringify(p.comment)
-            : "",
+        typeof p.comment === "string" ? p.comment : p.comment ? JSON.stringify(p.comment) : "",
       transcript:
         typeof p.transcript === "string"
           ? p.transcript
           : p.transcript
             ? JSON.stringify(p.transcript)
             : "",
-      per_question_feedback: Array.isArray(p.per_question_feedback)
-        ? p.per_question_feedback
-        : [],
+      per_question_feedback: Array.isArray(p.per_question_feedback) ? p.per_question_feedback : [],
       salvaged: Boolean(p.salvaged),
       subject: p.subject || "literature",
     };

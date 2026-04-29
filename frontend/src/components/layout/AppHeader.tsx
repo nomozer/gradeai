@@ -9,12 +9,7 @@ interface AppHeaderProps {
   t: I18nStrings;
 }
 
-export function AppHeader({
-  selectedSubject,
-  selectedClass,
-  onToggleLang,
-  t,
-}: AppHeaderProps) {
+export function AppHeader({ selectedSubject, selectedClass, onToggleLang, t }: AppHeaderProps) {
   return (
     <header
       style={{

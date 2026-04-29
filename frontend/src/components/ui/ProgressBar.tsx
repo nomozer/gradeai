@@ -17,11 +17,7 @@ export function ProgressBar({ completed, total, label }: ProgressBarProps) {
         padding: "8px 0 12px",
       }}
     >
-      {label && (
-        <span style={{ fontSize: 13, color: T.textMute, minWidth: 64 }}>
-          {label}
-        </span>
-      )}
+      {label && <span style={{ fontSize: 13, color: T.textMute, minWidth: 64 }}>{label}</span>}
       <div
         style={{
           flex: 1,

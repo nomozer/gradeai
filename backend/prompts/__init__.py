@@ -11,12 +11,12 @@ Public API consumed by prompt_orchestrator / agent:
     detect_subject(task, hint)     — pick subject from explicit hint or
                                      keyword-match on task text
 
-Adding a new subject (e.g. phys):
-    1. Create prompts/phys.py with _RULE_8_PHYS + _RULE_9_PHYS and call
-       ``compose_grader_system()`` from base.py to build GRADER_SYSTEM_PHYS.
+Adding a new subject (e.g. chem):
+    1. Create prompts/chem.py with _RULE_8_CHEM + _RULE_9_CHEM and call
+       ``compose_grader_system()`` from base.py to build GRADER_SYSTEM_CHEM.
     2. Import + register here:
-           from .phys import GRADER_SYSTEM_PHYS
-           GRADER_SYSTEM["phys"] = GRADER_SYSTEM_PHYS
+           from .chem import GRADER_SYSTEM_CHEM
+           GRADER_SYSTEM["chem"] = GRADER_SYSTEM_CHEM
     3. Add keyword hints to ``detect_subject`` so task text routes correctly.
 """
 
@@ -31,6 +31,7 @@ from .base import (
 )
 from .math import GRADER_SYSTEM_MATH
 from .cs import GRADER_SYSTEM_CS
+from .phys import GRADER_SYSTEM_PHYS
 
 
 # Registry of subject → full system prompt. Keys are the canonical subject
@@ -39,10 +40,12 @@ from .cs import GRADER_SYSTEM_CS
 GRADER_SYSTEM: dict[str, str] = {
     "math": GRADER_SYSTEM_MATH,
     "cs":   GRADER_SYSTEM_CS,
+    "phys": GRADER_SYSTEM_PHYS,
 }
 
 # Fallback when no explicit hint + no keyword match in task text.
 # "cs" chosen because the frontend Sidebar currently defaults to "Môn Tin".
+# Supported subjects: "math", "cs", "phys".
 DEFAULT_SUBJECT: str = "cs"
 
 
@@ -64,6 +67,17 @@ _MATH_KEYWORDS = (
     "giải tích", "giai tich", "đạo hàm", "dao ham",
     "tích phân", "tich phan", "ma trận", "ma tran",
     "bài toán", "bai toan", "chứng minh", "chung minh",
+)
+
+_PHYS_KEYWORDS = (
+    "vật lý", "vat ly", "môn lý", "mon ly",
+    "lực", "luc", "vận tốc", "van toc", "gia tốc", "gia toc",
+    "động lực học", "dong luc hoc", "động lượng", "dong luong",
+    "công", "công suất", "cong suat", "năng lượng", "nang luong",
+    "điện", "dien", "từ trường", "tu truong", "quang học", "quang hoc",
+    "nhiệt", "nhiet", "dao động", "dao dong", "sóng", "song",
+    "newton", "định luật", "dinh luat", "bảo toàn", "bao toan",
+    "khối lượng", "khoi luong", "trọng lực", "trong luc",
 )
 
 # UI metadata prefix produced by ``buildTaskContext`` on the frontend:
@@ -102,12 +116,20 @@ def detect_subject(task: str, hint: str | None = None) -> str:
 
     t = (task or "").lower()
     body = _UI_PREFIX_RE.sub("", t).strip() or t
-    cs_score = sum(1 for k in _CS_KEYWORDS if k in body)
+    cs_score   = sum(1 for k in _CS_KEYWORDS   if k in body)
     math_score = sum(1 for k in _MATH_KEYWORDS if k in body)
-    if cs_score > math_score:
-        return "cs"
-    if math_score > cs_score:
+    phys_score = sum(1 for k in _PHYS_KEYWORDS if k in body)
+
+    best = max(cs_score, math_score, phys_score)
+    if best == 0:
+        return DEFAULT_SUBJECT
+    # Tie between subjects → prefer DEFAULT_SUBJECT ordering
+    if phys_score == best and phys_score > max(cs_score, math_score):
+        return "phys"
+    if math_score == best and math_score > cs_score:
         return "math"
+    if cs_score == best and cs_score > max(math_score, phys_score):
+        return "cs"
     return DEFAULT_SUBJECT
 
 

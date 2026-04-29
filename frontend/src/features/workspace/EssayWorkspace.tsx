@@ -93,9 +93,8 @@ function WaitingForSubjectHero() {
           maxWidth: 420,
         }}
       >
-        AI sử dụng prompt riêng cho Toán hoặc Tin để chấm chính xác và để bộ
-        nhớ HITL tích lũy đúng nhóm môn. Chọn ở thanh bên để mở khoá tải đề
-        và bài làm.
+        AI sử dụng prompt riêng cho Toán hoặc Tin để chấm chính xác và để bộ nhớ HITL tích lũy đúng
+        nhóm môn. Chọn ở thanh bên để mở khoá tải đề và bài làm.
       </p>
       <div
         style={{
@@ -132,9 +131,7 @@ export function EssayWorkspace({
   const [essayImage, setEssayImage] = useState<EssayFile | null>(null);
   const [grade, setGrade] = useState<Grade | null>(null);
   const [step, setStep] = useState<number>(1);
-  const [finalizedResult, setFinalizedResult] = useState<FinalizedResult | null>(
-    null,
-  );
+  const [finalizedResult, setFinalizedResult] = useState<FinalizedResult | null>(null);
   const [isFinalizing, setIsFinalizing] = useState<boolean>(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
 
@@ -143,10 +140,7 @@ export function EssayWorkspace({
     () => buildTaskContext(taskPdf?.name, selectedSubject, selectedClass),
     [taskPdf, selectedSubject, selectedClass],
   );
-  const subject = useMemo(
-    () => subjectCodeFromSelection(selectedSubject),
-    [selectedSubject],
-  );
+  const subject = useMemo(() => subjectCodeFromSelection(selectedSubject), [selectedSubject]);
 
   // Parse grade when pipeline returns
   useEffect(() => {
@@ -202,12 +196,7 @@ export function EssayWorkspace({
       };
       const teacherScores: Record<string, number> = {};
       const aiScores: Record<string, number> = {};
-      for (const key of [
-        "content",
-        "argument",
-        "expression",
-        "creativity",
-      ] as const) {
+      for (const key of ["content", "argument", "expression", "creativity"] as const) {
         const te = toNum(payload?.scores?.[key]);
         const ai = toNum(grade?.scores?.[key]);
         if (te !== null) teacherScores[key] = te;

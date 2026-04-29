@@ -5,6 +5,8 @@
     "dev": "node scripts/dev.cjs",
     "dev:frontend": "npm --prefix frontend run dev",
     "build": "npm --prefix frontend run build",
+    "lint": "npm --prefix frontend run lint",
+    "lint:fix": "npm --prefix frontend run lint:fix",
     "typecheck": "npm --prefix frontend run typecheck"
   }
 }

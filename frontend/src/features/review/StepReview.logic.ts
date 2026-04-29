@@ -11,21 +11,12 @@ interface ReviewStateInput {
   isSubmitting: boolean;
 }
 
-export function deriveReviewState({
-  action,
-  comment,
-  phase,
-  isSubmitting,
-}: ReviewStateInput) {
+export function deriveReviewState({ action, comment, phase, isSubmitting }: ReviewStateInput) {
   const trimmedComment = (comment ?? "").trim();
   const requiresComment = !!action && action !== "approve";
-  const canApprove =
-    action === "approve" && !isSubmitting && phase !== "generating";
+  const canApprove = action === "approve" && !isSubmitting && phase !== "generating";
   const canRegrade =
-    phase !== "generating" &&
-    !isSubmitting &&
-    requiresComment &&
-    trimmedComment.length > 0;
+    phase !== "generating" && !isSubmitting && requiresComment && trimmedComment.length > 0;
   return { trimmedComment, requiresComment, canApprove, canRegrade };
 }
 

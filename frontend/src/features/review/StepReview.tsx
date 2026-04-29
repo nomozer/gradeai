@@ -60,10 +60,7 @@ function parseIntoQuestions(source: string | null | undefined): QuestionPart[] {
   });
 }
 
-function normalizeAiAnalysisText(
-  value: string | null | undefined,
-  t: I18nStrings,
-): string {
+function normalizeAiAnalysisText(value: string | null | undefined, t: I18nStrings): string {
   const trimmed = String(value || "").trim();
   const fallback = String(
     t.aiAnalyzeFallback ?? "AI chưa phân tích được nhận xét này. Vui lòng thử lại.",
@@ -75,7 +72,9 @@ function normalizeAiAnalysisText(
 }
 
 function clipText(value: string | null | undefined, maxLen: number): string {
-  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  const normalized = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!normalized) return "";
   if (normalized.length <= maxLen) return normalized;
   return `${normalized.slice(0, Math.max(0, maxLen - 1)).trimEnd()}…`;
@@ -93,10 +92,7 @@ function buildAnalyzeQuestionContext(
 ): string {
   const parts: string[] = [];
   const taskLine = clipText(task, 180);
-  const questionLabel = clipText(
-    pair?.student?.label || pair?.ai?.label || "",
-    60,
-  );
+  const questionLabel = clipText(pair?.student?.label || pair?.ai?.label || "", 60);
   const aiSummary = clipText(pair?.ai?.body, 500);
 
   if (taskLine) parts.push(`Bối cảnh bài: ${taskLine}`);
@@ -138,10 +134,8 @@ function alignByQuestionNumber(
   studentParts: QuestionPart[],
   commentParts: QuestionPart[],
 ): QuestionPair[] {
-  const studentNumbered =
-    studentParts.length > 0 && studentParts.every((p) => p.num !== null);
-  const commentNumbered =
-    commentParts.length > 0 && commentParts.every((p) => p.num !== null);
+  const studentNumbered = studentParts.length > 0 && studentParts.every((p) => p.num !== null);
+  const commentNumbered = commentParts.length > 0 && commentParts.every((p) => p.num !== null);
 
   if (!studentNumbered || !commentNumbered) {
     const count = Math.max(studentParts.length, commentParts.length, 1);
@@ -159,9 +153,9 @@ function alignByQuestionNumber(
   };
   const studentMap = byNum(studentParts);
   const commentMap = byNum(commentParts);
-  const nums = Array.from(
-    new Set([...studentMap.keys(), ...commentMap.keys()]),
-  ).sort((a, b) => a - b);
+  const nums = Array.from(new Set([...studentMap.keys(), ...commentMap.keys()])).sort(
+    (a, b) => a - b,
+  );
 
   return nums.map((num) => ({
     num,
@@ -204,13 +198,7 @@ function verdictStyle(verdict: CommentVerdict | undefined) {
   return { bg: T.accentSoft, accent: T.accent, label: "AI" };
 }
 
-function CommentThread({
-  comments,
-  onSend,
-  onDisputeDecide,
-  isLoading,
-  t,
-}: CommentThreadProps) {
+function CommentThread({ comments, onSend, onDisputeDecide, isLoading, t }: CommentThreadProps) {
   const [input, setInput] = useState("");
 
   const handleSend = () => {
@@ -350,9 +338,7 @@ function CommentThread({
                           cursor: "pointer",
                         }}
                       >
-                        {String(
-                          t.verdictDisputeSkip ?? "Bỏ qua, không lưu bài học",
-                        )}
+                        {String(t.verdictDisputeSkip ?? "Bỏ qua, không lưu bài học")}
                       </button>
                       <button
                         onClick={() => onDisputeDecide(i, "apply")}
@@ -368,9 +354,7 @@ function CommentThread({
                           cursor: "pointer",
                         }}
                       >
-                        {String(
-                          t.verdictDisputeApply ?? "Vẫn áp dụng nhận xét",
-                        )}
+                        {String(t.verdictDisputeApply ?? "Vẫn áp dụng nhận xét")}
                       </button>
                     </div>
                   </div>
@@ -387,8 +371,7 @@ function CommentThread({
                   >
                     <Icon.Check size={10} color={T.red} />{" "}
                     {String(
-                      t.verdictDisputeApplied ??
-                        "Đã chọn áp dụng — bài học sẽ lưu khi duyệt.",
+                      t.verdictDisputeApplied ?? "Đã chọn áp dụng — bài học sẽ lưu khi duyệt.",
                     )}
                   </div>
                 )}
@@ -401,10 +384,7 @@ function CommentThread({
                       fontStyle: "italic",
                     }}
                   >
-                    {String(
-                      t.verdictDisputeSkipped ??
-                        "Đã bỏ qua — bài học KHÔNG lưu vào bộ nhớ.",
-                    )}
+                    {String(t.verdictDisputeSkipped ?? "Đã bỏ qua — bài học KHÔNG lưu vào bộ nhớ.")}
                   </div>
                 )}
               </div>
@@ -436,9 +416,7 @@ function CommentThread({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={String(
-            t.teacherNotePlaceholder ?? "Nhập nhận xét cho câu này…",
-          )}
+          placeholder={String(t.teacherNotePlaceholder ?? "Nhập nhận xét cho câu này…")}
           rows={1}
           style={{
             flex: 1,
@@ -477,10 +455,7 @@ function CommentThread({
             transition: "all 0.15s",
           }}
         >
-          <Icon.MessageCircle
-            size={12}
-            color={canSend ? "#fff" : T.textFaint}
-          />
+          <Icon.MessageCircle size={12} color={canSend ? "#fff" : T.textFaint} />
           {String(t.sendComment ?? "Gửi")}
         </button>
       </div>
@@ -908,14 +883,8 @@ export function StepReview({
   // `useMemo`s used to live AFTER the `if (!grade) return null` check, which
   // was a legacy JS pattern TS/React would flag as a rule-of-hooks violation
   // once the component becomes typed.
-  const studentParts = useMemo(
-    () => parseIntoQuestions(grade?.transcript),
-    [grade?.transcript],
-  );
-  const commentParts = useMemo(
-    () => parseIntoQuestions(grade?.comment),
-    [grade?.comment],
-  );
+  const studentParts = useMemo(() => parseIntoQuestions(grade?.transcript), [grade?.transcript]);
+  const commentParts = useMemo(() => parseIntoQuestions(grade?.comment), [grade?.comment]);
   const questionPairs = useMemo(
     () => alignByQuestionNumber(studentParts, commentParts),
     [studentParts, commentParts],
@@ -982,9 +951,7 @@ export function StepReview({
   const weaknesses = Array.isArray(grade.weaknesses) ? grade.weaknesses : [];
   const isSalvaged =
     Boolean(grade.salvaged) ||
-    weaknesses.some(
-      (w) => typeof w === "string" && w.toLowerCase().includes("unparseable"),
-    );
+    weaknesses.some((w) => typeof w === "string" && w.toLowerCase().includes("unparseable"));
 
   // ``subject`` is still threaded into QuestionBox for math-aware transcript
   // formatting (formatTranscript). The user-facing badge that used to show
@@ -993,29 +960,24 @@ export function StepReview({
   // surfacing the wrong label anyway.
   const subject: Subject | string = grade.subject || "literature";
 
-  const refForIdx = (idx: number | string) =>
-    questionPairs[Number(idx)]?.num ?? Number(idx) + 1;
+  const refForIdx = (idx: number | string) => questionPairs[Number(idx)]?.num ?? Number(idx) + 1;
 
-  const stagedLessons: StagedLesson[] = Object.entries(commentThreads).flatMap(
-    ([idx, msgs]) => {
-      // getStageableLesson returns "" for disputed lessons that the
-      // teacher hasn't explicitly applied — that's the anti-poison guard.
-      const lessonText = getStageableLesson(msgs);
-      if (!lessonText) return [];
-      return [
-        {
-          lesson_text: lessonText,
-          question_ref: `Câu ${refForIdx(idx)}`,
-        },
-      ];
-    },
-  );
+  const stagedLessons: StagedLesson[] = Object.entries(commentThreads).flatMap(([idx, msgs]) => {
+    // getStageableLesson returns "" for disputed lessons that the
+    // teacher hasn't explicitly applied — that's the anti-poison guard.
+    const lessonText = getStageableLesson(msgs);
+    if (!lessonText) return [];
+    return [
+      {
+        lesson_text: lessonText,
+        question_ref: `Câu ${refForIdx(idx)}`,
+      },
+    ];
+  });
 
   const aggregatedNote = Object.entries(commentThreads)
     .flatMap(([idx, msgs]) =>
-      msgs
-        .filter((m) => m.type === "teacher")
-        .map((m) => `[Câu ${refForIdx(idx)}] ${m.text}`),
+      msgs.filter((m) => m.type === "teacher").map((m) => `[Câu ${refForIdx(idx)}] ${m.text}`),
     )
     .join("\n");
 
@@ -1033,8 +995,7 @@ export function StepReview({
     if (res && onApprove) onApprove();
   };
 
-  const canApprove =
-    !feedbackHook.isSubmitting && pipeline.phase !== "generating";
+  const canApprove = !feedbackHook.isSubmitting && pipeline.phase !== "generating";
 
   return (
     <div
@@ -1068,9 +1029,7 @@ export function StepReview({
             // cue that a new lesson was just staged from their last comment.
             <span
               key={stagedLessons.length}
-              title={`${stagedLessons.length} ${
-                t.lessonsStaged ?? "bài học chờ lưu khi duyệt"
-              }`}
+              title={`${stagedLessons.length} ${t.lessonsStaged ?? "bài học chờ lưu khi duyệt"}`}
               aria-label={`${stagedLessons.length} ${
                 t.lessonsStaged ?? "bài học chờ lưu khi duyệt"
               }`}
@@ -1137,8 +1096,7 @@ export function StepReview({
                 e.currentTarget.style.color = T.textSoft;
               }}
               title={String(
-                t.originalImageHint ??
-                  "Mở bài làm gốc để đối chiếu với phần AI đã chép",
+                t.originalImageHint ?? "Mở bài làm gốc để đối chiếu với phần AI đã chép",
               )}
             >
               <Icon.FileText size={11} />
@@ -1175,11 +1133,7 @@ export function StepReview({
             lineHeight: 1.55,
           }}
         >
-          <Icon.AlertTriangle
-            size={14}
-            color={T.amber}
-            style={{ marginTop: 2, flexShrink: 0 }}
-          />
+          <Icon.AlertTriangle size={14} color={T.amber} style={{ marginTop: 2, flexShrink: 0 }} />
           <div>
             <div style={{ fontWeight: 700, color: T.amber, marginBottom: 2 }}>
               {String(t.salvagedTitle ?? "Kết quả chấm chưa đầy đủ")}
@@ -1254,9 +1208,7 @@ export function StepReview({
             questionIdx={i}
             comments={commentThreads[i] || []}
             onSendComment={(text) => handleSendComment(i, text)}
-            onDisputeDecide={(msgIdx, decision) =>
-              handleDisputeDecide(i, msgIdx, decision)
-            }
+            onDisputeDecide={(msgIdx, decision) => handleDisputeDecide(i, msgIdx, decision)}
             isAnalyzing={analyzingQ === i}
             t={t}
             subject={subject}
@@ -1288,11 +1240,7 @@ export function StepReview({
               textAlign: "center",
             }}
           >
-            <Icon.AlertTriangle
-              size={12}
-              color={T.red}
-              style={{ marginRight: 4 }}
-            />
+            <Icon.AlertTriangle size={12} color={T.red} style={{ marginRight: 4 }} />
             {feedbackHook.error}
           </div>
         )}

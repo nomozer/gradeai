@@ -47,11 +47,7 @@ export function StepIndicator({ steps, currentStep }: StepIndicatorProps) {
                     justifyContent: "center",
                     background: isActive ? T.accent : T.bgCard,
                     border: `1.5px solid ${on ? T.accent : T.border}`,
-                    color: isActive
-                      ? "#FFFFFF"
-                      : isDone
-                        ? T.accent
-                        : T.textFaint,
+                    color: isActive ? "#FFFFFF" : isDone ? T.accent : T.textFaint,
                     fontFamily: T.mono,
                     fontSize: 13,
                     fontWeight: 600,
@@ -68,11 +64,7 @@ export function StepIndicator({ steps, currentStep }: StepIndicatorProps) {
                     fontWeight: 600,
                     letterSpacing: "0.08em",
                     textTransform: "uppercase",
-                    color: isActive
-                      ? T.text
-                      : isDone
-                        ? T.textSoft
-                        : T.textFaint,
+                    color: isActive ? T.text : isDone ? T.textSoft : T.textFaint,
                     textAlign: "center",
                     whiteSpace: "nowrap",
                     transition: "color 0.3s",

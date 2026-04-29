@@ -15,10 +15,7 @@ interface ErrorBoundaryState {
  * not take down the whole app. Wrap each top-level feature in its own
  * boundary.
  */
-export class ErrorBoundary extends Component<
-  ErrorBoundaryProps,
-  ErrorBoundaryState
-> {
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { error: null };
@@ -31,12 +28,7 @@ export class ErrorBoundary extends Component<
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     // Keep console visibility even when the UI is replaced by a fallback.
-    console.error(
-      "[ErrorBoundary]",
-      this.props.label || "unlabeled",
-      error,
-      info,
-    );
+    console.error("[ErrorBoundary]", this.props.label || "unlabeled", error, info);
   }
 
   reset() {

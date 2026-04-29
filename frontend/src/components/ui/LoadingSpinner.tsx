@@ -51,8 +51,7 @@ export function LoadingSpinner({ title, description }: LoadingSpinnerProps) {
             fill={T.accent}
             style={{
               transformOrigin: "22px 38px",
-              animation:
-                "sandBottom 2.4s cubic-bezier(0.7, 0, 0.3, 1) infinite",
+              animation: "sandBottom 2.4s cubic-bezier(0.7, 0, 0.3, 1) infinite",
             }}
           />
         </svg>

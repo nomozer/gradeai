@@ -46,9 +46,7 @@ function EditableScore({
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         {IconComp && <IconComp size={16} color={T.textFaint} />}
-        <span style={{ fontSize: 15, color: T.textSoft, fontWeight: 500 }}>
-          {label}
-        </span>
+        <span style={{ fontSize: 15, color: T.textSoft, fontWeight: 500 }}>{label}</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
         <input
@@ -130,9 +128,7 @@ export function ResultCard({
     expression: grade?.scores?.expression ?? "",
     creativity: grade?.scores?.creativity ?? "",
   }));
-  const [overall, setOverall] = useState<number | string>(
-    () => grade?.overall ?? "",
-  );
+  const [overall, setOverall] = useState<number | string>(() => grade?.overall ?? "");
 
   if (!grade) {
     return (
@@ -170,9 +166,7 @@ export function ResultCard({
 
   const subject: Subject = (grade.subject as Subject) || "literature";
   const subjLabels: Partial<SubjectLabelSet> =
-    t.rubricBySubject?.[subject] ||
-    t.rubricBySubject?.literature ||
-    {};
+    t.rubricBySubject?.[subject] || t.rubricBySubject?.literature || {};
 
   const overallColor = scoreColor(displayOverall, T);
 
@@ -186,8 +180,7 @@ export function ResultCard({
     Boolean(grade.salvaged) ||
     weaknessList.some(
       (w) =>
-        typeof w === "string" &&
-        (w.toLowerCase().includes("unparseable") || w.includes("bị cắt")),
+        typeof w === "string" && (w.toLowerCase().includes("unparseable") || w.includes("bị cắt")),
     );
 
   const formatFinalizedAt = (iso: string | null | undefined) => {
@@ -216,11 +209,7 @@ export function ResultCard({
             fontFamily: T.mono,
             color: locked ? T.green : isFinalizing ? T.accent : T.amber,
             padding: "6px 16px",
-            background: locked
-              ? T.greenSoft
-              : isFinalizing
-                ? T.accentSoft
-                : T.amberSoft,
+            background: locked ? T.greenSoft : isFinalizing ? T.accentSoft : T.amberSoft,
             borderRadius: 20,
             border: `1px solid ${locked ? T.green : isFinalizing ? T.accent : T.amber}`,
           }}
@@ -262,11 +251,7 @@ export function ResultCard({
             lineHeight: 1.55,
           }}
         >
-          <Icon.AlertTriangle
-            size={15}
-            color={T.amber}
-            style={{ marginTop: 2, flexShrink: 0 }}
-          />
+          <Icon.AlertTriangle size={15} color={T.amber} style={{ marginTop: 2, flexShrink: 0 }} />
           <div>
             <div style={{ fontWeight: 700, color: T.amber, marginBottom: 3 }}>
               {String(t.salvagedFinalizeTitle ?? "Điểm AI không đáng tin")}
@@ -434,9 +419,7 @@ export function ResultCard({
               }}
               onBlur={(e) => (e.target.style.borderColor = T.border)}
             />
-            <span style={{ fontSize: 20, color: T.textFaint }}>
-              {String(t.outOf ?? "/ 10")}
-            </span>
+            <span style={{ fontSize: 20, color: T.textFaint }}>{String(t.outOf ?? "/ 10")}</span>
           </div>
         )}
       </div>
@@ -659,12 +642,10 @@ export function ResultCard({
             }}
             onMouseEnter={(e) => {
               if (!isFinalizing)
-                (e.currentTarget as HTMLButtonElement).style.transform =
-                  "translateY(-1px)";
+                (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-1px)";
             }}
             onMouseLeave={(e) =>
-              ((e.currentTarget as HTMLButtonElement).style.transform =
-                "translateY(0)")
+              ((e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)")
             }
           >
             {isFinalizing ? (

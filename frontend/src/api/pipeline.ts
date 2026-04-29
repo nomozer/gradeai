@@ -1,9 +1,5 @@
 import { apiPost, type RequestOptions } from "./client";
-import type {
-  BackendSubject,
-  FeedbackAction,
-  GenerateResponse,
-} from "../types";
+import type { BackendSubject, FeedbackAction, GenerateResponse } from "../types";
 
 export interface GenerateRequest {
   task: string;
@@ -34,9 +30,6 @@ export function generate(
   return apiPost<GenerateRequest, GenerateResponse>("/generate", req, options);
 }
 
-export function regrade(
-  req: RegradeRequest,
-  options?: RequestOptions,
-): Promise<GenerateResponse> {
+export function regrade(req: RegradeRequest, options?: RequestOptions): Promise<GenerateResponse> {
   return apiPost<RegradeRequest, GenerateResponse>("/regrade", req, options);
 }

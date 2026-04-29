@@ -21,15 +21,7 @@ export default function App() {
   const { lang, toggle: toggleLang } = useLang();
   const t = i18n[lang];
 
-  const {
-    tabs,
-    activeId,
-    addTab,
-    closeTab,
-    clearAll,
-    setActive,
-    updateMeta,
-  } = useTabs();
+  const { tabs, activeId, addTab, closeTab, clearAll, setActive, updateMeta } = useTabs();
 
   // Hydrate subject from localStorage so a returning teacher does not have
   // to re-pick. First-time users start with "" (no selection) and the
