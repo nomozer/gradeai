@@ -314,12 +314,57 @@ def _generalize_teacher_comment(text: str) -> str:
     replacements = (
         (r"\bbài em\b", "bài làm"),
         (r"\bem\b", "học sinh"),
+        (r"\bcó thể không\b", "có khả năng không"),
         (r"\bcó thể\b", "nên"),
         (r"\bhãy\b", "cần"),
     )
     for pattern, replacement in replacements:
         generalized = re.sub(pattern, replacement, generalized, flags=re.IGNORECASE)
     return generalized.rstrip(". ")
+
+
+def _fallback_teacher_analysis(teacher_comment: str) -> str:
+    """Render a consistent AI chat reply when Gemini under-delivers.
+
+    The old fallback echoed the teacher's raw note as the AI analysis, so
+    short notes like "học sinh làm nhầm câu 1" appeared with a different
+    tone from model-generated replies. Keep this deterministic but phrase it
+    as an objective analysis bubble.
+    """
+    comment = _normalize_ws(teacher_comment)
+    folded = comment.lower()
+
+    if "nhầm" in folded and "câu" in folded:
+        return (
+            "Giáo viên nhận xét rằng học sinh có thể đã làm nhầm yêu cầu của "
+            "câu này. Cần đối chiếu lại đề bài và bài làm trước khi chấm."
+        )
+
+    if (
+        "đọc kĩ" in folded
+        or "đọc kỹ" in folded
+        or "doc ki" in folded
+        or "doc ky" in folded
+        or "nộp nhầm" in folded
+        or "nop nham" in folded
+        or "nhầm file" in folded
+        or "nham file" in folded
+    ):
+        return (
+            "Giáo viên đang nhắc học sinh đọc kỹ đề và kiểm tra đúng file "
+            "nộp. Cần đối chiếu yêu cầu với nội dung bài làm."
+        )
+
+    if any(cue in folded for cue in _NEGATIVE_COMMENT_CUES):
+        return (
+            "Giáo viên đang chỉ ra điểm cần sửa trong câu trả lời. Cần đối "
+            "chiếu nhận xét với bài làm và điều chỉnh chấm điểm tương ứng."
+        )
+
+    return (
+        "Giáo viên đã đưa ra nhận xét bổ sung cho câu này. Cần đối chiếu với "
+        "bài làm để ghi nhận thành tiêu chí chấm phù hợp."
+    )
 
 
 def fallback_comment_analysis(
@@ -358,7 +403,7 @@ def fallback_comment_analysis(
         }
 
     generalized = _generalize_teacher_comment(comment)
-    analysis = _truncate_words(comment, 30)
+    analysis = _fallback_teacher_analysis(comment)
     # Prefer a reusable imperative lesson over echoing the raw teacher note.
     if student_answer.strip():
         lesson = f"Khi gặp bài tương tự, cần lưu ý: {generalized}."
