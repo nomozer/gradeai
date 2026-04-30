@@ -3,77 +3,47 @@
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
 [![React 18](https://img.shields.io/badge/React-18-61dafb.svg)](https://reactjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
-[![Gemini 3](https://img.shields.io/badge/Model-Gemini_3_Flash-orange.svg)](https://aistudio.google.com/)
+[![Gemini 1.5 Pro](https://img.shields.io/badge/Model-Gemini_1.5_Pro-orange.svg)](https://aistudio.google.com/)
 
-**HITL VLM Grading Agent (Mirror Edition)** là hệ thống hỗ trợ chấm điểm bài tập tự luận thông minh, kết hợp sức mạnh của Vision-Language Models (VLM) thế hệ mới (**Gemini 3 Flash**) và quy trình kiểm soát của con người (Human-in-the-loop).
+**HITL VLM Grading Agent** là hệ thống hỗ trợ chấm điểm bài tập tự luận thông minh, kết hợp sức mạnh của Vision-Language Models (VLM) thế hệ mới (**Gemini 1.5 Pro**) và quy trình kiểm soát của con người (Human-in-the-loop).
 
-Hệ thống được thiết kế dưới dạng **Professional Desk** với quy trình làm việc tối ưu, giúp giáo viên không chỉ chấm bài nhanh hơn mà còn có thể "dạy" AI học theo phong cách chấm điểm cá nhân của mình.
+Hệ thống được thiết kế dành riêng cho các môn STEM (Toán, Tin học, Vật lý), giúp giáo viên không chỉ chấm bài nhanh hơn mà còn có thể "huấn luyện" AI học theo phong cách chấm điểm cá nhân của mình thông qua cơ chế RAG (Retrieval-Augmented Generation).
 
 ---
 
 ## ✨ Điểm nổi bật phiên bản Professional
 
-- 🏗️ **Wizard Workflow (5 Bước):** Quy trình chấm điểm tiêu chuẩn: Tải lên → AI Phân tích → Giáo viên Review → Tinh chỉnh (HITL) → Hoàn tất.
-- 📸 **Trình đối soát văn bản (Transparent Transcript):** Chế độ "Mindless Text Photocopier" kết hợp quy trình tự đối soát (Post-copy Verification) giúp AI chép lại 100% nguyên văn bài làm, bảo toàn từng lỗi chính tả, chữ viết xấu để giáo viên có bằng chứng đối soát không thể tranh cãi (Legal Evidence Layer).
-- 🧬 **Hỗ trợ STEM & Ký hiệu chuyên sâu:** Nhận diện và bảo toàn chính xác các ký hiệu toán học đặc biệt (trị tuyệt đối `|x|`, số nhị phân, logic toán, chỉ số dưới/trên), đảm bảo không làm mất ý nghĩa kỹ thuật của bài làm.
-- 🧠 **Hệ thống Bộ nhớ RAG (Learning from Feedback):** Sử dụng SQLite + ChromaDB để lưu trữ nhận xét của giáo viên. AI sẽ tự động tra cứu các bài học cũ để áp dụng cho các bài làm mới cùng chủ đề.
-- 🤝 **Giọng điệu Mentor (Constructive Tone):** AI được cấu hình để đưa ra nhận xét với tư cách là người đồng hành tận tâm, tập trung vào việc khích lệ và gợi ý cải thiện thay vì chỉ trích lỗi sai.
-- 🔄 **Vòng lặp Chấm lại (Iterative Re-grading):** Giáo viên có thể yêu cầu AI chấm lại kèm phản hồi chi tiết. AI sẽ sử dụng phản hồi này như một ràng buộc (Constraint) hàng đầu để sửa đổi kết quả.
-- 🚀 **Mở rộng quy mô (Scalable context):** Hỗ trợ lên đến 16,384 tokens cho kết quả đầu ra, cho phép xử lý các bài luận dài và phức tạp mà không bị cắt cụt nội dung.
+- 🧠 **Đa môn học STEM (Math/CS/Phys):** Hệ thống tự động nhận diện môn học dựa trên từ khóa (Keyword Scoring) để áp dụng bộ quy tắc chấm điểm chuyên biệt (Rule 8 & 9).
+- 📸 **Thị giác máy tính (VLM vs OCR):** Không sử dụng OCR truyền thống. VLM hiểu được bố cục, nét gạch xóa và các ký hiệu toán học phức tạp trực tiếp từ hình ảnh/PDF (xử lý qua PyMuPDF & Pillow).
+- 🧬 **Đối soát nguyên văn (Transparent Transcript):** Chế độ "Photocopy" ép AI phải chép lại y hệt bài làm của học sinh, tạo ra một lớp bằng chứng đối soát (Legal Evidence Layer) giúp giáo viên dễ dàng kiểm tra tính chính xác của AI.
+- 🏗️ **Bộ nhớ tri thức RAG (Feedback Priority):** Sử dụng SQLite + ChromaDB. Các bài học được ưu tiên dựa trên `feedback_score` (0.0 - 5.0). Những lỗi giáo viên từng bác bỏ (Reject) sẽ được AI ưu tiên ghi nhớ hàng đầu.
+- 🔄 **Vòng lặp HITL (Human-in-the-loop):** Quy trình 5 bước: Tải lên → AI Phân tích → Giáo viên Review → Tinh chỉnh (Nếu cần) → Hoàn tất & Lưu bài học.
+- 🚀 **Xử lý ngữ cảnh lớn:** Hỗ trợ đầu ra lên đến 32,768 tokens, đảm bảo không bị cắt cụt nội dung đối với các bài luận dài hoặc các bài giải toán chi tiết.
 
 ---
 
-## 🔥 Quy trình 5 Bước Chuyên nghiệp
+## 🛠️ Cấu trúc hệ thống (Architecture)
 
-1.  **Bước 1: Tiếp nhận (Upload):** Giáo viên tải tệp (Ảnh/PDF). Hệ thống cung cấp bản xem trước trực quan.
-2.  **Bước 2: Phân tích (Reading):** VLM (Gemini 3 Flash) quét nội dung, nhận diện chữ viết và áp dụng Rubric.
-3.  **Bước 3: Thẩm định (Review):** Hiển thị điểm số và nhận xét chi tiết từng câu. Giáo viên có quyền: **Duyệt**, **Yêu cầu chấm lại**, hoặc **Từ chối**.
-4.  **Bước 4: Tinh chỉnh (Refine):** Nếu có yêu cầu chấm lại, AI sẽ soi chiếu lại bài làm dựa trên ý kiến giáo viên để đưa ra bản chấm mới. Phản hồi này được lưu vào bộ nhớ để "huấn luyện" AI.
-5.  **Bước 5: Hoàn tất (Finalize):** Kết quả cuối cùng được đóng gói chuyên nghiệp, sẵn sàng để lưu trữ hoặc xuất dữ liệu.
-
----
-
-## 🛠️ Cấu trúc dự án
-
-Backend đã tách theo **domain folder** (mỗi thư mục ≈ một chương báo cáo); frontend chuyển sang **TypeScript** với root composer `App.tsx` thay cho `HITLEditor.jsx` cũ.
+Hệ thống được xây dựng theo mô hình **Modular Domain-Driven**, giúp tách biệt rõ ràng giữa logic chấm điểm, bộ nhớ và giao diện.
 
 ```text
 project/
-├── backend/                              # FastAPI, Python 3.11+
-│   ├── main.py                           # Bootstrap + 5 endpoint handlers
-│   ├── api/                              # Tầng HTTP
-│   │   ├── schemas.py                    #   Pydantic Request/Response (10 model)
-│   │   └── heartbeat.py                  #   /api/heartbeat + watchdog auto-shutdown
-│   ├── grading/                          # Tác tử chấm điểm (Gemini VLM)
-│   │   ├── agent.py                      #   AgentOrchestrator + run_pipeline
-│   │   ├── vlm_client.py                 #   GeminiClient + model rotation + retry
-│   │   ├── file_processor.py             #   Image/PDF decode + compress + rasterize
-│   │   ├── grade_parser.py               #   JSON parse + salvage + comment fallback
-│   │   └── prompt_orchestrator.py        #   Prompt assembly + lesson injection
-│   ├── memory/                           # Bộ nhớ HITL
-│   │   ├── store.py                      #   Dual-store SQLite + ChromaDB (3-leg retrieval)
-│   │   └── logger.py                     #   JSONL audit log (rotating)
-│   ├── prompts/                          # System prompt theo môn
-│   │   ├── base.py                       #   Persona + Rules 1–7, 9b, 10 (shared)
-│   │   ├── math.py                       #   Rule 8 + 9 cho Toán
-│   │   ├── cs.py                         #   Rule 8 + 9 cho Tin học
-│   │   └── __init__.py                   #   Registry + detect_subject()
-│   ├── data/                             # SQLite + Chroma + JSONL + prompt_logs
-│   └── requirements.txt
+├── backend/                              # FastAPI Backend
+│   ├── main.py                           # Cổng tiếp nhận (API Endpoints)
+│   ├── api/                              # Lớp định nghĩa dữ liệu (Schemas)
+│   ├── grading/                          # Tác tử chấm điểm (Core logic)
+│   │   ├── agent.py                      #   Điều phối luồng chấm điểm
+│   │   ├── vlm_client.py                 #   Kết nối Gemini (Retry/Rotation)
+│   │   ├── file_processor.py             #   Xử lý ảnh (Pillow) & PDF (PyMuPDF)
+│   │   └── prompt_orchestrator.py        #   Lắp ráp Prompt & Nhồi bài học RAG
+│   ├── memory/                           # Lưu trữ & Trí nhớ dài hạn
+│   │   ├── store.py                      #   Quản lý SQLite & Vector DB (ChromaDB)
+│   │   └── logger.py                     #   Nhật ký sự kiện (Audit Log)
+│   ├── prompts/                          # Kho tri thức của AI (Rules 1-10)
+│   │   ├── base.py                       #   Quy tắc chung & Vai trò Giáo viên
+│   │   ├── math.py / cs.py / phys.py      #   Quy tắc riêng từng môn học
+│   │   └── __init__.py                   #   Bộ lọc môn học tự động
 ├── frontend/                             # React 18 + Vite + TypeScript
-│   ├── index.html
-│   ├── tsconfig.json + vite.config.js
-│   └── src/
-│       ├── index.tsx + App.tsx           # Entry + root composer (Wizard 5 bước)
-│       ├── api/                          # apiPost client + endpoint helpers (typed)
-│       ├── components/                   # layout/ (Sidebar, AppHeader, TabBar, …)
-│       │                                 # ui/ (Icon, ErrorBoundary, LoadingSpinner, …)
-│       ├── features/                     # upload/ · review/ · workspace/
-│       │                                 # mỗi feature = Component + .logic.ts thuần
-│       ├── hooks/                        # useAgentPipeline, useFeedback, useHeartbeat,
-│       │                                 # useTabs, useLang
-│       ├── lib/                          # file, grade, mathFormat, tabs (helpers thuần)
-│       ├── theme/ + i18n/ + types/       # Design tokens · en/vi · TS types
 │       └── vite-env.d.ts
 ├── package.json                          # Entry point root: npm run dev
 ├── scripts/dev.cjs                       # Spawn backend + frontend song song (dev)
