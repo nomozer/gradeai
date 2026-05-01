@@ -8,7 +8,7 @@ export interface UseLangResult {
   toggle: () => void;
 }
 
-export function useLang(fallback: Lang = "en"): UseLangResult {
+export function useLang(fallback: Lang = "vi"): UseLangResult {
   const [lang, setLangState] = useState<Lang>(
     () => (localStorage.getItem(KEY) as Lang | null) || fallback,
   );

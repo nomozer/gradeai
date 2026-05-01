@@ -27,6 +27,16 @@ export function GlobalStyles() {
       button { cursor: pointer; }
       a { color: ${T.accent}; text-underline-offset: 3px; }
 
+      /* Keyboard-only focus ring — preserves the inline outline:none on inputs
+         while still giving keyboard users a clear focus indicator. */
+      select:focus-visible,
+      textarea:focus-visible,
+      input:focus-visible,
+      button:focus-visible {
+        outline: 2px solid ${T.accent};
+        outline-offset: 2px;
+      }
+
       @keyframes spin {
         from { transform: rotate(0deg); }
         to { transform: rotate(360deg); }
@@ -70,6 +80,14 @@ export function GlobalStyles() {
       @keyframes arrowNudge {
         0%, 100% { transform: translateX(0); }
         50%      { transform: translateX(-6px); }
+      }
+      @keyframes drawerSlideIn {
+        from { transform: translateX(-100%); }
+        to   { transform: translateX(0); }
+      }
+      @keyframes backdropFadeIn {
+        from { opacity: 0; }
+        to   { opacity: 1; }
       }
     `}</style>
   );

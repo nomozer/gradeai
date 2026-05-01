@@ -26,7 +26,7 @@ export function TabBar({
   return (
     <div
       style={{
-        padding: "10px 32px 0",
+        padding: "10px clamp(16px, 4vw, 32px) 0",
         borderBottom: `1px solid ${T.border}`,
         background: T.bgCard,
       }}

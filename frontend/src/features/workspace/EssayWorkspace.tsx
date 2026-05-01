@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentPipeline } from "../../hooks/useAgentPipeline";
 import { useFeedback } from "../../hooks/useFeedback";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { ApiError, finalizeGrade } from "../../api";
 import { T } from "../../theme/tokens";
 import { i18n } from "../../i18n";
@@ -44,12 +45,13 @@ interface EssayWorkspaceProps {
  * "look-here" cue without resorting to a blocking modal.
  */
 function WaitingForSubjectHero() {
+  const isMobile = useIsMobile();
   return (
     <div
       style={{
         maxWidth: 560,
         margin: "80px auto 0",
-        padding: "40px 32px",
+        padding: "40px clamp(20px, 5vw, 32px)",
         background: T.bgCard,
         border: `1px solid ${T.border}`,
         borderRadius: 16,
@@ -93,8 +95,9 @@ function WaitingForSubjectHero() {
           maxWidth: 420,
         }}
       >
-        AI sử dụng prompt riêng cho Toán hoặc Tin để chấm chính xác và để bộ nhớ HITL tích lũy đúng
-        nhóm môn. Chọn ở thanh bên để mở khoá tải đề và bài làm.
+        AI sử dụng prompt riêng cho Toán, Tin hoặc Vật lý để chấm chính xác và để bộ nhớ HITL tích
+        lũy đúng nhóm môn. {isMobile ? "Nhấn nút menu phía trên" : "Chọn ở thanh bên"} để mở khoá
+        tải đề và bài làm.
       </p>
       <div
         style={{
@@ -108,9 +111,15 @@ function WaitingForSubjectHero() {
         }}
       >
         <span style={{ animation: "arrowNudge 1.4s ease-in-out infinite" }}>
-          <Icon.ArrowLeft size={16} color={T.accent} />
+          {isMobile ? (
+            <Icon.Menu size={16} color={T.accent} />
+          ) : (
+            <Icon.ArrowLeft size={16} color={T.accent} />
+          )}
         </span>
-        <span>Chọn ở thanh bên trái</span>
+        <span>
+          {isMobile ? "Mở menu để chọn môn" : "Chọn ở thanh bên trái"}
+        </span>
       </div>
     </div>
   );
@@ -254,14 +263,14 @@ export function EssayWorkspace({
   // first-time session; localStorage persists it for return visits.
   if (!selectedSubject) {
     return (
-      <div style={{ padding: "0 32px 96px", display: active ? "block" : "none" }}>
+      <div style={{ padding: "0 clamp(16px, 4vw, 32px) 96px", display: active ? "block" : "none" }}>
         <WaitingForSubjectHero />
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "0 32px 96px", display: active ? "block" : "none" }}>
+    <div style={{ padding: "0 clamp(16px, 4vw, 32px) 96px", display: active ? "block" : "none" }}>
       <StepIndicator steps={stepLabels} currentStep={displayStep} />
 
       {pipeline.error && (

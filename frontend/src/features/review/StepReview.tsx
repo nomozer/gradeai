@@ -3,6 +3,7 @@ import { T } from "../../theme/tokens";
 import { Icon } from "../../components/ui/Icon";
 import { formatTranscript } from "../../lib/mathFormat";
 import { analyzeComment } from "../../api";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import type {
   BackendSubject,
   CommentThreads,
@@ -483,6 +484,7 @@ interface QuestionBoxProps {
    * "no issues" badge that would falsely imply approval.
    */
   isSalvaged: boolean;
+  stacked: boolean;
 }
 
 function QuestionBox({
@@ -496,6 +498,7 @@ function QuestionBox({
   t,
   subject,
   isSalvaged,
+  stacked,
 }: QuestionBoxProps) {
   const [expanded, setExpanded] = useState(true);
 
@@ -503,7 +506,7 @@ function QuestionBox({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "1fr 1fr",
+        gridTemplateColumns: stacked ? "1fr" : "1fr 1fr",
         gap: 0,
         marginBottom: 16,
         border: `1px solid ${T.border}`,
@@ -516,7 +519,8 @@ function QuestionBox({
       {/* Left: Student Answer */}
       <div
         style={{
-          borderRight: `1px solid ${T.border}`,
+          borderRight: stacked ? "none" : `1px solid ${T.border}`,
+          borderBottom: stacked ? `1px solid ${T.border}` : "none",
           padding: "18px 20px",
           background: T.paper,
         }}
@@ -852,6 +856,7 @@ export function StepReview({
   const [analyzingQ, setAnalyzingQ] = useState<number | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
   const [essayBlobUrl, setEssayBlobUrl] = useState<string | null>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     const src = essayImage?.dataUrl;
@@ -1146,10 +1151,11 @@ export function StepReview({
         </div>
       )}
 
-      {/* Column Headers */}
+      {/* Column Headers — hidden in stacked mobile layout where each column
+          gets its own labelled section inside the QuestionBox. */}
       <div
         style={{
-          display: "grid",
+          display: isMobile ? "none" : "grid",
           gridTemplateColumns: "1fr 1fr",
           marginBottom: 8,
           padding: "0 4px",
@@ -1213,6 +1219,7 @@ export function StepReview({
             t={t}
             subject={subject}
             isSalvaged={isSalvaged}
+            stacked={isMobile}
           />
         ))
       )}

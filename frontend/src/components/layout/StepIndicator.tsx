@@ -9,9 +9,10 @@ export function StepIndicator({ steps, currentStep }: StepIndicatorProps) {
   return (
     <div
       style={{
-        padding: "32px 24px 28px",
+        padding: "32px clamp(12px, 3vw, 24px) 28px",
         display: "flex",
         justifyContent: "center",
+        overflowX: "auto",
       }}
     >
       <div
@@ -19,6 +20,7 @@ export function StepIndicator({ steps, currentStep }: StepIndicatorProps) {
           display: "flex",
           alignItems: "flex-start",
           gap: 0,
+          flexShrink: 0,
         }}
       >
         {steps.map((step, i) => {
