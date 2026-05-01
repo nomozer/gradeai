@@ -1,9 +1,8 @@
 <!doctype html>
-<html lang="en">
+<html lang="vi">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>MIRROR — A Reader's Grading Desk</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -11,78 +10,8 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..900,0..100;1,9..144,300..900,0..100&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=JetBrains+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <style>
-      html,
-      body {
-        margin: 0;
-        padding: 0;
-        background: #f7f5f0;
-      }
-      body {
-        font-family: "Newsreader", Georgia, serif;
-        color: #2c2e3a;
-        font-feature-settings: "onum", "liga", "kern";
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-        text-rendering: optimizeLegibility;
-      }
-
-      /* ── Markdown prose render area ─────────────────────────── */
-      .md-prose p {
-        margin: 0 0 10px;
-      }
-      .md-prose h1 {
-        font-size: 20px;
-        font-weight: 700;
-        margin: 0 0 10px;
-      }
-      .md-prose h2 {
-        font-size: 17px;
-        font-weight: 700;
-        margin: 0 0 8px;
-      }
-      .md-prose h3 {
-        font-size: 15px;
-        font-weight: 600;
-        margin: 0 0 6px;
-      }
-      .md-prose ul {
-        margin: 0 0 10px;
-        padding-left: 20px;
-      }
-      .md-prose li {
-        margin-bottom: 4px;
-        line-height: 1.65;
-      }
-      .md-prose strong {
-        font-weight: 700;
-      }
-      .md-prose em {
-        font-style: italic;
-      }
-      .md-prose code {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 13px;
-        background: rgba(59, 79, 138, 0.08);
-        padding: 1px 5px;
-        border-radius: 4px;
-        color: #3b4f8a;
-      }
-
-      /* ── Animations ─────────────────────────────────────────── */
-      @keyframes fadeUp {
-        from {
-          opacity: 0;
-          transform: translateY(12px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-    </style>
   </head>
-  <body>
+  <body class="antialiased">
     <div id="root"></div>
     <script type="module" src="/src/index.tsx"></script>
   </body>
