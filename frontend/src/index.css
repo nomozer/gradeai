@@ -6,6 +6,8 @@ body {
 }
 body {
   font-family: "Newsreader", Georgia, serif;
+  font-size: 17px;
+  line-height: 1.6;
   color: #2c2e3a;
   font-feature-settings: "onum", "liga", "kern";
   -webkit-font-smoothing: antialiased;
@@ -14,23 +16,29 @@ body {
 }
 
 /* ── Markdown prose render area ─────────────────────────── */
+.md-prose {
+  font-size: 17px;
+  line-height: 1.7;
+}
 .md-prose p {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
 }
 .md-prose h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  font-family: "Fraunces", serif;
+}
+.md-prose h2 {
   font-size: 20px;
   font-weight: 700;
   margin: 0 0 10px;
-}
-.md-prose h2 {
-  font-size: 17px;
-  font-weight: 700;
-  margin: 0 0 8px;
+  font-family: "Fraunces", serif;
 }
 .md-prose h3 {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 600;
-  margin: 0 0 6px;
+  margin: 0 0 8px;
 }
 .md-prose ul {
   margin: 0 0 10px;

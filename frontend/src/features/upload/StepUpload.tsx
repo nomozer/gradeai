@@ -3,7 +3,7 @@ import { T } from "../../theme/tokens";
 import { Icon } from "../../components/ui/Icon";
 import { readFileAsDataUrl, readOptimizedUploadDataUrl } from "../../lib/file";
 import { validateTaskFile, validateEssayFile } from "./StepUpload.logic";
-import type { EssayFile, I18nStrings, Lang, TaskFile } from "../../types";
+import type { EssayFile, I18nStrings, TaskFile } from "../../types";
 
 interface StepUploadProps {
   taskPdf: TaskFile | null;
@@ -12,7 +12,6 @@ interface StepUploadProps {
   setEssayImage: (value: EssayFile | null) => void;
   onSubmit: () => void;
   canSubmit: boolean;
-  lang: Lang;
   t: I18nStrings;
 }
 
@@ -23,7 +22,6 @@ export function StepUpload({
   setEssayImage,
   onSubmit,
   canSubmit,
-  lang,
   t,
 }: StepUploadProps) {
   const taskInputRef = useRef<HTMLInputElement | null>(null);
@@ -34,7 +32,7 @@ export function StepUpload({
 
   const handleTaskFile = useCallback(
     async (file: File | null | undefined) => {
-      const check = validateTaskFile(file, lang);
+      const check = validateTaskFile(file);
       if (!check.ok) {
         setUploadError(check.error);
         return;
@@ -47,7 +45,7 @@ export function StepUpload({
         setUploadError(String(t.uploadReadError ?? ""));
       }
     },
-    [lang, setTaskPdf, t.uploadReadError],
+    [setTaskPdf, t.uploadReadError],
   );
 
   const handleEssayFile = useCallback(

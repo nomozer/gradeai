@@ -40,6 +40,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 # uvicorn is launched from backend/, so direct imports (no "backend." prefix).
 from api.heartbeat import router as heartbeat_router, start_watchdog
+from api.memory import router as memory_router, attach_memory
 from api.schemas import (
     AnalyzeCommentRequest,
     AnalyzeCommentResponse,
@@ -90,6 +91,7 @@ app.add_middleware(
 )
 
 app.include_router(heartbeat_router)
+app.include_router(memory_router)
 
 # Singletons: memory drives prompt retrieval, prompt drives grading.
 memory = MemoryManager()
@@ -99,6 +101,9 @@ prompt_orch = PromptOrchestrator(
     log_dir=Path(__file__).resolve().parent / "data" / "prompt_logs",
 )
 orchestrator = AgentOrchestrator(memory=memory, prompt_orchestrator=prompt_orch)
+
+# Inject the singleton into the memory router so its handlers can use it.
+attach_memory(memory)
 
 
 # ---------------------------------------------------------------------------

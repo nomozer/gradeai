@@ -31,18 +31,12 @@ export interface RequestOptions {
   signal?: AbortSignal;
 }
 
-export async function apiPost<TReq, TRes>(
+async function _request<TRes>(
   path: string,
-  body: TReq,
-  options: RequestOptions = {},
+  init: RequestInit,
+  options: RequestOptions,
 ): Promise<TRes> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: options.signal,
-  });
-
+  const res = await fetch(`${API_BASE}${path}`, { ...init, signal: options.signal });
   if (!res.ok) {
     const detail = await res
       .json()
@@ -50,8 +44,44 @@ export async function apiPost<TReq, TRes>(
       .catch(() => "");
     throw new ApiError(res.status, detail);
   }
-
   return (await res.json()) as TRes;
+}
+
+export function apiPost<TReq, TRes>(
+  path: string,
+  body: TReq,
+  options: RequestOptions = {},
+): Promise<TRes> {
+  return _request<TRes>(
+    path,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    options,
+  );
+}
+
+export function apiGet<TRes>(
+  path: string,
+  query: Record<string, string | number | undefined> = {},
+  options: RequestOptions = {},
+): Promise<TRes> {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(query)) {
+    if (v === undefined || v === "") continue;
+    params.set(k, String(v));
+  }
+  const qs = params.toString();
+  return _request<TRes>(qs ? `${path}?${qs}` : path, { method: "GET" }, options);
+}
+
+export function apiDelete<TRes>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<TRes> {
+  return _request<TRes>(path, { method: "DELETE" }, options);
 }
 
 /**

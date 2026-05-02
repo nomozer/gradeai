@@ -7,9 +7,9 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { i18n } from "./i18n";
+import { vi as t } from "./i18n/vi";
+import { T } from "./theme/tokens";
 import { GlobalStyles } from "./theme/GlobalStyles";
-import { useLang } from "./hooks/useLang";
 import { useTabs } from "./hooks/useTabs";
 import { useHeartbeat } from "./hooks/useHeartbeat";
 import { useIsMobile } from "./hooks/useIsMobile";
@@ -17,15 +17,27 @@ import { Sidebar } from "./components/layout/Sidebar";
 import { AppHeader } from "./components/layout/AppHeader";
 import { TabBar } from "./components/layout/TabBar";
 import { EssayWorkspace } from "./features/workspace/EssayWorkspace";
+import { MemoryPanel } from "./features/memory/MemoryPanel";
+import { HelpModal } from "./features/help/HelpModal";
+
+type AppView = "workspace" | "memory";
 
 export default function App() {
-  const { lang, toggle: toggleLang } = useLang();
-  const t = i18n[lang];
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [view, setView] = useState<AppView>("workspace");
+
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
+  const openMemory = useCallback(() => {
+    setView("memory");
+    setDrawerOpen(false);
+  }, []);
+  const closeMemory = useCallback(() => setView("workspace"), []);
+  const openHelp = useCallback(() => setHelpOpen(true), []);
+  const closeHelp = useCallback(() => setHelpOpen(false), []);
 
   // Auto-close the drawer on viewport upgrade so the sticky sidebar
   // doesn't double-render on top of itself when crossing the breakpoint.
@@ -71,6 +83,17 @@ export default function App() {
 
   const completedCount = tabs.filter((tab) => tab.hasGrade).length;
 
+  // Memory view — render as a separate full-page layout (no sidebar or tab bar).
+  if (view === "memory") {
+    return (
+      <div style={{ minHeight: "100vh", background: T.bg }}>
+        <GlobalStyles />
+        <MemoryPanel onClose={closeMemory} />
+        {helpOpen && <HelpModal onClose={closeHelp} />}
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -95,11 +118,10 @@ export default function App() {
 
       <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
         <AppHeader
-          selectedSubject={selectedSubject}
-          selectedClass={selectedClass}
-          onToggleLang={toggleLang}
           onOpenDrawer={isMobile ? openDrawer : undefined}
-          t={t}
+          onOpenMemory={openMemory}
+          onOpenHelp={openHelp}
+          memoryActive={view === "memory"}
         />
 
         <TabBar
@@ -118,7 +140,6 @@ export default function App() {
             <EssayWorkspace
               key={tab.id}
               active={tab.id === activeId}
-              lang={lang}
               selectedSubject={selectedSubject}
               selectedClass={selectedClass}
               onMeta={(meta) => updateMeta(tab.id, meta)}
@@ -144,6 +165,8 @@ export default function App() {
           onClose={closeDrawer}
         />
       )}
+
+      {helpOpen && <HelpModal onClose={closeHelp} />}
     </div>
   );
 }

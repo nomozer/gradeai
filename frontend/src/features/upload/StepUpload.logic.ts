@@ -1,21 +1,12 @@
 import { isPdfFile, isImageFile } from "../../lib/file";
-import type { I18nStrings, Lang } from "../../types";
+import type { I18nStrings } from "../../types";
 
 export type ValidationResult = { ok: true; isPdf?: boolean } | { ok: false; error: string | null };
 
-/**
- * Validate a prompt file (PDF only).
- */
-export function validateTaskFile(file: File | null | undefined, lang: Lang): ValidationResult {
+export function validateTaskFile(file: File | null | undefined): ValidationResult {
   if (!file) return { ok: false, error: null };
   if (!isPdfFile(file)) {
-    return {
-      ok: false,
-      error:
-        lang === "vi"
-          ? "Đề bài chỉ hỗ trợ định dạng PDF."
-          : "Only PDF files are accepted for the exam prompt.",
-    };
+    return { ok: false, error: "Đề bài chỉ hỗ trợ định dạng PDF." };
   }
   return { ok: true };
 }

@@ -500,6 +500,92 @@ class MemoryManager:
                     raise
                 return existing_id
 
+    def list_lessons(
+        self,
+        subject: str = "",
+        search: str = "",
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Return lessons sorted by retrieval priority (feedback_score DESC, timestamp DESC).
+
+        This sort order matches PromptOrchestrator's ranking — what the
+        teacher sees here is the same order Gemini sees in the prompt block.
+        """
+        with self._get_session() as session:
+            q = session.query(Lesson)
+            if subject:
+                q = q.filter(Lesson.subject == subject)
+            if search:
+                pattern = f"%{search}%"
+                q = q.filter(
+                    (Lesson.lesson_text.ilike(pattern)) | (Lesson.task.ilike(pattern))
+                )
+            q = q.order_by(Lesson.feedback_score.desc(), Lesson.timestamp.desc())
+            q = q.limit(max(1, min(limit, 500)))
+            return [les.to_dict() for les in q.all()]
+
+    def delete_lesson(self, lesson_id: int) -> bool:
+        """Remove a lesson from BOTH stores. Returns True if found and deleted.
+
+        Deletes ChromaDB first (idempotent — missing IDs are silently
+        ignored) so a partial failure leaves the SQL row intact rather than
+        the other way round; orphaned vectors would silently re-surface in
+        retrieval, but an orphaned SQL row with no vector is harmless.
+        """
+        try:
+            self._collection.delete(ids=[str(lesson_id)])
+        except Exception:
+            logger.exception("Chroma delete failed for lesson %s", lesson_id)
+
+        with self._get_session() as session:
+            lesson = session.get(Lesson, lesson_id)
+            if lesson is None:
+                return False
+            session.delete(lesson)
+            return True
+
+    def get_memory_stats(self) -> dict[str, Any]:
+        """Aggregate counts for the memory inspector dashboard.
+
+        Returns total lesson count + per-subject breakdown + count by HITL
+        signal tier (reject 5.0 / revise+delta 4.0 / staged 3.5 /
+        aggregate 3.0). Useful for showing the teacher how the AI's
+        learning corpus is composed without forcing them to scroll.
+        """
+        with self._get_session() as session:
+            total = session.query(Lesson).count()
+            approved = session.query(ApprovedGrade).count()
+            runs = session.query(PipelineRun).count()
+            by_subject: dict[str, int] = {}
+            for sub, cnt in (
+                session.query(Lesson.subject, Lesson.id)
+                .all()
+            ):
+                key = sub or "unknown"
+                by_subject[key] = by_subject.get(key, 0) + 1
+            # Bucket scores into the named tiers from CLAUDE.md so the UI
+            # can show "5 reject lessons, 12 revise, 8 staged" without
+            # hard-coding the score → label map on the frontend.
+            tiers = {"reject": 0, "revise": 0, "staged": 0, "aggregate": 0, "other": 0}
+            for (score,) in session.query(Lesson.feedback_score).all():
+                if score >= 5.0:
+                    tiers["reject"] += 1
+                elif score >= 4.0:
+                    tiers["revise"] += 1
+                elif score >= 3.5:
+                    tiers["staged"] += 1
+                elif score >= 3.0:
+                    tiers["aggregate"] += 1
+                else:
+                    tiers["other"] += 1
+        return {
+            "total_lessons": total,
+            "total_approved_grades": approved,
+            "total_pipeline_runs": runs,
+            "by_subject": by_subject,
+            "by_tier": tiers,
+        }
+
     def backfill_correct_code(self, task: str, correct_code: str) -> int:
         """Fill in ``correct_code`` on lessons that lack it for *task*.
 

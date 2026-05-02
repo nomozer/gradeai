@@ -46,7 +46,7 @@ function EditableScore({
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         {IconComp && <IconComp size={16} color={T.textFaint} />}
-        <span style={{ fontSize: 15, color: T.textSoft, fontWeight: 500 }}>{label}</span>
+        <span style={{ fontSize: 16, color: T.textSoft, fontWeight: 500 }}>{label}</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
         <input
@@ -246,9 +246,9 @@ export function ResultCard({
             display: "flex",
             alignItems: "flex-start",
             gap: 10,
-            fontSize: 13.5,
+            fontSize: 15,
             color: T.textSoft,
-            lineHeight: 1.55,
+            lineHeight: 1.6,
           }}
         >
           <Icon.AlertTriangle size={15} color={T.amber} style={{ marginTop: 2, flexShrink: 0 }} />
@@ -269,9 +269,9 @@ export function ResultCard({
         <div
           style={{
             textAlign: "center",
-            fontSize: 14,
+            fontSize: 15,
             color: T.textMute,
-            marginBottom: 20,
+            marginBottom: 24,
             lineHeight: 1.6,
           }}
         >
@@ -297,11 +297,11 @@ export function ResultCard({
       >
         <div
           style={{
-            fontSize: 13,
+            fontSize: 14,
             color: T.textMute,
             textTransform: "uppercase",
             letterSpacing: "0.12em",
-            marginBottom: 10,
+            marginBottom: 12,
           }}
         >
           {String(t.overallScore ?? "Tổng điểm")}
@@ -497,9 +497,9 @@ export function ResultCard({
                     borderLeft: `3px solid ${T.green}`,
                     borderRadius: "0 8px 8px 0",
                     marginBottom: 8,
-                    fontSize: 14,
+                    fontSize: 15,
                     color: T.textSoft,
-                    lineHeight: 1.6,
+                    lineHeight: 1.65,
                   }}
                 >
                   <span
@@ -530,9 +530,9 @@ export function ResultCard({
                     background: T.amberSoft,
                     borderLeft: `3px solid ${T.amber}`,
                     borderRadius: "0 8px 8px 0",
-                    fontSize: 14,
+                    fontSize: 15,
                     color: T.textSoft,
-                    lineHeight: 1.6,
+                    lineHeight: 1.65,
                   }}
                 >
                   <span

@@ -70,38 +70,51 @@ export function Sidebar({
     fontSize: 13,
     color: T.textMute,
     textTransform: "uppercase",
-    letterSpacing: "0.08em",
-    marginBottom: 8,
+    letterSpacing: "0.1em",
+    marginBottom: 10,
     fontWeight: 600,
   };
 
   const content = (
     <aside style={asideStyle}>
-      {/* Header — logo + (drawer-only) close button */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-        <div>
-          <div
+      {/* Header — logo + title, inspired by reference UI */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          {/* Logo — reference SVG (transparent) */}
+          <img
+            src="/favicon.svg"
+            alt="MIRROR"
+            width={drawer ? 38 : 42}
+            height={drawer ? 38 : 42}
             style={{
-              fontFamily: T.display,
-              fontSize: drawer ? 22 : 24,
-              fontWeight: 500,
-              color: T.text,
-              letterSpacing: "-0.01em",
-              lineHeight: 1,
+              flexShrink: 0,
+              objectFit: "contain",
             }}
-          >
-            {String(t.title)}
-          </div>
-          <div
-            style={{
-              fontFamily: T.display,
-              fontStyle: "italic",
-              fontSize: drawer ? 13 : 14,
-              color: T.textMute,
-              marginTop: 4,
-            }}
-          >
-            {String(t.subtitle)}
+          />
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontFamily: T.display,
+                fontSize: drawer ? 18 : 20,
+                fontWeight: 600,
+                color: T.text,
+                letterSpacing: "-0.01em",
+                lineHeight: 1.1,
+              }}
+            >
+              {String(t.title)}
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                color: T.textMute,
+                marginTop: 3,
+                lineHeight: 1.3,
+                letterSpacing: "0.01em",
+              }}
+            >
+              Bài chấm tự động
+            </div>
           </div>
         </div>
         {drawer && onClose && (
@@ -159,7 +172,7 @@ export function Sidebar({
               padding: "10px 30px 10px 12px",
               background: T.bg,
               color: selectedSubject ? T.text : T.textFaint,
-              fontSize: 15,
+              fontSize: 16,
               border: `1px solid ${selectedSubject ? T.border : T.accent}`,
               borderRadius: 6,
               cursor: "pointer",
@@ -203,7 +216,7 @@ export function Sidebar({
               padding: "10px 30px 10px 12px",
               background: T.bg,
               color: T.text,
-              fontSize: 15,
+              fontSize: 16,
               border: `1px solid ${T.border}`,
               borderRadius: 6,
               cursor: "pointer",

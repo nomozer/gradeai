@@ -25,7 +25,6 @@ import type {
   EssayFile,
   FinalizedResult,
   Grade,
-  Lang,
   RubricScores,
   TabMeta,
   TaskFile,
@@ -33,7 +32,6 @@ import type {
 
 interface EssayWorkspaceProps {
   active: boolean;
-  lang: Lang;
   selectedSubject: string;
   selectedClass: string;
   onMeta: (meta: TabMeta) => void;
@@ -46,10 +44,21 @@ interface EssayWorkspaceProps {
  */
 function WaitingForSubjectHero() {
   const isMobile = useIsMobile();
+  // Visualises the wizard pipeline as breadcrumb pills so a first-time
+  // teacher sees the whole flow upfront — "Chọn môn" highlighted as the
+  // current step, the rest dimmed but readable. Replaces the older
+  // single-arrow nudge that only pointed at the sidebar.
+  const flow = [
+    { label: "Chọn môn", active: true },
+    { label: "Tải đề bài" },
+    { label: "Tải bài làm" },
+    { label: "AI chấm" },
+    { label: "Duyệt" },
+  ];
   return (
     <div
       style={{
-        maxWidth: 560,
+        maxWidth: 620,
         margin: "80px auto 0",
         padding: "40px clamp(20px, 5vw, 32px)",
         background: T.bgCard,
@@ -77,49 +86,65 @@ function WaitingForSubjectHero() {
       <h2
         style={{
           fontFamily: T.display,
-          fontSize: 22,
+          fontSize: 32,
           fontWeight: 600,
           color: T.text,
-          margin: "0 0 10px",
-          letterSpacing: "-0.01em",
+          margin: "0 0 16px",
+          letterSpacing: "-0.02em",
         }}
       >
         Hãy chọn môn để bắt đầu chấm
       </h2>
       <p
         style={{
-          fontSize: 14,
+          fontSize: 17,
           color: T.textSoft,
-          lineHeight: 1.6,
-          margin: "0 auto 24px",
-          maxWidth: 420,
+          lineHeight: 1.65,
+          margin: "0 auto 32px",
+          maxWidth: 520,
         }}
       >
-        AI sử dụng prompt riêng cho Toán, Tin hoặc Vật lý để chấm chính xác và để bộ nhớ HITL tích
-        lũy đúng nhóm môn. {isMobile ? "Nhấn nút menu phía trên" : "Chọn ở thanh bên"} để mở khoá
-        tải đề và bài làm.
+        AI dùng prompt riêng và bộ nhớ HITL theo từng môn (Toán · Tin · Vật lý). Chọn đúng
+        môn để bài học không lẫn giữa các nhóm. {isMobile ? "Nhấn menu ở góc trên" : "Chọn ở thanh bên trái"} để bắt đầu.
       </p>
+
+      {/* Wizard flow as breadcrumb pills. */}
       <div
         style={{
-          display: "inline-flex",
+          display: "flex",
           alignItems: "center",
-          gap: 8,
-          fontSize: 13,
-          color: T.accent,
-          fontFamily: T.mono,
-          letterSpacing: "0.04em",
+          justifyContent: "center",
+          flexWrap: "wrap",
+          gap: 6,
+          margin: "0 auto",
         }}
       >
-        <span style={{ animation: "arrowNudge 1.4s ease-in-out infinite" }}>
-          {isMobile ? (
-            <Icon.Menu size={16} color={T.accent} />
-          ) : (
-            <Icon.ArrowLeft size={16} color={T.accent} />
-          )}
-        </span>
-        <span>
-          {isMobile ? "Mở menu để chọn môn" : "Chọn ở thanh bên trái"}
-        </span>
+        {flow.map((step, i) => (
+          <div
+            key={step.label}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+          >
+            <span
+              style={{
+                padding: "6px 14px",
+                fontSize: 14,
+                fontFamily: T.font,
+                borderRadius: 999,
+                border: `1px solid ${step.active ? T.accent : T.border}`,
+                background: step.active ? T.accent : "transparent",
+                color: step.active ? "#FFFDF8" : T.textMute,
+                fontWeight: step.active ? 600 : 400,
+                animation: step.active ? "subjectPrompt 1.6s ease-in-out infinite" : undefined,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {step.label}
+            </span>
+            {i < flow.length - 1 && (
+              <Icon.ChevronRight size={12} color={T.textFaint} />
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -127,11 +152,11 @@ function WaitingForSubjectHero() {
 
 export function EssayWorkspace({
   active,
-  lang,
   selectedSubject,
   selectedClass,
   onMeta,
 }: EssayWorkspaceProps) {
+  const lang = "vi" as const;
   const t = i18n[lang];
   const pipeline = useAgentPipeline();
   const feedbackHook = useFeedback();
@@ -282,7 +307,7 @@ export function EssayWorkspace({
             background: T.redSoft,
             border: `1px solid ${T.red}`,
             borderRadius: 8,
-            fontSize: 15,
+            fontSize: 16,
             color: T.red,
             animation: "fadeUp 0.3s ease-out",
           }}
@@ -309,7 +334,6 @@ export function EssayWorkspace({
             setEssayImage={setEssayImage}
             onSubmit={handleRun}
             canSubmit={canRun}
-            lang={lang}
             t={t}
           />
         </ErrorBoundary>
