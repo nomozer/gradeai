@@ -80,7 +80,7 @@ export function Sidebar({
       {/* Header — logo + title, inspired by reference UI */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          {/* Logo — reference SVG (transparent) */}
+          {/* Logo — Bold M (consistent with favicon) */}
           <img
             src="/favicon.svg"
             alt="MIRROR"
@@ -88,6 +88,7 @@ export function Sidebar({
             height={drawer ? 38 : 42}
             style={{
               flexShrink: 0,
+              borderRadius: 10,
               objectFit: "contain",
             }}
           />

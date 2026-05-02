@@ -1,12 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <g stroke="#3B4F8A" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" fill="transparent">
-    <!-- Left Page forming the left leg of 'M' -->
-    <path d="M 128 384 L 128 160 C 160 128, 224 128, 256 192 L 256 416 C 224 352, 160 352, 128 384 Z" />
-    
-    <!-- Right Page forming the right leg of 'M' -->
-    <path d="M 384 384 L 384 160 C 352 128, 288 128, 256 192 L 256 416 C 288 352, 352 352, 384 384 Z" />
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Solid Rounded Square Background -->
+  <rect width="32" height="32" rx="6" fill="#3B4F8A"/>
   
-  <!-- AI Sparkle signifying the AI grading intelligence -->
-  <path d="M 256 128 Q 256 80 304 80 Q 256 80 256 32 Q 256 80 208 80 Q 256 80 256 128 Z" fill="#3B4F8A" />
+  <!-- Bold "M" for high visibility in tabs -->
+  <text 
+    x="50%" 
+    y="55%" 
+    dominant-baseline="middle" 
+    text-anchor="middle" 
+    font-family="Georgia, serif" 
+    font-weight="900" 
+    font-size="20" 
+    fill="#FFFFFF"
+  >M</text>
 </svg>

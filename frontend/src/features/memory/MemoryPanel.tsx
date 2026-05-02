@@ -158,7 +158,7 @@ export function MemoryPanel({ onClose }: MemoryPanelProps) {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          {/* Logo — reference SVG (transparent) */}
+          {/* Logo — Bold M (consistent with favicon) */}
           <img
             src="/favicon.svg"
             alt="MIRROR"
@@ -166,6 +166,7 @@ export function MemoryPanel({ onClose }: MemoryPanelProps) {
             height={36}
             style={{
               flexShrink: 0,
+              borderRadius: 9,
               objectFit: "contain",
             }}
           />
