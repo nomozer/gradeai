@@ -24,9 +24,11 @@ import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +71,50 @@ start_watchdog()
 # App bootstrap
 # ---------------------------------------------------------------------------
 
+_DEFAULT_CORS_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
+_BACKEND_DEV_ORIGINS = ("http://localhost:8000", "http://127.0.0.1:8000")
+_CSRF_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _split_csv_env(name: str, default: str = "") -> list[str]:
+    return [
+        item.strip().rstrip("/")
+        for item in os.getenv(name, default).split(",")
+        if item.strip()
+    ]
+
+
+def _env_flag(name: str, default: str = "0") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _normalize_origin(value: str | None) -> str:
+    """Return scheme://host[:port] from an Origin or Referer header."""
+    if not value:
+        return ""
+    parsed = urlparse(value.strip())
+    if not parsed.scheme or not parsed.hostname:
+        return ""
+    port = f":{parsed.port}" if parsed.port else ""
+    return f"{parsed.scheme.lower()}://{parsed.hostname.lower()}{port}"
+
+
+CORS_ORIGINS = _split_csv_env("CORS_ORIGINS", _DEFAULT_CORS_ORIGINS)
+CSRF_TRUSTED_ORIGINS = tuple(
+    dict.fromkeys(
+        [
+            *(_normalize_origin(origin) for origin in CORS_ORIGINS),
+            *(
+                _normalize_origin(origin)
+                for origin in _split_csv_env("CSRF_TRUSTED_ORIGINS", "")
+            ),
+            *_BACKEND_DEV_ORIGINS,
+        ]
+    )
+)
+CSRF_ORIGIN_CHECK_ENABLED = _env_flag("CSRF_ORIGIN_CHECK", "1")
+CORS_ALLOW_CREDENTIALS = _env_flag("CORS_ALLOW_CREDENTIALS", "0")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -82,10 +128,42 @@ app = FastAPI(
     description="Backend for the Human-in-the-Loop multimodal essay-grading system",
 )
 
+
+@app.middleware("http")
+async def csrf_origin_guard(request: Request, call_next):
+    """Block cross-site unsafe API calls using Origin/Referer validation.
+
+    The app does not currently use cookie/session auth, so synchronizer CSRF
+    tokens would add complexity without a real credential to protect. This
+    guard still closes the browser CSRF path for state-changing endpoints and
+    keeps the backend ready if credentialed auth is added later.
+    """
+    if (
+        CSRF_ORIGIN_CHECK_ENABLED
+        and request.url.path.startswith("/api/")
+        and request.method.upper() in _CSRF_UNSAFE_METHODS
+    ):
+        origin = _normalize_origin(request.headers.get("origin"))
+        if not origin:
+            origin = _normalize_origin(request.headers.get("referer"))
+        if origin and origin not in CSRF_TRUSTED_ORIGINS:
+            logger.warning(
+                "Blocked cross-site API request method=%s path=%s origin=%s",
+                request.method,
+                request.url.path,
+                origin,
+            )
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Cross-site request blocked."},
+            )
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),
-    allow_credentials=True,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=CORS_ALLOW_CREDENTIALS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
