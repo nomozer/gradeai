@@ -15,9 +15,8 @@ interface AppHeaderProps {
  * Layout:
  *   [hamburger? | brand]    [Bộ nhớ HITL] [Hướng dẫn]
  *
- * On mobile the hamburger opens the Sidebar drawer (subject/class), the
- * brand collapses to a wordmark, and action buttons drop their text labels
- * to keep the row compact.
+ * On mobile the hamburger opens the Sidebar drawer (subject/class), and
+ * action buttons drop their text labels to keep the row compact.
  */
 export function AppHeader({
   onOpenDrawer,
@@ -70,26 +69,6 @@ export function AppHeader({
           >
             <Icon.Menu size={20} />
           </button>
-        )}
-
-        {/* Mobile-only wordmark — desktop already shows MIRROR in the
-            sticky sidebar so the header doesn't repeat it. */}
-        {onOpenDrawer && (
-          <div
-            style={{
-              fontFamily: T.display,
-              fontSize: 18,
-              fontWeight: 600,
-              color: T.text,
-              letterSpacing: "-0.01em",
-              minWidth: 0,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            MIRROR
-          </div>
         )}
       </div>
 

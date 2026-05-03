@@ -157,28 +157,16 @@ export function MemoryPanel({ onClose }: MemoryPanelProps) {
           gap: 16,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          {/* Logo — Bold M (consistent with favicon) */}
-          <img
-            src="/favicon.svg"
-            alt="MIRROR"
-            width={36}
-            height={36}
-            style={{
-              flexShrink: 0,
-              borderRadius: 9,
-              objectFit: "contain",
-            }}
-          />
+        <div style={{ minWidth: 0 }}>
           <div style={{ minWidth: 0 }}>
             <div
               style={{
                 fontFamily: T.display,
-                fontSize: 18,
-                fontWeight: 600,
-                color: T.text,
-                letterSpacing: "-0.01em",
-                lineHeight: 1.1,
+                fontSize: 28,
+                fontWeight: 800,
+                color: T.accentDark,
+                letterSpacing: 0,
+                lineHeight: 0.95,
               }}
             >
               MIRROR

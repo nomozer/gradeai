@@ -79,39 +79,27 @@ export function Sidebar({
     <aside style={asideStyle}>
       {/* Header — logo + title, inspired by reference UI */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          {/* Logo — Bold M (consistent with favicon) */}
-          <img
-            src="/favicon.svg"
-            alt="MIRROR"
-            width={drawer ? 38 : 42}
-            height={drawer ? 38 : 42}
-            style={{
-              flexShrink: 0,
-              borderRadius: 10,
-              objectFit: "contain",
-            }}
-          />
+        <div style={{ minWidth: 0 }}>
           <div style={{ minWidth: 0 }}>
             <div
               style={{
                 fontFamily: T.display,
-                fontSize: drawer ? 18 : 20,
-                fontWeight: 600,
-                color: T.text,
-                letterSpacing: "-0.01em",
-                lineHeight: 1.1,
+                fontSize: drawer ? 28 : 30,
+                fontWeight: 800,
+                color: T.accentDark,
+                letterSpacing: 0,
+                lineHeight: 0.95,
               }}
             >
               {String(t.title)}
             </div>
             <div
               style={{
-                fontSize: 13,
+                fontSize: 14,
                 color: T.textMute,
-                marginTop: 3,
+                marginTop: 7,
                 lineHeight: 1.3,
-                letterSpacing: "0.01em",
+                letterSpacing: 0,
               }}
             >
               Bài chấm tự động
