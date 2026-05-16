@@ -8,10 +8,10 @@ Responsibilities (kept deliberately small):
     • Including the heartbeat router from ``api.heartbeat``
 
 Domain layout — each folder = one chapter of the report:
-    • api/      — Pydantic schemas + heartbeat router (HTTP surface)
-    • grading/  — AgentOrchestrator + Gemini client + file/JSON helpers
+    • api/      — Pydantic schemas + heartbeat router + CSRF middleware
+    • grading/  — AgentOrchestrator + Gemini client + scoring + helpers
     • memory/   — Dual-store (SQLite + ChromaDB) + JSONL event log
-    • prompts/  — Subject-aware system prompts (math, cs)
+    • prompts/  — Subject-aware system prompts (math, cs, phys)
 
 Research Project: Tác tử AI hỗ trợ chấm điểm tự luận đa phương thức kết hợp
                   phản hồi từ giáo viên (Human-in-the-loop VLM Grading Agent)
@@ -24,11 +24,9 @@ import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +41,7 @@ for _stream in (sys.stdout, sys.stderr):
 # uvicorn is launched from backend/, so direct imports (no "backend." prefix).
 from api.heartbeat import router as heartbeat_router, start_watchdog
 from api.memory import router as memory_router, attach_memory
+from api.middleware import make_csrf_origin_guard, normalize_origin
 from api.schemas import (
     AnalyzeCommentRequest,
     AnalyzeCommentResponse,
@@ -58,7 +57,10 @@ from api.schemas import (
 from grading import (
     AgentOrchestrator,
     PromptOrchestrator,
+    compute_score_deltas,
+    format_delta_lesson,
     looks_like_timeout,
+    safe_delta,
 )
 from memory import MemoryManager, log_event as log_hitl_event
 
@@ -73,7 +75,6 @@ start_watchdog()
 
 _DEFAULT_CORS_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
 _BACKEND_DEV_ORIGINS = ("http://localhost:8000", "http://127.0.0.1:8000")
-_CSRF_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
 def _split_csv_env(name: str, default: str = "") -> list[str]:
@@ -88,24 +89,13 @@ def _env_flag(name: str, default: str = "0") -> bool:
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _normalize_origin(value: str | None) -> str:
-    """Return scheme://host[:port] from an Origin or Referer header."""
-    if not value:
-        return ""
-    parsed = urlparse(value.strip())
-    if not parsed.scheme or not parsed.hostname:
-        return ""
-    port = f":{parsed.port}" if parsed.port else ""
-    return f"{parsed.scheme.lower()}://{parsed.hostname.lower()}{port}"
-
-
 CORS_ORIGINS = _split_csv_env("CORS_ORIGINS", _DEFAULT_CORS_ORIGINS)
 CSRF_TRUSTED_ORIGINS = tuple(
     dict.fromkeys(
         [
-            *(_normalize_origin(origin) for origin in CORS_ORIGINS),
+            *(normalize_origin(origin) for origin in CORS_ORIGINS),
             *(
-                _normalize_origin(origin)
+                normalize_origin(origin)
                 for origin in _split_csv_env("CSRF_TRUSTED_ORIGINS", "")
             ),
             *_BACKEND_DEV_ORIGINS,
@@ -128,37 +118,12 @@ app = FastAPI(
     description="Backend for the Human-in-the-Loop multimodal essay-grading system",
 )
 
-
-@app.middleware("http")
-async def csrf_origin_guard(request: Request, call_next):
-    """Block cross-site unsafe API calls using Origin/Referer validation.
-
-    The app does not currently use cookie/session auth, so synchronizer CSRF
-    tokens would add complexity without a real credential to protect. This
-    guard still closes the browser CSRF path for state-changing endpoints and
-    keeps the backend ready if credentialed auth is added later.
-    """
-    if (
-        CSRF_ORIGIN_CHECK_ENABLED
-        and request.url.path.startswith("/api/")
-        and request.method.upper() in _CSRF_UNSAFE_METHODS
-    ):
-        origin = _normalize_origin(request.headers.get("origin"))
-        if not origin:
-            origin = _normalize_origin(request.headers.get("referer"))
-        if origin and origin not in CSRF_TRUSTED_ORIGINS:
-            logger.warning(
-                "Blocked cross-site API request method=%s path=%s origin=%s",
-                request.method,
-                request.url.path,
-                origin,
-            )
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "Cross-site request blocked."},
-            )
-    return await call_next(request)
-
+app.middleware("http")(
+    make_csrf_origin_guard(
+        CSRF_TRUSTED_ORIGINS,
+        enabled=CSRF_ORIGIN_CHECK_ENABLED,
+    )
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -439,10 +404,10 @@ async def finalize_grade(req: FinalizeGradeRequest):
     PER_RUBRIC_THRESHOLD = 0.25
     OVERALL_THRESHOLD = 0.10
 
-    deltas = _compute_score_deltas(
+    deltas = compute_score_deltas(
         req.ai_scores, req.teacher_scores, PER_RUBRIC_THRESHOLD
     )
-    overall_delta = _safe_delta(req.ai_overall, req.teacher_overall)
+    overall_delta = safe_delta(req.ai_overall, req.teacher_overall)
 
     # Persist the approved grade (research-grade audit log). Idempotent via
     # the UNIQUE INDEX on approved_grades — no need to pre-check.
@@ -458,7 +423,14 @@ async def finalize_grade(req: FinalizeGradeRequest):
     # grading runs can learn the AI's tendency.
     delta_lesson_id: int | None = None
     if deltas or (overall_delta is not None and abs(overall_delta) >= OVERALL_THRESHOLD):
-        lesson_text = _format_delta_lesson(req, deltas, overall_delta)
+        lesson_text = format_delta_lesson(
+            ai_overall=req.ai_overall,
+            teacher_overall=req.teacher_overall,
+            ai_scores=req.ai_scores,
+            teacher_scores=req.teacher_scores,
+            deltas=deltas,
+            overall_delta=overall_delta,
+        )
         delta_lesson_id = prompt_orch.ingest_feedback(
             task=req.task,
             wrong_code="",
@@ -489,57 +461,6 @@ async def finalize_grade(req: FinalizeGradeRequest):
         deltas=deltas_out,
         message=message,
     )
-
-
-def _safe_delta(ai: float | None, teacher: float | None) -> float | None:
-    """Compute ``teacher - ai`` with graceful handling of missing values."""
-    if ai is None or teacher is None:
-        return None
-    try:
-        return round(float(teacher) - float(ai), 2)
-    except (TypeError, ValueError):
-        return None
-
-
-def _compute_score_deltas(
-    ai_scores: dict[str, float],
-    teacher_scores: dict[str, float],
-    threshold: float,
-) -> dict[str, float]:
-    """Per-rubric delta dict, only keeping entries above the threshold."""
-    rubric_keys = ("content", "argument", "expression", "creativity")
-    deltas: dict[str, float] = {}
-    for key in rubric_keys:
-        d = _safe_delta(ai_scores.get(key), teacher_scores.get(key))
-        if d is not None and abs(d) >= threshold:
-            deltas[key] = d
-    return deltas
-
-
-def _format_delta_lesson(
-    req: FinalizeGradeRequest,
-    deltas: dict[str, float],
-    overall_delta: float | None,
-) -> str:
-    """Render a Vietnamese lesson text describing the teacher's corrections."""
-    parts = ["Hiệu chỉnh điểm của giáo viên cho bài tương tự:"]
-    if overall_delta is not None and abs(overall_delta) >= 0.5:
-        direction = "giảm" if overall_delta < 0 else "tăng"
-        parts.append(
-            f"- Tổng điểm: AI chấm {req.ai_overall} → giáo viên {direction} "
-            f"còn {req.teacher_overall} (chênh {overall_delta:+}). "
-        )
-    for key, d in deltas.items():
-        direction = "hạ" if d < 0 else "nâng"
-        parts.append(
-            f"- {key}: AI {req.ai_scores.get(key)} → giáo viên {direction} "
-            f"{req.teacher_scores.get(key)} (chênh {d:+}). "
-        )
-    parts.append(
-        "Khi gặp bài tương tự, cần điều chỉnh theo hướng này để khớp "
-        "với chuẩn chấm của giáo viên."
-    )
-    return "\n".join(parts)
 
 
 @app.post("/api/analyze-comment", response_model=AnalyzeCommentResponse)
