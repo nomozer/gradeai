@@ -220,6 +220,16 @@ export function EssayWorkspace({
 
   const handleApprove = useCallback(() => setStep(5), []);
 
+  // Click on a completed step in the indicator → jump back. Only user
+  // checkpoints (1: Upload, 3: Review) are exposed as navigable — steps
+  // 2 (AI reading) and 4 (AI re-grading) are transient loaders, not
+  // checkpoints; clicking them would put the UI back into a "loading"
+  // state with no real work happening.
+  const handleStepClick = useCallback((n: number) => {
+    setStep(n);
+  }, []);
+  const isStepNavigable = useCallback((n: number) => n === 1 || n === 3, []);
+
   // Persist the finalized grade and capture AI↔teacher score delta as a
   // HITL lesson. The UI only locks after the backend confirms persistence.
   const persistFinalizedGrade = useCallback(
@@ -296,7 +306,12 @@ export function EssayWorkspace({
 
   return (
     <div style={{ padding: "0 clamp(16px, 4vw, 32px) 96px", display: active ? "block" : "none" }}>
-      <StepIndicator steps={stepLabels} currentStep={displayStep} />
+      <StepIndicator
+        steps={stepLabels}
+        currentStep={displayStep}
+        onStepClick={handleStepClick}
+        isStepNavigable={isStepNavigable}
+      />
 
       {pipeline.error && (
         <div

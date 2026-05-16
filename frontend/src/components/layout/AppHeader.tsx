@@ -75,6 +75,7 @@ export function AppHeader({
       <nav style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
         <HeaderAction
           label="Bộ nhớ HITL"
+          title={memoryActive ? "Quay lại bàn chấm" : "Bộ nhớ HITL"}
           icon={<Icon.Lightbulb size={14} color={memoryActive ? "#FFFDF8" : T.amber} />}
           onClick={onOpenMemory}
           active={memoryActive}
@@ -93,23 +94,27 @@ export function AppHeader({
 
 function HeaderAction({
   label,
+  title,
   icon,
   onClick,
   active = false,
   collapseLabel = false,
 }: {
   label: string;
+  /** Optional tooltip/aria override — defaults to ``label`` when omitted. */
+  title?: string;
   icon: React.ReactNode;
   onClick: () => void;
   active?: boolean;
   collapseLabel?: boolean;
 }) {
+  const hover = title ?? label;
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={label}
-      title={label}
+      aria-label={hover}
+      title={hover}
       style={{
         background: active ? T.accent : "transparent",
         border: `1px solid ${active ? T.accent : T.border}`,

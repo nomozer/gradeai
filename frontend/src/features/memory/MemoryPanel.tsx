@@ -10,10 +10,6 @@ import { Icon } from "../../components/ui/Icon";
 import { T } from "../../theme/tokens";
 import type { Lesson } from "../../types";
 
-interface MemoryPanelProps {
-  onClose: () => void;
-}
-
 type SubjectFilter = "" | "cs" | "math" | "phys";
 
 const SUBJECT_LABEL: Record<string, string> = {
@@ -64,7 +60,19 @@ function truncate(text: string, max: number): string {
   return text.slice(0, max).trimEnd() + "…";
 }
 
-export function MemoryPanel({ onClose }: MemoryPanelProps) {
+export function MemoryPanel() {
+  // Close button — when this page was opened via window.open() the browser
+  // lets us close ourselves. For direct navigation (user typed the URL or
+  // refreshed), strip the hash and go back to workspace instead.
+  const handleClose = useCallback(() => {
+    if (window.opener && !window.opener.closed) {
+      window.close();
+      return;
+    }
+    window.location.hash = "";
+    window.location.reload();
+  }, []);
+
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [stats, setStats] = useState<MemoryStats | null>(null);
   const [subject, setSubject] = useState<SubjectFilter>("");
@@ -158,33 +166,31 @@ export function MemoryPanel({ onClose }: MemoryPanelProps) {
         }}
       >
         <div style={{ minWidth: 0 }}>
-          <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                fontFamily: T.display,
-                fontSize: 28,
-                fontWeight: 800,
-                color: T.accentDark,
-                letterSpacing: 0,
-                lineHeight: 0.95,
-              }}
-            >
-              MIRROR
-            </div>
-            <div
-              style={{
-                fontSize: 13,
-                color: T.textMute,
-                marginTop: 3,
-              }}
-            >
-              Bộ nhớ AI
-            </div>
+          <div
+            style={{
+              fontFamily: T.display,
+              fontSize: 28,
+              fontWeight: 800,
+              color: T.accentDark,
+              letterSpacing: 0,
+              lineHeight: 0.95,
+            }}
+          >
+            MIRROR
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: T.textMute,
+              marginTop: 3,
+            }}
+          >
+            Bộ nhớ AI
           </div>
         </div>
 
         <button
-          onClick={onClose}
+          onClick={handleClose}
           title="Quay lại bàn chấm"
           style={{
             background: T.accent,

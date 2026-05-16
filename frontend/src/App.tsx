@@ -1,9 +1,14 @@
 /**
  * App.tsx — MIRROR root composer.
  *
- * Wires hooks + layout shell (sidebar, header, tab bar) + per-essay
- * workspaces. Business logic lives in hooks/ and features/ — this file
- * only composes.
+ * Two top-level pages share the same SPA bundle, gated by the URL hash:
+ *   • ``""`` (default)  → grading workspace (sidebar + tabs)
+ *   • ``"#memory"``     → HITL Memory page (standalone, no sidebar)
+ *
+ * The header's "Bộ nhớ HITL" button opens ``#memory`` in a NEW browser
+ * tab via ``window.open``, so the workspace tab keeps its full state
+ * (tabs, uploads, in-flight grades) untouched in the background — same
+ * mental model as middle-clicking a link in Chrome.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -20,24 +25,61 @@ import { EssayWorkspace } from "./features/workspace/EssayWorkspace";
 import { MemoryPanel } from "./features/memory/MemoryPanel";
 import { HelpModal } from "./features/help/HelpModal";
 
-type AppView = "workspace" | "memory";
+const MEMORY_HASH = "#memory";
+
+function isMemoryRoute(): boolean {
+  return typeof window !== "undefined" && window.location.hash === MEMORY_HASH;
+}
 
 export default function App() {
+  // Decide which page to mount ONCE — the workspace tab never navigates
+  // to memory in-place (memory always opens in a new browser tab), so a
+  // single render-time check is enough and skips loading useTabs / file
+  // state on the memory page.
+  const [memoryRoute] = useState<boolean>(isMemoryRoute);
+
+  return memoryRoute ? <MemoryPage /> : <WorkspacePage />;
+}
+
+// ---------------------------------------------------------------------------
+// Memory page — standalone, no sidebar / no tab bar / no heartbeat fight.
+// ---------------------------------------------------------------------------
+
+function MemoryPage() {
+  // Heartbeat from this tab too so the backend doesn't shut down when the
+  // workspace tab is closed but the memory tab remains open.
+  useHeartbeat();
+
+  return (
+    <div style={{ minHeight: "100vh", background: T.bg }}>
+      <GlobalStyles />
+      <MemoryPanel />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Workspace page — sidebar, tab bar, essay workspaces.
+// ---------------------------------------------------------------------------
+
+function WorkspacePage() {
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [view, setView] = useState<AppView>("workspace");
-
   const [helpOpen, setHelpOpen] = useState(false);
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
-  const openMemory = useCallback(() => {
-    setView("memory");
-    setDrawerOpen(false);
-  }, []);
-  const closeMemory = useCallback(() => setView("workspace"), []);
   const openHelp = useCallback(() => setHelpOpen(true), []);
   const closeHelp = useCallback(() => setHelpOpen(false), []);
+
+  // "Bộ nhớ HITL" header button: open the memory page in a new browser tab
+  // so the workspace tab (uploaded files, in-flight grades, scroll
+  // position) stays exactly as the user left it.
+  const openMemoryTab = useCallback(() => {
+    const url = window.location.origin + window.location.pathname + MEMORY_HASH;
+    window.open(url, "_blank", "noopener,noreferrer");
+    setDrawerOpen(false);
+  }, []);
 
   // Auto-close the drawer on viewport upgrade so the sticky sidebar
   // doesn't double-render on top of itself when crossing the breakpoint.
@@ -83,17 +125,6 @@ export default function App() {
 
   const completedCount = tabs.filter((tab) => tab.hasGrade).length;
 
-  // Memory view — render as a separate full-page layout (no sidebar or tab bar).
-  if (view === "memory") {
-    return (
-      <div style={{ minHeight: "100vh", background: T.bg }}>
-        <GlobalStyles />
-        <MemoryPanel onClose={closeMemory} />
-        {helpOpen && <HelpModal onClose={closeHelp} />}
-      </div>
-    );
-  }
-
   return (
     <div
       style={{
@@ -119,9 +150,9 @@ export default function App() {
       <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
         <AppHeader
           onOpenDrawer={isMobile ? openDrawer : undefined}
-          onOpenMemory={openMemory}
+          onOpenMemory={openMemoryTab}
           onOpenHelp={openHelp}
-          memoryActive={view === "memory"}
+          memoryActive={false}
         />
 
         <TabBar
