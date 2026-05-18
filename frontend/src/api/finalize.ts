@@ -8,6 +8,13 @@ export interface FinalizeGradeRequest {
   teacher_overall: number | null;
   ai_scores: Record<string, number>;
   teacher_scores: Record<string, number>;
+  /** Per-câu AI scores keyed by câu number as string ("1","2",...).
+   *  Backend computes per-câu deltas alongside rubric ones — required for
+   *  HITL to learn from step-4 per-câu edits (the only path the current UI
+   *  actually exposes for score corrections). */
+  ai_per_question?: Record<string, number>;
+  /** Per-câu teacher overrides, same shape as ai_per_question. */
+  teacher_per_question?: Record<string, number>;
   approved_grade_json: string;
   run_id: number | null;
   subject?: BackendSubject | null;

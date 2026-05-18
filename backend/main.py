@@ -57,6 +57,7 @@ from api.schemas import (
 from grading import (
     AgentOrchestrator,
     PromptOrchestrator,
+    compute_per_question_deltas,
     compute_score_deltas,
     format_delta_lesson,
     looks_like_timeout,
@@ -398,14 +399,27 @@ async def finalize_grade(req: FinalizeGradeRequest):
     much* to adjust the score.
 
     Learning thresholds tuned to the VN 10-point rubric:
-      • per-rubric: 0.25  (the smallest meaningful step teachers use)
-      • overall:    0.10  (overall = mean of 4 rubrics, deltas smooth out)
+      • per-rubric:  0.25  (the smallest meaningful step teachers use)
+      • per-câu:     0.25  (same step size — câu scores live on the same scale)
+      • overall:     0.10  (overall = sum of per-câu, deltas smooth out)
+
+    Two score axes are compared independently and folded into ONE lesson:
+      * Rubric (content/argument/expression/creativity) — legacy 4-dim.
+      * Per-câu (Câu 1/2/…) — what the current UI actually edits in step 4.
+    Combining them in a single lesson avoids double-counting one correction
+    in the score-weighted retrieval ranking. Dedup via ``find_recent_lesson``
+    keeps double-clicks on "Đã lưu" from polluting the corpus.
     """
     PER_RUBRIC_THRESHOLD = 0.25
+    PER_QUESTION_THRESHOLD = 0.25
     OVERALL_THRESHOLD = 0.10
+    DEDUP_WINDOW_SECONDS = 300
 
-    deltas = compute_score_deltas(
+    rubric_deltas = compute_score_deltas(
         req.ai_scores, req.teacher_scores, PER_RUBRIC_THRESHOLD
+    )
+    per_question_deltas = compute_per_question_deltas(
+        req.ai_per_question, req.teacher_per_question, PER_QUESTION_THRESHOLD
     )
     overall_delta = safe_delta(req.ai_overall, req.teacher_overall)
 
@@ -420,34 +434,64 @@ async def finalize_grade(req: FinalizeGradeRequest):
         )
 
     # Auto-generate a lesson capturing the numeric correction so future
-    # grading runs can learn the AI's tendency.
+    # grading runs can learn the AI's tendency. Fires if ANY axis has a
+    # delta above its threshold — including per-câu, which is the path that
+    # 100% of teacher edits flow through under the current step-4 UI.
     delta_lesson_id: int | None = None
-    if deltas or (overall_delta is not None and abs(overall_delta) >= OVERALL_THRESHOLD):
+    has_signal = bool(rubric_deltas) or bool(per_question_deltas) or (
+        overall_delta is not None and abs(overall_delta) >= OVERALL_THRESHOLD
+    )
+    if has_signal:
         lesson_text = format_delta_lesson(
             ai_overall=req.ai_overall,
             teacher_overall=req.teacher_overall,
+            overall_delta=overall_delta,
             ai_scores=req.ai_scores,
             teacher_scores=req.teacher_scores,
-            deltas=deltas,
-            overall_delta=overall_delta,
+            rubric_deltas=rubric_deltas,
+            ai_per_question=req.ai_per_question,
+            teacher_per_question=req.teacher_per_question,
+            per_question_deltas=per_question_deltas,
         )
-        delta_lesson_id = prompt_orch.ingest_feedback(
+        # Idempotent save: a recent identical lesson (same task + same
+        # rendered text + same score tier) means the teacher already
+        # finalized this correction. Returning the existing id keeps the
+        # corpus clean instead of duplicating the embedding/row.
+        existing_id = memory.find_recent_lesson(
             task=req.task,
-            wrong_code="",
-            correct_code=req.approved_grade_json.strip(),
             lesson_text=lesson_text,
-            score=4.0,  # stronger than per-Q annotations (3.5), weaker than reject (5.0)
-            subject=req.subject,
+            feedback_score=4.0,
+            within_seconds=DEDUP_WINDOW_SECONDS,
         )
+        if existing_id is not None:
+            delta_lesson_id = existing_id
+        else:
+            delta_lesson_id = prompt_orch.ingest_feedback(
+                task=req.task,
+                wrong_code="",
+                correct_code=req.approved_grade_json.strip(),
+                lesson_text=lesson_text,
+                score=4.0,  # stronger than per-Q annotations (3.5), weaker than reject (5.0)
+                subject=req.subject,
+            )
 
-    deltas_out = dict(deltas)
+    deltas_out: dict[str, float] = dict(rubric_deltas)
+    for cau, d in per_question_deltas.items():
+        # Prefix per-câu keys so the API response can distinguish them from
+        # rubric keys ("content" vs "cau:1") without changing the dict shape.
+        deltas_out[f"cau:{cau}"] = d
     if overall_delta is not None:
         deltas_out["overall"] = overall_delta
 
-    message = (
-        f"Finalized. Captured {len(deltas)} rubric delta(s)."
-        if delta_lesson_id else "Finalized. No significant delta to learn from."
-    )
+    rubric_count = len(rubric_deltas)
+    cau_count = len(per_question_deltas)
+    if delta_lesson_id:
+        message = (
+            f"Finalized. Captured {rubric_count} rubric delta(s) "
+            f"and {cau_count} per-câu delta(s)."
+        )
+    else:
+        message = "Finalized. No significant delta to learn from."
     log_hitl_event(
         "finalize",
         task=req.task,

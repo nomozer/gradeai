@@ -6,7 +6,7 @@ import { ApiError, finalizeGrade } from "../../api";
 import { T } from "../../theme/tokens";
 import { i18n } from "../../i18n";
 import { Icon } from "../../components/ui/Icon";
-import { parseGrade } from "../../lib/grade";
+import { parseCauHeader, parseGrade } from "../../lib/grade";
 import { LoadingSpinner } from "../../components/ui/LoadingSpinner";
 import { StepIndicator } from "../../components/layout/StepIndicator";
 import { ResultCard } from "./ResultCard";
@@ -317,8 +317,35 @@ export function EssayWorkspace({
         if (te !== null) teacherScores[key] = te;
         if (ai !== null) aiScores[key] = ai;
       }
+      // Per-câu maps mirror what step-4 actually edits. Teacher overrides
+      // live in ``finalScores`` (câu_num → score); câus the teacher didn't
+      // touch fall back to AI's score so the delta reads as 0 and gets
+      // dropped by the 0.25 threshold server-side (no phantom lesson).
+      const pqf = grade?.per_question_feedback ?? [];
+      const aiPerQuestion: Record<string, number> = {};
+      const teacherPerQuestion: Record<string, number> = {};
+      let sumAiPq = 0;
+      let hasRealPqf = false;
+      for (let i = 0; i < pqf.length; i++) {
+        const q = pqf[i];
+        const aiScore =
+          typeof q.score === "number" && Number.isFinite(q.score) ? q.score : null;
+        if (aiScore === null) continue;
+        hasRealPqf = true;
+        const parsed = parseCauHeader(q.question ?? "", i + 1);
+        const key = String(parsed.num);
+        const teacherScore = finalScores[parsed.num] ?? aiScore;
+        aiPerQuestion[key] = aiScore;
+        teacherPerQuestion[key] = teacherScore;
+        sumAiPq += aiScore;
+      }
+      // Apples-to-apples overall comparison: when per-câu data is present
+      // use sumAI as ai_overall so the delta reads against the SAME
+      // dimension the teacher edited. The old code compared sumTeacher
+      // (per-câu) against grade.overall (rubric-derived), which produced
+      // phantom deltas any time AI's rubric overall ≠ its per-câu sum.
       const teacherOverall = toNum(payload?.overall);
-      const aiOverall = toNum(grade?.overall);
+      const aiOverall = hasRealPqf ? sumAiPq : toNum(grade?.overall);
       const finalGrade = {
         ...(grade || {}),
         scores: { ...(grade?.scores || {}), ...teacherScores },
@@ -332,6 +359,8 @@ export function EssayWorkspace({
           teacher_overall: teacherOverall,
           ai_scores: aiScores,
           teacher_scores: teacherScores,
+          ai_per_question: aiPerQuestion,
+          teacher_per_question: teacherPerQuestion,
           approved_grade_json: JSON.stringify(finalGrade),
           run_id: pipeline.runId,
           subject,
@@ -348,7 +377,7 @@ export function EssayWorkspace({
         throw err;
       }
     },
-    [grade, task, lang, pipeline.runId, subject, t],
+    [grade, task, lang, pipeline.runId, subject, finalScores, t],
   );
 
   const displayStep = deriveDisplayStep(step);

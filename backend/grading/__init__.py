@@ -18,6 +18,7 @@ from .agent import AgentOrchestrator, PipelineResult, looks_like_timeout
 from .prompt_orchestrator import PromptOrchestrator
 from .scoring import (
     RUBRIC_KEYS,
+    compute_per_question_deltas,
     compute_score_deltas,
     format_delta_lesson,
     safe_delta,
@@ -29,6 +30,7 @@ __all__ = [
     "PromptOrchestrator",
     "looks_like_timeout",
     "RUBRIC_KEYS",
+    "compute_per_question_deltas",
     "compute_score_deltas",
     "format_delta_lesson",
     "safe_delta",

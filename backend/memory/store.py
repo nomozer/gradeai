@@ -586,6 +586,44 @@ class MemoryManager:
             "by_tier": tiers,
         }
 
+    def find_recent_lesson(
+        self,
+        *,
+        task: str,
+        lesson_text: str,
+        feedback_score: float,
+        within_seconds: int = 300,
+    ) -> int | None:
+        """Return id of a matching lesson saved within ``within_seconds``, else None.
+
+        Used by /api/finalize-grade to keep the HITL corpus clean when a
+        teacher double-clicks "Đã lưu" or unlocks + re-finalizes with
+        identical edits. Exact byte-equality on ``lesson_text`` is enough
+        because ``format_delta_lesson`` is deterministic given the same
+        deltas — anything that round-trips to the same rendered text is
+        the same correction and should reuse the existing lesson id.
+
+        Without this guard each click would mint a new row + a new Chroma
+        vector, and retrieval would over-weight the duplicated correction
+        (score-DESC ordering doesn't dedupe).
+        """
+        cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+            seconds=within_seconds
+        )
+        with self._get_session() as session:
+            return (
+                session.query(Lesson.id)
+                .filter(
+                    Lesson.task == task,
+                    Lesson.lesson_text == lesson_text,
+                    Lesson.feedback_score == feedback_score,
+                    Lesson.timestamp >= cutoff,
+                )
+                .order_by(Lesson.timestamp.desc())
+                .limit(1)
+                .scalar()
+            )
+
     def backfill_correct_code(self, task: str, correct_code: str) -> int:
         """Fill in ``correct_code`` on lessons that lack it for *task*.
 

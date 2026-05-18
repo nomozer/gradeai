@@ -153,6 +153,13 @@ class FinalizeGradeRequest(BaseModel):
     differ from the AI's suggestion. The numeric delta is itself a HITL
     signal — currently the strongest one the UI captures, since it's a
     concrete correction rather than free-form text.
+
+    Two complementary score axes are accepted:
+      * rubric: 4-dim VN STEM rubric (content/argument/expression/creativity)
+      * per-câu: per-question scores keyed by câu number ("1","2",...)
+    Either or both may be empty. The finalize handler computes deltas on
+    whichever axis has data and combines them into a single lesson so the
+    RAG corpus does not double-count a single correction.
     """
 
     task: str = Field(..., min_length=1)
@@ -160,6 +167,15 @@ class FinalizeGradeRequest(BaseModel):
     teacher_overall: float | None = None
     ai_scores: dict[str, float] = Field(default_factory=dict)
     teacher_scores: dict[str, float] = Field(default_factory=dict)
+    ai_per_question: dict[str, float] = Field(
+        default_factory=dict,
+        description='Per-câu AI scores keyed by câu number as string ("1","2",...). '
+        "When present, finalize computes per-câu deltas alongside the rubric ones.",
+    )
+    teacher_per_question: dict[str, float] = Field(
+        default_factory=dict,
+        description="Per-câu teacher overrides, same shape as ai_per_question.",
+    )
     approved_grade_json: str = Field(default="")
     run_id: int | None = None
     subject: str | None = None
