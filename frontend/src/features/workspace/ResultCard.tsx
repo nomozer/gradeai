@@ -97,6 +97,146 @@ function parseQuestionField(
   return { num, label: `Câu ${num}`, prompt };
 }
 
+// ---------------------------------------------------------------------------
+// Score quality buckets — drive the colour of the per-câu ScoreChip.
+//
+//   ≥80%  good  → green   ("an toàn để duyệt nhanh")
+//   50-79 fair  → amber   ("nên đọc nhận xét")
+//   <50%  poor  → red     ("cần kiểm tra kỹ")
+//   max=0       neutral → grey ("legacy grade, không có thang điểm")
+//
+// Thresholds match the 10-point VN rubric mental model used elsewhere in
+// the app (≥8.0 giỏi · 5.0-7.9 khá-trung bình · <5.0 yếu). One source of
+// truth so the chip + any future use of these colours stays consistent.
+// ---------------------------------------------------------------------------
+type ScoreQuality = "good" | "fair" | "poor" | "neutral";
+
+function scoreQuality(score: number, max: number): ScoreQuality {
+  if (!max || max <= 0) return "neutral";
+  const ratio = score / max;
+  if (ratio >= 0.8) return "good";
+  if (ratio >= 0.5) return "fair";
+  return "poor";
+}
+
+// Per-câu expanded-body block. One component, two tones — the colour pair
+// + leading icon is the entire "phần làm tốt vs cần cải thiện" semantic.
+// The visually hidden `srLabel` (sr-only via clip-path) keeps screen
+// reader users hearing "Phần làm tốt:" before the body text, even though
+// nothing is rendered for sighted users.
+function FeedbackBlock({
+  tone,
+  srLabel,
+  text,
+  marginBottom = 0,
+}: {
+  tone: "good" | "improve";
+  srLabel: string;
+  text: string;
+  marginBottom?: number;
+}) {
+  const palette =
+    tone === "good"
+      ? { bg: T.greenSoft, bar: T.green, icon: <Icon.Check size={12} color={T.green} /> }
+      : { bg: T.amberSoft, bar: T.amber, icon: <Icon.Edit size={12} color={T.amber} /> };
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 10,
+        padding: "8px 14px 8px 14px",
+        background: palette.bg,
+        borderLeft: `3px solid ${palette.bar}`,
+        borderRadius: "0 6px 6px 0",
+        marginBottom,
+        fontSize: 13.5,
+        color: T.textSoft,
+        lineHeight: 1.55,
+        alignItems: "flex-start",
+      }}
+    >
+      {/* Icon kept on its own line-box so multi-line body text wraps cleanly
+          beside it instead of pulling the icon down to the second line. */}
+      <span
+        aria-hidden="true"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          flexShrink: 0,
+          height: "1.55em",
+        }}
+      >
+        {palette.icon}
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        {/* sr-only label — invisible to sighted users, announced by screen
+            readers. Keeps the semantic without the visual pill. */}
+        <span
+          style={{
+            position: "absolute",
+            width: 1,
+            height: 1,
+            padding: 0,
+            margin: -1,
+            overflow: "hidden",
+            clip: "rect(0,0,0,0)",
+            whiteSpace: "nowrap",
+            border: 0,
+          }}
+        >
+          {srLabel}:
+        </span>
+        {text}
+      </span>
+    </div>
+  );
+}
+
+function ScoreChip({
+  score,
+  max,
+}: {
+  score: number;
+  max: number;
+}) {
+  const q = scoreQuality(score, max);
+  // Colour pairs chosen so the chip reads at a glance against the card's
+  // bgCard surface — same green/amber/red the rest of the app uses (greenSoft
+  // for tonal bg + green for the number + green border at low opacity).
+  const palette: Record<ScoreQuality, { fg: string; bg: string; border: string }> = {
+    good:    { fg: T.green, bg: T.greenSoft, border: T.green },
+    fair:    { fg: T.amber, bg: T.amberSoft, border: T.amber },
+    poor:    { fg: T.red,   bg: T.redSoft,   border: T.red },
+    neutral: { fg: T.textSoft, bg: T.bgElevated, border: T.border },
+  };
+  const c = palette[q];
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "baseline",
+        gap: 3,
+        padding: "3px 9px",
+        background: c.bg,
+        border: `1px solid ${c.border}`,
+        borderRadius: 999,
+        fontFamily: T.mono,
+        fontSize: 13,
+        fontWeight: 700,
+        color: c.fg,
+        whiteSpace: "nowrap",
+        fontVariantNumeric: "tabular-nums",
+        lineHeight: 1.15,
+      }}
+    >
+      {score.toFixed(1)}
+      <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.75 }}>
+        /{max ? max.toFixed(1) : "—"}
+      </span>
+    </span>
+  );
+}
+
 export interface ResultCardProps {
   grade: Grade | null;
   t: I18nStrings;
@@ -578,13 +718,30 @@ export function ResultCard({
           {/* Per-câu rows — compact summary, click to reveal nhận xét.
               Chevron is the affordance (rotates 90° on expand). Each
               row's expanded body sits inside the same border-bounded
-              section so the divider between rows still reads. */}
+              section so the divider between rows still reads.
+
+              Score chip is colour-coded by % of max so the teacher can
+              scan the whole column and instantly tell which câu look
+              healthy (green) vs need a closer read (amber/red), without
+              doing the percentage in their head from "1.5/3.0". */}
           <div>
             {rows.map((r, i) => {
               const delta = r.teacherScore - r.aiScore;
               const hasDelta = Math.abs(delta) > 0.001;
               const expanded = expandedRows.has(r.num);
               const hasBody = !!(r.goodPoints || r.improvements);
+              // Collapsed-row preview: a one-line peek so the teacher can
+              // decide whether to expand without clicking. Improvements
+              // take priority because that is where the disagreement lives;
+              // when there are none we summarise the câu as "đúng hoàn
+              // toàn" so a green-only câu reads as a positive confirmation
+              // rather than blank space.
+              let summary = "";
+              if (r.improvements) {
+                summary = r.improvements.replace(/\s+/g, " ").trim();
+              } else if (r.goodPoints) {
+                summary = "Đúng hoàn toàn";
+              }
               return (
                 <div
                   key={r.num}
@@ -624,7 +781,7 @@ export function ResultCard({
                         : "16px 70px minmax(0, 1fr) auto",
                       gap: 14,
                       alignItems: "center",
-                      padding: "14px 32px",
+                      padding: "12px 32px",
                       cursor: hasBody ? "pointer" : "default",
                       userSelect: "none",
                       transition: "background 0.12s",
@@ -671,45 +828,51 @@ export function ResultCard({
                         fontSize: 12,
                         color: T.textMute,
                         letterSpacing: "0.04em",
+                        alignSelf: "center",
                       }}
                     >
                       {r.label}
                     </span>
-                    <span
-                      style={{
-                        fontSize: 14,
-                        color: T.textSoft,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        lineHeight: 1.5,
-                      }}
-                      title={r.prompt}
-                    >
-                      {r.prompt}
-                    </span>
-                    <span
-                      style={{
-                        fontFamily: T.mono,
-                        fontSize: 15,
-                        fontWeight: 700,
-                        color: hasDelta ? T.red : T.text,
-                        whiteSpace: "nowrap",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      {r.teacherScore.toFixed(1)}
+                    {/* Prompt + collapsed-only summary preview. Wrapped in
+                        a vertical flex so the preview sits directly below
+                        the prompt; expanded state hides the preview to
+                        avoid duplicating the body content shown below. */}
+                    <div style={{ minWidth: 0 }}>
                       <span
                         style={{
-                          color: T.textFaint,
-                          fontWeight: 400,
-                          fontSize: 11,
-                          marginLeft: 1,
+                          display: "block",
+                          fontSize: 14,
+                          color: T.textSoft,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          lineHeight: 1.45,
                         }}
+                        title={r.prompt}
                       >
-                        /{r.maxPoints.toFixed(1)}
+                        {r.prompt}
                       </span>
-                    </span>
+                      {!expanded && summary && (
+                        <span
+                          style={{
+                            display: "block",
+                            marginTop: 2,
+                            fontSize: 12,
+                            color: r.improvements ? T.amber : T.green,
+                            fontStyle: "italic",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            lineHeight: 1.4,
+                          }}
+                          title={summary}
+                        >
+                          {r.improvements ? "▸ " : "✓ "}
+                          {summary}
+                        </span>
+                      )}
+                    </div>
+                    <ScoreChip score={r.teacherScore} max={r.maxPoints} />
                     {hasDelta && (
                       <span
                         style={{
@@ -732,94 +895,35 @@ export function ResultCard({
                     // @media print forces .rc-row-body open regardless of
                     // expanded state, so the printout includes all nhận
                     // xét without the teacher having to expand each row.
+                    //
+                    // Visual hierarchy: the left-coloured bar + leading
+                    // icon already carry "tốt vs cải thiện" semantics, so
+                    // the old uppercase pill labels ("PHẦN LÀM TỐT" / "CẦN
+                    // CẢI THIỆN") were doing redundant work and eating
+                    // horizontal room from the actual content. Dropped in
+                    // favour of an icon + screen-reader-only label so a11y
+                    // is preserved without the visual noise.
                     <div
                       className="rc-row-body"
                       data-expanded={expanded ? "true" : "false"}
                       style={{
-                        padding: "0 32px 14px 62px",
+                        padding: "0 32px 12px 62px",
                       }}
                     >
                       {r.goodPoints && (
-                        <div
-                          style={{
-                            // Padding bumped: icon was crowded against
-                            // the 3px coloured left border (icon + border
-                            // share colour, so they merged). Bumped left
-                            // padding to 16 + label marginRight to 10 so
-                            // the cluster has visible breathing room.
-                            padding: "10px 14px 10px 16px",
-                            background: T.greenSoft,
-                            borderLeft: `3px solid ${T.green}`,
-                            borderRadius: "0 6px 6px 0",
-                            marginBottom: r.improvements ? 6 : 0,
-                            fontSize: 13.5,
-                            color: T.textSoft,
-                            lineHeight: 1.55,
-                          }}
-                        >
-                          {/* Critical: lineHeight:1 on the inline-flex
-                              cluster so the label text's line-box equals
-                              its cap-height. Without it, the parent's
-                              1.55 line-height inflates the line-box and
-                              alignItems:center centres the icon on the
-                              inflated centre, not on the letters — which
-                              is exactly the offset we kept chasing.
-                              verticalAlign:middle on the inline-flex
-                              span then aligns the cluster's middle with
-                              the body text's x-height. */}
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 6,
-                              lineHeight: 1,
-                              fontWeight: 700,
-                              color: T.green,
-                              fontSize: 10,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.08em",
-                              marginRight: 10,
-                              verticalAlign: "middle",
-                            }}
-                          >
-                            <Icon.Check size={10} color={T.green} />
-                            {String(t.goodPoints ?? "Phần làm tốt")}
-                          </span>
-                          {r.goodPoints}
-                        </div>
+                        <FeedbackBlock
+                          tone="good"
+                          srLabel={String(t.goodPoints ?? "Phần làm tốt")}
+                          text={r.goodPoints}
+                          marginBottom={r.improvements ? 6 : 0}
+                        />
                       )}
                       {r.improvements && (
-                        <div
-                          style={{
-                            padding: "10px 14px 10px 16px",
-                            background: T.amberSoft,
-                            borderLeft: `3px solid ${T.amber}`,
-                            borderRadius: "0 6px 6px 0",
-                            fontSize: 13.5,
-                            color: T.textSoft,
-                            lineHeight: 1.55,
-                          }}
-                        >
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 6,
-                              lineHeight: 1,
-                              fontWeight: 700,
-                              color: T.amber,
-                              fontSize: 10,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.08em",
-                              marginRight: 10,
-                              verticalAlign: "middle",
-                            }}
-                          >
-                            <Icon.Edit size={10} color={T.amber} />
-                            {String(t.errors ?? "Cần cải thiện")}
-                          </span>
-                          {r.improvements}
-                        </div>
+                        <FeedbackBlock
+                          tone="improve"
+                          srLabel={String(t.errors ?? "Cần cải thiện")}
+                          text={r.improvements}
+                        />
                       )}
                     </div>
                   )}
