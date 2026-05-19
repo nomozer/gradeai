@@ -27,6 +27,7 @@ import type {
   FinalizedResult,
   Grade,
   RubricScores,
+  SelectionAnnotation,
   TabMeta,
   TaskFile,
 } from "../../types";
@@ -66,6 +67,13 @@ export function EssayWorkspace({
   // — see the parseGrade effect below.
   const [finalScores, setFinalScores] = useState<Record<number, number>>({});
   const [maxOverrides, setMaxOverrides] = useState<Record<number, number>>({});
+  // Step 3 "đối soát" annotations — Word-style highlights with comments
+  // anchored to specific quotes in the AI transcript. Stored as a flat
+  // array (filtered by `cau` for per-câu display). Wiped on every fresh
+  // grade together with finalScores (see the parseGrade effect below).
+  const [teacherAnnotations, setTeacherAnnotations] = useState<
+    SelectionAnnotation[]
+  >([]);
 
   // Per-tab subject state. Replaces the old App-level `selectedSubject`
   // (which was the same value across all tabs — a latent bug when the
@@ -162,6 +170,7 @@ export function EssayWorkspace({
       // against new AI scores, producing nonsense deltas in step 5.
       setFinalScores({});
       setMaxOverrides({});
+      setTeacherAnnotations([]);
       // Reset the step high-water-mark — a regrade restarts the review
       // arc, so the indicator shouldn't claim step 5 is still "done"
       // from the previous round.
@@ -431,6 +440,8 @@ export function EssayWorkspace({
             task={task}
             t={t}
             essayImage={essayImage}
+            teacherAnnotations={teacherAnnotations}
+            setTeacherAnnotations={setTeacherAnnotations}
           />
         </ErrorBoundary>
       )}
@@ -463,6 +474,7 @@ export function EssayWorkspace({
               pipelineCode={pipeline.code}
               runId={pipeline.runId}
               subject={subject}
+              teacherAnnotations={teacherAnnotations}
             />
           </ErrorBoundary>
         )
@@ -484,10 +496,24 @@ export function EssayWorkspace({
               setIsFinalizing(true);
               setFinalizeError(null);
               try {
-                await persistFinalizedGrade(payload);
+                const resp = await persistFinalizedGrade(payload);
+                // Counts mirror the anti-poisoning gate in
+                // RegradeMockup.handleFinish: disputed-and-skipped
+                // comments are NOT staged into HITL memory, the rest are.
+                const nonEmpty = teacherAnnotations.filter(
+                  (a) => a.comment.trim().length > 0,
+                );
+                const skipped = nonEmpty.filter(
+                  (a) =>
+                    a.verdict === "dispute" && a.disputeDecision !== "apply",
+                ).length;
                 setFinalizedResult({
                   ...payload,
                   finalizedAt: new Date().toISOString(),
+                  commentsSavedCount: nonEmpty.length - skipped,
+                  commentsSkippedCount: skipped,
+                  deltaLessonId: resp?.delta_lesson_id ?? null,
+                  deltas: resp?.deltas,
                 });
               } catch (err) {
                 const e = err as Error;

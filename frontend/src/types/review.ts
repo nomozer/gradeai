@@ -21,3 +21,36 @@ export interface ThreadMessage {
 
 /** Map of question-index → messages for that question. */
 export type CommentThreads = Record<number, ThreadMessage[]>;
+
+/**
+ * Word-style annotation: teacher selects a passage in the AI transcript at
+ * step 3 and attaches a comment to it. The (cau, lineIdx, quote) triple is
+ * the anchor — quote is matched case-sensitively against the line text to
+ * render the inline highlight. Two annotations sharing the same quote on
+ * the same line both render — but only the first occurrence in the source
+ * text gets the highlight wrapper (acceptable for prototype).
+ *
+ * Verdict + anti-poisoning fields are populated asynchronously after the
+ * teacher saves a comment: the frontend POSTs to /api/analyze-comment and
+ * stores the AI's verdict so the HITL memory only ingests corrections AI
+ * concurs with (or that the teacher explicitly overrides on a dispute).
+ */
+export interface SelectionAnnotation {
+  id: string;
+  cau: number;
+  lineIdx: number;
+  quote: string;
+  comment: string;
+  /** AI's judgment of teacher's comment vs the student work. Undefined =
+   *  not yet analyzed (either freshly created or still in flight). */
+  verdict?: CommentVerdict;
+  /** AI's reasoning (≤80 words). Rendered as a sub-blurb under the
+   *  verdict pill so the teacher sees WHY AI agreed/disagreed. */
+  analysis?: string;
+  /** Teacher's override for ``verdict === "dispute"``:
+   *   • undefined: pending decision (UI shows confirm buttons)
+   *   • "apply":   teacher overrides AI, lesson WILL be staged
+   *   • "skip":    teacher accepts AI dispute, lesson NOT staged
+   * Ignored for non-dispute verdicts (those stage automatically). */
+  disputeDecision?: "apply" | "skip";
+}

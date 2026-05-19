@@ -7,43 +7,35 @@ import {
   parseCauHeader,
   splitTranscriptByCau,
 } from "../../lib/grade";
-import { getStageableLesson } from "../../lib/hitl";
-import { analyzeComment } from "../../api";
 import { i18n } from "../../i18n";
 import type { UseFeedbackResult } from "../../hooks/useFeedback";
 import type {
   BackendSubject,
-  CommentVerdict,
   EssayFile,
   Grade,
+  SelectionAnnotation,
   StagedLesson,
-  ThreadMessage,
 } from "../../types";
 
 // ---------------------------------------------------------------------------
-// RegradeMockup — Step 4 "Chấm lại".
+// RegradeMockup — Step 4 "Chốt điểm".
 //
-// Reference behavior the teacher locked:
-//   • Default: just the paper showing student work, AI annotations, and a
-//     score editor row per câu. The "Chat với AI" button sits in that row
-//     but the chat surface itself is HIDDEN.
-//   • Click "Chat với AI" on any câu → focused chat rail slides in on the
-//     right; the câu the button belongs to becomes the active context.
-//   • Closing the rail (X) goes back to single-column document.
+// Layout: single-column paper. Per-câu blocks list AI's annotations + a
+// score editor row. The teacher's "đối soát" notes from step 3 are
+// surfaced read-only above each câu's score row so prior judgment stays
+// visible while the score is locked. No AI chat surface — the per-câu
+// /api/analyze-comment loop was removed in favour of step 3 annotations
+// feeding the HITL memory directly.
 //
 // Wired vs still-mock:
-//   ✓ Per-câu rows come from grade.per_question_feedback (max_points,
-//     score, good_points, errors).
+//   ✓ Per-câu rows come from grade.per_question_feedback.
 //   ✓ Lines come from splitTranscriptByCau(grade.transcript).
-//   ✓ Score edits propagate up via finalScores / maxOverrides props so
-//     step 5 ResultCard can read the teacher's per-câu numbers.
-//   ✗ Chat is still cosmetic (no /api/analyze-comment round-trip).
-//   ✗ "Xem PDF gốc" button still shows an alert.
+//   ✓ Score edits propagate up via finalScores / maxOverrides props.
+//   ✓ Teacher annotations come from workspace state (step 3 input).
 //
 // Annotations: Gemini doesn't emit line-level annotations yet, so we
-// synthesise two badges per câu — a green "good" tag pinned to line 1
-// (header) and a red "error" tag pinned to the last line. Crude but
-// preserves the visual idea while we wait on a backend prompt change.
+// synthesise two badges per câu — green "good" pinned to line 1 and
+// red "error" pinned to the last line.
 // ---------------------------------------------------------------------------
 
 interface MockAnn {
@@ -246,6 +238,12 @@ export interface RegradeMockupProps {
   pipelineCode: string | null;
   runId: number | null;
   subject: BackendSubject | null;
+  /** Read-only mirror of teacher's step 3 Word-style annotations
+   *  (highlight + comment anchored to a quote). Surfaced next to each
+   *  câu's score input so the teacher can recall their independent
+   *  judgment when finalizing. Also used to build the staged lessons
+   *  for /api/feedback on "Hoàn tất bài này". */
+  teacherAnnotations?: SelectionAnnotation[];
 }
 
 export function RegradeMockup({
@@ -262,78 +260,15 @@ export function RegradeMockup({
   pipelineCode,
   runId,
   subject,
+  teacherAnnotations,
 }: RegradeMockupProps) {
   // Derive the review payload: real grade data when the pipeline produced
   // scored per-câu, else the legacy mock so the UI still renders for
   // dev-time visual review or salvaged grades.
   const review = useMemo(() => deriveReview(grade), [grade]);
-  // null = chat rail hidden. Setting it to a câu number opens the rail and
-  // pins it to that câu. Clicking "Chat với AI" on a different câu just
-  // re-targets the same rail. Closing (X) sets back to null.
-  const [activeQ, setActiveQ] = useState<number | null>(null);
-  // Per-câu chat thread (teacher ↔ AI). Keyed by câu num. Persists across
-  // open/close cycles of the chat rail so the teacher can flip between
-  // câu without losing history. Wiped on grade change via the parent's
-  // parseGrade effect — see EssayWorkspace's finalScores reset.
-  const [chatThreads, setChatThreads] = useState<Record<number, ThreadMessage[]>>({});
-  const [analyzingQ, setAnalyzingQ] = useState<number | null>(null);
   // OriginalImageModal toggle. Lifted here (instead of inside PaperRegrade)
-  // so the modal renders at the RegradeMockup root, sitting on top of
-  // both the paper column and the chat rail without re-parenting issues.
+  // so the modal renders at the RegradeMockup root.
   const [showOriginal, setShowOriginal] = useState(false);
-  // Send the teacher's draft to /api/analyze-comment. Optimistic-append
-  // the teacher bubble first, then await the AI response and append it
-  // (or a fallback error bubble). Lesson staging / dispute decisions are
-  // intentionally NOT wired here — that's a follow-up tied to the step 3
-  // "Approve" feedback round-trip, which still uses MOCK data.
-  const handleSend = useCallback(
-    async (qNum: number, text: string) => {
-      const q = review.questions.find((qq) => qq.num === qNum);
-      if (!q) return;
-      setChatThreads((prev) => ({
-        ...prev,
-        [qNum]: [...(prev[qNum] || []), { type: "teacher", text }],
-      }));
-      setAnalyzingQ(qNum);
-      try {
-        const data = await analyzeComment({
-          // Keep the question context compact — /api/analyze-comment is
-          // a lightweight call, no need to thread the full task PDF.
-          question: `${q.label}: ${q.prompt}`,
-          student_answer: q.lines.join("\n").slice(0, 2000),
-          teacher_comment: text,
-        });
-        setChatThreads((prev) => ({
-          ...prev,
-          [qNum]: [
-            ...(prev[qNum] || []),
-            {
-              type: "ai",
-              text: (data.analysis || "").trim() ||
-                "AI chưa phân tích được — thử lại với câu cụ thể hơn.",
-              lesson: (data.lesson || "").trim(),
-              verdict: data.verdict as CommentVerdict,
-            },
-          ],
-        }));
-      } catch (err) {
-        console.error("[regrade] analyze-comment failed:", err);
-        setChatThreads((prev) => ({
-          ...prev,
-          [qNum]: [
-            ...(prev[qNum] || []),
-            {
-              type: "ai",
-              text: "Mất kết nối với AI — bạn kiểm tra lại mạng rồi gửi lại.",
-            },
-          ],
-        }));
-      } finally {
-        setAnalyzingQ((curr) => (curr === qNum ? null : curr));
-      }
-    },
-    [review.questions],
-  );
   // Per-câu expand/collapse state. Default: expand câu where AI lost points
   // OR has any "error" annotation — those are the ones the teacher actually
   // needs to look at. Câu that AI nailed start collapsed so the page scales
@@ -363,31 +298,44 @@ export function RegradeMockup({
   const allExpanded = expandedQs.size === review.questions.length;
 
   // "Hoàn tất bài này" → submit HITL feedback (approve) BEFORE navigating
-  // to step 5, so the chat lessons + score-override notes the teacher
-  // produced in this step actually reach the memory store. Backend
-  // priorities (from CLAUDE.md):
+  // to step 5, so the teacher's step 3 "đối soát" annotations actually
+  // reach the memory store. Backend priorities (from CLAUDE.md):
   //   • staged per-câu lessons (3.5) > aggregated comment (3.0) > raw text
   //   • approve also back-fills correct_code on earlier lessons for the
-  //     same task — useful even if there were no chat messages
-  // So we POST even when stagedLessons is empty: the back-fill alone is
-  // worth recording. Score deltas separately persist via /api/finalize-
-  // grade on step 5 (delta-lesson threshold = 0.10 overall).
+  //     same task — useful even if there are no annotations.
+  // We POST even when annotations are empty: the back-fill alone is worth
+  // recording. Score deltas separately persist via /api/finalize-grade on
+  // step 5 (delta-lesson threshold = 0.10 overall).
   const handleFinish = useCallback(async () => {
     if (feedbackHook.isSubmitting) return;
 
-    const stagedLessons: StagedLesson[] = Object.entries(chatThreads).flatMap(
-      ([numStr, msgs]) => {
-        const lessonText = getStageableLesson(msgs);
-        if (!lessonText) return [];
-        return [{ lesson_text: lessonText, question_ref: `Câu ${numStr}` }];
-      },
-    );
+    // Anti-poisoning gate: only stage comments that either (a) AI
+    // concurred with (agree | partial), or (b) AI disputed but teacher
+    // explicitly chose "Vẫn lưu". Pending verdicts (network failure /
+    // not yet analyzed) fall through optimistically so a slow API
+    // doesn't lose the teacher's note.
+    const anns = (teacherAnnotations ?? []).filter((a) => {
+      if (!a.comment.trim()) return false;
+      if (a.verdict === "dispute" && a.disputeDecision !== "apply") {
+        return false;
+      }
+      return true;
+    });
+    // Each annotation becomes a staged lesson. Quote is included as
+    // context so the memory retrieval can rank by both the comment and
+    // the snippet the teacher reacted to.
+    const stagedLessons: StagedLesson[] = anns.map((a) => ({
+      lesson_text: a.quote
+        ? `"${a.quote.trim()}" — ${a.comment.trim()}`
+        : a.comment.trim(),
+      question_ref: `Câu ${a.cau}`,
+    }));
 
-    const aggregatedNote = Object.entries(chatThreads)
-      .flatMap(([numStr, msgs]) =>
-        msgs
-          .filter((m) => m.type === "teacher")
-          .map((m) => `[Câu ${numStr}] ${m.text}`),
+    const aggregatedNote = anns
+      .map((a) =>
+        a.quote
+          ? `[Câu ${a.cau}] "${a.quote.trim()}" — ${a.comment.trim()}`
+          : `[Câu ${a.cau}] ${a.comment.trim()}`,
       )
       .join("\n");
 
@@ -401,13 +349,9 @@ export function RegradeMockup({
       subject,
     });
 
-    // Only advance if the POST returned (succeeded or was cancelled
-    // cleanly). On error, feedbackHook.error renders below the action
-    // bar so the teacher sees what went wrong — they can retry without
-    // losing chat state.
     if (res && onFinish) onFinish();
   }, [
-    chatThreads,
+    teacherAnnotations,
     feedbackHook,
     onFinish,
     pipelineCode,
@@ -415,19 +359,6 @@ export function RegradeMockup({
     subject,
     task,
   ]);
-
-  // Open chat AND ensure the câu is expanded — without the expand step,
-  // closing the chat would snap the câu back to collapsed and hide the
-  // score editor the teacher likely wants to adjust next.
-  const openChat = (n: number) => {
-    setActiveQ(n);
-    setExpandedQs((prev) => {
-      if (prev.has(n)) return prev;
-      const next = new Set(prev);
-      next.add(n);
-      return next;
-    });
-  };
 
   // Resolve the cap for a câu: đề-specified first, teacher override
   // second, else undefined (free input).
@@ -445,51 +376,26 @@ export function RegradeMockup({
   const anyEdited =
     Object.keys(finalScores).length > 0 || Object.keys(maxOverrides).length > 0;
 
-  const activeQuestion =
-    activeQ != null
-      ? review.questions.find((q) => q.num === activeQ) ?? null
-      : null;
-  const chatOpen = activeQuestion != null;
-
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-      <div
-        style={{
-          display: chatOpen ? "grid" : "block",
-          gridTemplateColumns: chatOpen ? "minmax(0, 1fr) 420px" : undefined,
-          gap: 18,
-          alignItems: "start",
-        }}
-      >
-        <PaperRegrade
-          review={review}
-          activeQ={activeQ}
-          openChat={openChat}
-          finalScores={finalScores}
-          setFinalScores={setFinalScores}
-          maxOverrides={maxOverrides}
-          setMaxOverrides={setMaxOverrides}
-          effectiveMax={effectiveMax}
-          teacherTotal={teacherTotal}
-          anyEdited={anyEdited}
-          expandedQs={expandedQs}
-          toggleExpanded={toggleExpanded}
-          expandAll={expandAll}
-          collapseAll={collapseAll}
-          allExpanded={allExpanded}
-          essayImage={essayImage}
-          onViewOriginal={() => setShowOriginal(true)}
-        />
-        {chatOpen && (
-          <ChatRail
-            question={activeQuestion}
-            messages={chatThreads[activeQuestion.num] || []}
-            analyzing={analyzingQ === activeQuestion.num}
-            onSend={(text) => handleSend(activeQuestion.num, text)}
-            onClose={() => setActiveQ(null)}
-          />
-        )}
-      </div>
+      <PaperRegrade
+        review={review}
+        finalScores={finalScores}
+        setFinalScores={setFinalScores}
+        maxOverrides={maxOverrides}
+        setMaxOverrides={setMaxOverrides}
+        effectiveMax={effectiveMax}
+        teacherTotal={teacherTotal}
+        anyEdited={anyEdited}
+        expandedQs={expandedQs}
+        toggleExpanded={toggleExpanded}
+        expandAll={expandAll}
+        collapseAll={collapseAll}
+        allExpanded={allExpanded}
+        essayImage={essayImage}
+        onViewOriginal={() => setShowOriginal(true)}
+        teacherAnnotations={teacherAnnotations}
+      />
 
       {/* Bottom action bar — mirrors step 3's pattern: back / status /
           forward. Status text uses the live teacher total when anything
@@ -669,8 +575,6 @@ export function RegradeMockup({
 
 function PaperRegrade({
   review,
-  activeQ,
-  openChat,
   finalScores,
   setFinalScores,
   maxOverrides,
@@ -685,12 +589,9 @@ function PaperRegrade({
   allExpanded,
   essayImage,
   onViewOriginal,
+  teacherAnnotations,
 }: {
   review: typeof MOCK_REGRADE;
-  activeQ: number | null;
-  /** Opens the chat rail pinned to a câu AND ensures that câu is
-   *  expanded — see RegradeMockup.openChat for the wiring. */
-  openChat: (n: number) => void;
   finalScores: Record<number, number>;
   setFinalScores: React.Dispatch<React.SetStateAction<Record<number, number>>>;
   maxOverrides: Record<number, number>;
@@ -704,9 +605,8 @@ function PaperRegrade({
   collapseAll: () => void;
   allExpanded: boolean;
   essayImage: EssayFile | null | undefined;
-  /** Called when the teacher clicks "Xem PDF gốc" — parent opens the
-   *  OriginalImageModal. Undefined ⇒ button renders disabled. */
   onViewOriginal?: () => void;
+  teacherAnnotations?: SelectionAnnotation[];
 }) {
   // Exam-level cap check. When per-câu maxPoints isn't supplied by the đề
   // we let the input run free; this is where the safety net catches it.
@@ -760,7 +660,7 @@ function PaperRegrade({
               letterSpacing: "-0.005em",
             }}
           >
-            Sửa điểm hoặc chat với AI về từng câu
+            Chốt điểm từng câu — đối chiếu với ghi chú của bạn ở bước trước
           </div>
         </div>
         <div
@@ -852,11 +752,13 @@ function PaperRegrade({
           <RegradeQuestionBlock
             key={q.num}
             q={q}
-            active={activeQ === q.num}
-            expanded={expandedQs.has(q.num) || activeQ === q.num}
+            expanded={expandedQs.has(q.num)}
             onToggleExpand={() => toggleExpanded(q.num)}
             isLast={i === review.questions.length - 1}
             myScore={finalScores[q.num] ?? q.aiScore}
+            teacherNotes={
+              (teacherAnnotations ?? []).filter((a) => a.cau === q.num)
+            }
             // "Edited" = teacher set a value that's MATERIALLY different
             // from AI's. Just touching the input (e.g. clicking it then
             // tabbing away) used to flip this true with a 0.00 delta —
@@ -884,7 +786,6 @@ function PaperRegrade({
             onScoreChange={(s) =>
               setFinalScores((prev) => ({ ...prev, [q.num]: s }))
             }
-            onClickChat={() => openChat(q.num)}
           />
         ))}
       </div>
@@ -894,7 +795,6 @@ function PaperRegrade({
 
 function RegradeQuestionBlock({
   q,
-  active,
   expanded,
   onToggleExpand,
   isLast,
@@ -905,33 +805,24 @@ function RegradeQuestionBlock({
   maxOverride,
   onMaxOverrideChange,
   onScoreChange,
-  onClickChat,
+  teacherNotes,
 }: {
   q: RegradeQuestion;
-  active: boolean;
-  /** Whether this câu's body (image slots, transcript, score editor) is
-   *  visible. The header is always rendered. */
   expanded: boolean;
-  /** Toggle expand/collapse. Fired by clicking the header chrome or by
-   *  Enter/Space while the header div has focus. Interactive descendants
-   *  inside the header (the cap editor input) stopPropagation to avoid
-   *  spurious toggles while typing. */
   onToggleExpand: () => void;
   isLast: boolean;
   myScore: number;
   isEdited: boolean;
-  /** Effective per-câu cap: đề-supplied or teacher-overridden. Undefined
-   *  when the đề doesn't quy định AND the teacher hasn't filled it in. */
   cap: number | undefined;
-  /** When true, the header renders an editable input next to "Tối đa:"
-   *  instead of a read-only label. */
   capEditable: boolean;
-  /** Teacher's current override value (raw input state). */
   maxOverride: number | undefined;
-  /** Fires when teacher edits the cap input. Pass undefined to clear. */
   onMaxOverrideChange: (v: number | undefined) => void;
   onScoreChange: (s: number) => void;
-  onClickChat: () => void;
+  /** Teacher's step 3 "đối soát" annotations for this câu — read-only
+   *  here. Rendered above the score editor so the teacher sees their
+   *  own prior reasoning before locking the score. Each entry has a
+   *  quoted snippet + comment. */
+  teacherNotes: SelectionAnnotation[];
 }) {
   const delta = myScore - q.aiScore;
   const hasError = q.annotations.some((a) => a.kind === "error");
@@ -939,8 +830,6 @@ function RegradeQuestionBlock({
     <div
       style={{
         borderBottom: isLast ? "none" : `1px solid ${T.borderLight}`,
-        background: active ? "#FBEEEA" : "transparent",
-        transition: "background 0.15s",
       }}
     >
       {/* Câu header — always visible. Clicking anywhere in the chrome
@@ -1150,11 +1039,73 @@ function RegradeQuestionBlock({
             )}
           </div>
 
-          {/* Score editor row — AI score | teacher input | Chat button */}
+          {/* Teacher's step 3 "đối soát" notes — read-only here, surfaced
+              above the score editor so the teacher's prior judgment is
+              visible while they lock the final number. Hidden when the
+              teacher didn't write anything for this câu, so the panel
+              doesn't bloat for skipped câu. */}
+          {teacherNotes.length > 0 && (
+            <div
+              style={{
+                marginBottom: 12,
+                padding: "10px 14px",
+                background: T.bgCard,
+                border: `1px solid ${T.borderLight}`,
+                borderLeft: `3px solid ${T.accent}`,
+                borderRadius: 8,
+                fontFamily: T.font,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: T.textFaint,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  marginBottom: 6,
+                }}
+              >
+                Ghi chú đối soát của bạn
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {teacherNotes.map((ann) => (
+                  <div key={ann.id}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: T.textSoft,
+                        fontStyle: "italic",
+                        lineHeight: 1.45,
+                        marginBottom: 2,
+                      }}
+                    >
+                      “{ann.quote}”
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 13.5,
+                        lineHeight: 1.5,
+                        color: T.text,
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      {ann.comment ||
+                        <span style={{ color: T.textFaint, fontStyle: "italic" }}>
+                          (chưa có nhận xét)
+                        </span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Score editor row — AI score | teacher input */}
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto",
+              gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
               gap: 12,
               alignItems: "center",
               padding: "12px 16px",
@@ -1258,439 +1209,41 @@ function RegradeQuestionBlock({
                   </span>
                 )}
               </div>
+              {/* Predictive learning chip — fires when the teacher's delta
+                  crosses the backend's per-câu threshold (0.25). Tells
+                  the teacher that this specific score change is going to
+                  be ingested as a 4.0-weighted delta lesson when they
+                  finalize at step 5. Closes the "what teaches AI?"
+                  awareness gap — score adjustments are otherwise silent
+                  signals. */}
+              {Math.abs(delta) >= 0.25 && (
+                <span
+                  title="Khi bạn finalize ở bước 5, điều chỉnh này sẽ được lưu thành 1 delta lesson (điểm 4.0) để AI học cách chấm của bạn."
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    marginTop: 6,
+                    padding: "3px 8px",
+                    background: T.amberSoft,
+                    border: `1px solid ${T.amber}`,
+                    borderRadius: 999,
+                    fontSize: 11,
+                    fontFamily: T.font,
+                    color: T.amber,
+                    fontWeight: 600,
+                    letterSpacing: "0.02em",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <Icon.Lightbulb size={10} color={T.amber} />
+                  AI sẽ học từ điều chỉnh này
+                </span>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={onClickChat}
-              aria-pressed={active}
-              style={{
-                background: active ? T.text : T.bgCard,
-                color: active ? T.bgCard : T.text,
-                border: `1px solid ${active ? T.text : T.border}`,
-                borderRadius: 8,
-                padding: "8px 14px",
-                fontFamily: T.font,
-                fontSize: 13,
-                fontWeight: 500,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                whiteSpace: "nowrap",
-                transition:
-                  "background 0.15s, color 0.15s, border-color 0.15s",
-              }}
-            >
-              <SparkleIcon size={12} />
-              Chat với AI
-            </button>
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Chat rail (right column, conditional)
-// ---------------------------------------------------------------------------
-
-function ChatRail({
-  question,
-  messages,
-  analyzing,
-  onSend,
-  onClose,
-}: {
-  question: RegradeQuestion;
-  messages: ThreadMessage[];
-  /** True when an /api/analyze-comment request for this câu is in
-   *  flight. Disables the send button + textarea and shows a typing
-   *  bubble so the teacher doesn't double-fire. */
-  analyzing: boolean;
-  /** Caller owns the API call + message-list mutation — the rail just
-   *  pipes the trimmed text up. */
-  onSend: (text: string) => void;
-  onClose: () => void;
-}) {
-  const [draft, setDraft] = useState("");
-
-  const send = () => {
-    const trimmed = draft.trim();
-    if (!trimmed || analyzing) return;
-    onSend(trimmed);
-    setDraft("");
-  };
-
-  return (
-    <aside
-      style={{
-        background: T.bgCard,
-        border: `1px solid ${T.border}`,
-        borderRadius: 12,
-        boxShadow: T.shadowSoft,
-        display: "flex",
-        flexDirection: "column",
-        position: "sticky",
-        top: 16,
-        alignSelf: "start",
-        maxHeight: "calc(100vh - 32px)",
-        overflow: "hidden",
-      }}
-    >
-      {/* rail-head */}
-      <div
-        style={{
-          padding: "14px 18px",
-          background: T.bgElevated,
-          borderBottom: `1px solid ${T.border}`,
-          flexShrink: 0,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-            marginBottom: 6,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: T.textFaint,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-            }}
-          >
-            Chat với AI · {question.label}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Đóng chat"
-            title="Đóng"
-            style={{
-              background: "transparent",
-              border: "none",
-              padding: 4,
-              cursor: "pointer",
-              color: T.textMute,
-              display: "inline-flex",
-              alignItems: "center",
-              borderRadius: 4,
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = T.text)}
-            onMouseLeave={(e) => (e.currentTarget.style.color = T.textMute)}
-          >
-            <Icon.X size={14} />
-          </button>
-        </div>
-        <div
-          style={{
-            fontSize: 13,
-            color: T.textSoft,
-            lineHeight: 1.5,
-          }}
-        >
-          Hỏi AI lý do, đề xuất sửa điểm — câu trả lời sẽ ảnh hưởng các lần
-          chấm tiếp.
-        </div>
-      </div>
-
-      {/* chat-feed (scrollable). Seed-suggestion bubble shows ONLY when
-          the thread is empty — once a real message exists, the seed
-          collapses out so the conversation is the focus. */}
-      <div
-        style={{
-          padding: "16px 18px",
-          overflowY: "auto",
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
-        {messages.length === 0 && (
-          <div
-            style={{
-              background: T.bgMuted,
-              border: `1px solid ${T.borderLight}`,
-              borderRadius: 10,
-              padding: "12px 14px",
-              fontSize: 13,
-              lineHeight: 1.55,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: T.textFaint,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                marginBottom: 6,
-              }}
-            >
-              MIRROR · Gợi ý
-            </div>
-            <div style={{ color: T.text, fontWeight: 500 }}>
-              {question.summary}
-            </div>
-            <div
-              style={{
-                marginTop: 4,
-                color: T.textMute,
-                fontSize: 12.5,
-              }}
-            >
-              Hãy cho mình biết bạn nghĩ gì về câu này.
-            </div>
-            {question.chatSuggestions.length > 0 && (
-              <div
-                style={{
-                  marginTop: 10,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
-                }}
-              >
-                {question.chatSuggestions.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setDraft(s)}
-                    style={{
-                      background: T.bgCard,
-                      border: `1px solid ${T.border}`,
-                      borderRadius: 6,
-                      padding: "7px 10px",
-                      fontSize: 12.5,
-                      fontFamily: T.font,
-                      color: T.textSoft,
-                      cursor: "pointer",
-                      textAlign: "left",
-                      transition: "border-color 0.12s, color 0.12s",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = T.text;
-                      e.currentTarget.style.color = T.text;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = T.border;
-                      e.currentTarget.style.color = T.textSoft;
-                    }}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {messages.map((m, idx) => (
-          <ChatBubble key={idx} message={m} />
-        ))}
-
-        {analyzing && <ChatTyping />}
-      </div>
-
-      {/* chat-compose */}
-      <div
-        style={{
-          padding: "12px 16px 14px",
-          borderTop: `1px solid ${T.borderLight}`,
-          display: "flex",
-          gap: 8,
-          alignItems: "flex-end",
-          flexShrink: 0,
-        }}
-      >
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={
-            analyzing ? "AI đang trả lời…" : `Hỏi AI về ${question.label}…`
-          }
-          rows={2}
-          disabled={analyzing}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-          style={{
-            flex: 1,
-            resize: "vertical",
-            minHeight: 40,
-            maxHeight: 120,
-            border: `1px solid ${T.border}`,
-            borderRadius: 8,
-            padding: "9px 12px",
-            background: analyzing ? T.bgMuted : T.bgInput,
-            color: T.text,
-            fontFamily: T.font,
-            fontSize: 13,
-            outline: "none",
-            opacity: analyzing ? 0.7 : 1,
-          }}
-          onFocus={(e) => (e.currentTarget.style.borderColor = T.accent)}
-          onBlur={(e) => (e.currentTarget.style.borderColor = T.border)}
-        />
-        <button
-          type="button"
-          onClick={send}
-          disabled={!draft.trim() || analyzing}
-          aria-label="Gửi"
-          title="Gửi (Enter)"
-          style={{
-            background: draft.trim() && !analyzing ? T.red : T.bgMuted,
-            color: draft.trim() && !analyzing ? "#FFFDF8" : T.textFaint,
-            border: "none",
-            borderRadius: 8,
-            padding: "10px 14px",
-            cursor: draft.trim() && !analyzing ? "pointer" : "not-allowed",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            transition: "background 0.15s, color 0.15s",
-          }}
-        >
-          <SendIcon size={14} />
-        </button>
-      </div>
-    </aside>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Chat helpers (bubble + typing indicator)
-// ---------------------------------------------------------------------------
-
-const VERDICT_TONE: Record<CommentVerdict, { color: string; bg: string; label: string }> = {
-  agree:   { color: "#1F7A4C", bg: "#E3F4EA", label: "Đồng ý" },
-  partial: { color: "#A8770A", bg: "#FCF1D8", label: "Một phần"  },
-  dispute: { color: "#A1392A", bg: "#FBE3DF", label: "Phản biện" },
-};
-
-function ChatBubble({ message }: { message: ThreadMessage }) {
-  const isTeacher = message.type === "teacher";
-  if (isTeacher) {
-    return (
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <div
-          style={{
-            background: T.accentSoft,
-            color: T.text,
-            borderRadius: "10px 10px 2px 10px",
-            padding: "9px 12px",
-            fontSize: 13,
-            lineHeight: 1.55,
-            maxWidth: "85%",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-          }}
-        >
-          {message.text}
-        </div>
-      </div>
-    );
-  }
-
-  const verdict = message.verdict;
-  const tone = verdict ? VERDICT_TONE[verdict] : null;
-  return (
-    <div style={{ display: "flex", justifyContent: "flex-start" }}>
-      <div style={{ maxWidth: "92%", display: "flex", flexDirection: "column", gap: 6 }}>
-        {tone && (
-          // Verdict badge sits above the bubble so the analysis text
-          // doesn't compete with it. Keep colours desaturated — Gemini
-          // can be wrong about dispute, no need to scream.
-          <span
-            style={{
-              alignSelf: "flex-start",
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              color: tone.color,
-              background: tone.bg,
-              padding: "2px 8px",
-              borderRadius: 999,
-            }}
-          >
-            {tone.label}
-          </span>
-        )}
-        <div
-          style={{
-            background: T.bgMuted,
-            color: T.text,
-            border: `1px solid ${T.borderLight}`,
-            borderRadius: "10px 10px 10px 2px",
-            padding: "9px 12px",
-            fontSize: 13,
-            lineHeight: 1.55,
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-          }}
-        >
-          {message.text}
-          {message.lesson && (
-            <div
-              style={{
-                marginTop: 8,
-                paddingTop: 8,
-                borderTop: `1px dashed ${T.border}`,
-                fontSize: 12.5,
-                color: T.textSoft,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  color: T.textFaint,
-                  marginRight: 6,
-                }}
-              >
-                Quy tắc rút ra
-              </span>
-              {message.lesson}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ChatTyping() {
-  return (
-    <div style={{ display: "flex", justifyContent: "flex-start" }}>
-      <div
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          background: T.bgMuted,
-          border: `1px solid ${T.borderLight}`,
-          borderRadius: "10px 10px 10px 2px",
-          padding: "8px 12px",
-          fontSize: 12,
-          color: T.textMute,
-          fontStyle: "italic",
-        }}
-      >
-        <Icon.RefreshCw size={11} color={T.textMute} />
-        AI đang phân tích…
-      </div>
     </div>
   );
 }
@@ -1944,45 +1497,3 @@ function ExpandAllToggle({
 // return coordinates). Header's "Xem PDF gốc" already shows the whole
 // bài làm. Re-add when the prompt + parser learn to emit per-câu regions.
 
-// ---------------------------------------------------------------------------
-// Inline SVGs — the project's Icon set doesn't ship a sparkle or paper-plane
-// glyph. Defined here so RegradeMockup stays self-contained; if either glyph
-// gets reused elsewhere we'll lift them into components/ui/Icon.tsx.
-// ---------------------------------------------------------------------------
-
-function SparkleIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />
-    </svg>
-  );
-}
-
-function SendIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M22 2L11 13" />
-      <path d="M22 2l-7 20-4-9-9-4z" />
-    </svg>
-  );
-}

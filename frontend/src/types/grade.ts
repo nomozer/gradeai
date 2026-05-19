@@ -52,4 +52,20 @@ export interface FinalizedResult {
   scores: RubricScores;
   overall: number | string;
   finalizedAt: string;
+  /** Number of step 3 annotations saved as HITL lessons via the prior
+   *  /api/feedback approve call. Excludes annotations AI disputed and
+   *  teacher chose to skip. Surfaced in step 5 so the teacher sees AI
+   *  has learned from their comments. */
+  commentsSavedCount?: number;
+  /** Number of annotations the teacher wrote but AI disputed AND
+   *  teacher accepted the dispute (didn't override). Surfaced in step
+   *  5 so the teacher sees the anti-poisoning gate at work. */
+  commentsSkippedCount?: number;
+  /** ID of the auto-generated delta lesson when teacher's score diverged
+   *  from AI by ≥ threshold. Null = no significant delta (AI already
+   *  matched). Drives the "AI đã học cách bạn chấm điểm" indicator. */
+  deltaLessonId?: number | null;
+  /** Raw delta map from backend — keys: rubric names + ``cau:N`` +
+   *  ``overall``. Used to count per-câu adjustments in the banner. */
+  deltas?: Record<string, number>;
 }

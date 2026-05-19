@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import { T } from "../../theme/tokens";
 import { Icon } from "../../components/ui/Icon";
 import { OriginalImageModal } from "../../components/ui/OriginalImageModal";
@@ -20,6 +20,7 @@ import type {
   I18nStrings,
   Lesson,
   PerQuestionFeedback,
+  SelectionAnnotation,
   StagedLesson,
   Subject,
   ThreadMessage,
@@ -999,217 +1000,113 @@ function deriveStepReviewData(
 function ReviewMockup({
   isMobile,
   review = MOCK_REVIEW,
+  onViewOriginal,
+  essayAvailable = false,
+  teacherAnnotations,
+  onAddAnnotation,
+  onUpdateAnnotation,
+  onRemoveAnnotation,
+  onGoToRegrade,
 }: {
   isMobile: boolean;
-  /** Derived review payload from grade + pipeline. When omitted we keep
-   *  the legacy MOCK_REVIEW so design iteration / Storybook-style use
-   *  still works without a real backend call. */
   review?: typeof MOCK_REVIEW;
+  onViewOriginal?: () => void;
+  essayAvailable?: boolean;
+  teacherAnnotations?: SelectionAnnotation[];
+  onAddAnnotation?: (a: SelectionAnnotation) => void;
+  onUpdateAnnotation?: (id: string, patch: Partial<SelectionAnnotation>) => void;
+  onRemoveAnnotation?: (id: string) => void;
+  /** Forward to step 4 — used by the "Bản chấm AI" peek modal's CTA so
+   *  teacher can jump straight to scoring after revealing AI's verdict. */
+  onGoToRegrade?: () => void;
 }) {
-  // Active câu drives BOTH the paper highlight (peach behind the q-block)
-  // and the rail's selected qcard border. Click on either side updates
-  // this state — the two panels mirror each other.
   const [activeQ, setActiveQ] = useState<number>(review.initialActiveQuestionNum);
+  // Mục lục starts open on desktop, collapsed on narrow viewports so the
+  // paper takes precedence on mobile.
+  const [tocOpen, setTocOpen] = useState(!isMobile);
+  const [aiPeekOpen, setAiPeekOpen] = useState(false);
+  // ``flashCau`` drives a brief peach pulse on the câu in the document
+  // body — set when the teacher clicks a mục lục entry, auto-cleared
+  // after ~1.2s. The sidebar's own active state (activeQ) is sticky;
+  // the body highlight is just a "you're here" pulse so the teacher
+  // doesn't have to hunt for where the scroll landed.
+  const [flashCau, setFlashCau] = useState<number | null>(null);
+  useEffect(() => {
+    if (flashCau === null) return;
+    const t = window.setTimeout(() => setFlashCau(null), 1200);
+    return () => window.clearTimeout(t);
+  }, [flashCau]);
+
+  const jumpToCau = useCallback((n: number) => {
+    setActiveQ(n);
+    setFlashCau(n);
+    // Re-trigger the flash even if the teacher clicks the same câu
+    // twice in a row — without this nudge the state stays at the same
+    // number and React skips the re-pulse.
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-cau-anchor="${n}"]`);
+      if (el instanceof HTMLElement) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  }, []);
   return (
-    <div
-      style={{
-        display: isMobile ? "block" : "grid",
-        gridTemplateColumns: isMobile ? undefined : "minmax(0, 1fr) 380px",
-        gap: 18,
-        alignItems: "start",
-      }}
-    >
-      <PaperContainer
+    <div>
+      <Step3Toolbar
         review={review}
-        activeQ={activeQ}
-        setActiveQ={setActiveQ}
+        onViewOriginal={onViewOriginal}
+        essayAvailable={essayAvailable}
+        onPeekAi={() => setAiPeekOpen(true)}
+        tocOpen={tocOpen}
+        onToggleToc={() => setTocOpen((v) => !v)}
       />
-      <Rail
+      <div
+        style={{
+          display: isMobile || !tocOpen ? "block" : "grid",
+          gridTemplateColumns:
+            isMobile || !tocOpen ? undefined : "260px minmax(0, 1fr)",
+          gap: 18,
+          alignItems: "start",
+        }}
+      >
+        {tocOpen && !isMobile && (
+          <MucLucSidebar
+            review={review}
+            activeQ={activeQ}
+            onJumpToCau={jumpToCau}
+            teacherAnnotations={teacherAnnotations}
+            onCollapse={() => setTocOpen(false)}
+          />
+        )}
+        <PaperContainer
+          review={review}
+          flashCau={flashCau}
+          teacherAnnotations={teacherAnnotations}
+          onAddAnnotation={onAddAnnotation}
+          onUpdateAnnotation={onUpdateAnnotation}
+          onRemoveAnnotation={onRemoveAnnotation}
+        />
+      </div>
+      <BanChamAiModal
+        open={aiPeekOpen}
+        onClose={() => setAiPeekOpen(false)}
         review={review}
-        activeQ={activeQ}
-        setActiveQ={setActiveQ}
-        isMobile={isMobile}
+        onGoToRegrade={onGoToRegrade}
       />
     </div>
   );
 }
 
-// PaperHead — title section INSIDE the paper card. Mirrors the reference's
-// ``.paper-head`` (slightly elevated bg, bottom border separator) so the
-// student identity reads as the document's title, not as a floating header
-// disconnected from the body. Eyebrow → student name on the left, lessons
-// pill + model/time on the right.
+// PaperHead — slim title strip inside the paper card. The action pills
+// (Xem PDF gốc, Bản chấm AI…) live in Step3Toolbar above the grid now,
+// so this just carries the student identity as the document's heading.
 function PaperHead({ review }: { review: typeof MOCK_REVIEW }) {
   return (
     <div
       style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: 16,
         padding: "14px 20px",
         background: T.bgElevated,
         borderBottom: `1px solid ${T.border}`,
-        flexWrap: "wrap",
-      }}
-    >
-      <div style={{ minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            color: T.textFaint,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
-            marginBottom: 4,
-          }}
-        >
-          Bản chấm AI · Lần {review.runNumber}
-        </div>
-        <div
-          style={{
-            // Reference uses body serif, not the display Fraunces. Keep
-            // weight at 600 so the student identity reads as the page's
-            // subject without competing with the right-column big score.
-            fontFamily: T.font,
-            fontSize: 18,
-            fontWeight: 600,
-            color: T.text,
-            letterSpacing: "-0.005em",
-            lineHeight: 1.25,
-          }}
-        >
-          {review.studentName} · {review.studentClass}
-        </div>
-      </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          flexShrink: 0,
-          flexWrap: "wrap",
-          justifyContent: "flex-end",
-        }}
-      >
-        {/* Two pills side-by-side — share the exact same MetaPill style so
-            they line up at the same height + corner radius. The lessons
-            pill is informational (span), the PDF one is an action (button
-            with hover). The visual treatment otherwise has to be identical
-            or the row looks lopsided. */}
-        <MetaPill
-          icon={<Icon.Lightbulb size={11} color={T.amber} />}
-          title={`AI: ${review.modelName} · ${review.durationSec}s`}
-        >
-          {review.lessonsUsed} lessons dùng
-        </MetaPill>
-        <MetaPill
-          icon={<Icon.FileText size={11} />}
-          title="Mở bài làm gốc để đối chiếu với phần AI đã chép"
-          onClick={() => {
-            // Mockup phase — wired to real essayImage + modal once the
-            // visual design is locked. For now surface an explicit hint
-            // so a teacher clicking during a demo isn't confused.
-            window.alert(
-              "Mockup: nút này sẽ mở PDF gốc (hoặc ảnh chụp) bài làm học sinh khi được wire với backend.",
-            );
-          }}
-        >
-          Xem PDF gốc
-        </MetaPill>
-      </div>
-    </div>
-  );
-}
-
-// MetaPill — shared visual primitive for the two pills in the paper-head
-// (lessons-used badge + Xem PDF gốc action). Centralized so a span and a
-// button render at pixel-identical height / padding / radius, and the row
-// reads as a unified cluster instead of two slightly-misaligned chips.
-// Behavior differs by ``onClick`` presence: no-op pills render as <span>,
-// actionable pills render as <button> with hover-to-accent.
-function MetaPill({
-  children,
-  icon,
-  title,
-  onClick,
-}: {
-  children: React.ReactNode;
-  icon?: React.ReactNode;
-  title?: string;
-  onClick?: () => void;
-}) {
-  const baseStyle: React.CSSProperties = {
-    padding: "4px 10px",
-    background: T.bgCard,
-    border: `1px solid ${T.border}`,
-    borderRadius: 999,
-    fontSize: 12,
-    fontFamily: T.font,
-    fontWeight: 400,
-    lineHeight: 1.45,
-    color: T.textSoft,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 5,
-    // ``margin: 0`` overrides the button user-agent margin on Safari/Firefox
-    // so the two pills sit at the exact same baseline.
-    margin: 0,
-  };
-  if (!onClick) {
-    return (
-      <span style={baseStyle} title={title}>
-        {icon}
-        {children}
-      </span>
-    );
-  }
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      style={{
-        ...baseStyle,
-        cursor: "pointer",
-        transition: "color 0.12s, border-color 0.12s",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.color = T.accent;
-        e.currentTarget.style.borderColor = T.accent;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.color = T.textSoft;
-        e.currentTarget.style.borderColor = T.border;
-      }}
-    >
-      {icon}
-      {children}
-    </button>
-  );
-}
-
-// Common eyebrow label for rail sections ("TỔNG QUAN AI", "TỪNG CÂU",
-// "BÀI HỌC AI ĐÃ THAM CHIẾU"). Centralized so all three keep the same
-// tracked-uppercase treatment. Inline content (right-aligned counter,
-// icon prefix) is composed via the optional `right` and `icon` slots.
-function RailEyebrow({
-  children,
-  right,
-  icon,
-}: {
-  children: React.ReactNode;
-  right?: React.ReactNode;
-  icon?: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 8,
-        marginBottom: 10,
       }}
     >
       <div
@@ -1219,22 +1116,27 @@ function RailEyebrow({
           color: T.textFaint,
           letterSpacing: "0.12em",
           textTransform: "uppercase",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
+          marginBottom: 4,
         }}
       >
-        {icon}
-        {children}
+        Bản chấm AI · Lần {review.runNumber}
       </div>
-      {right && (
-        <span style={{ fontSize: 11, color: T.textMute, fontFamily: T.mono }}>
-          {right}
-        </span>
-      )}
+      <div
+        style={{
+          fontFamily: T.font,
+          fontSize: 18,
+          fontWeight: 600,
+          color: T.text,
+          letterSpacing: "-0.005em",
+          lineHeight: 1.25,
+        }}
+      >
+        {review.studentName} · {review.studentClass}
+      </div>
     </div>
   );
 }
+
 
 // PaperContainer — single "sheet of paper" wrapping every câu. Matches the
 // reference's ``.paper`` card: one bordered surface with a head section
@@ -1244,12 +1146,21 @@ function RailEyebrow({
 // rail mirrors the same state in its qcards.
 function PaperContainer({
   review,
-  activeQ,
-  setActiveQ,
+  flashCau,
+  teacherAnnotations,
+  onAddAnnotation,
+  onUpdateAnnotation,
+  onRemoveAnnotation,
 }: {
   review: typeof MOCK_REVIEW;
-  activeQ: number;
-  setActiveQ: (n: number) => void;
+  /** Câu number to briefly pulse — set when the teacher jumps from the
+   *  mục lục. Null = no pulse. The container only renders the pulse
+   *  bg while this matches; parent auto-clears after the flash window. */
+  flashCau: number | null;
+  teacherAnnotations?: SelectionAnnotation[];
+  onAddAnnotation?: (a: SelectionAnnotation) => void;
+  onUpdateAnnotation?: (id: string, patch: Partial<SelectionAnnotation>) => void;
+  onRemoveAnnotation?: (id: string) => void;
 }) {
   return (
     <div
@@ -1268,30 +1179,207 @@ function PaperContainer({
       <div style={{ padding: "16px 20px 4px" }}>
         <AnnotatedAnswer
           questions={review.questions}
-          activeQ={activeQ}
-          setActiveQ={setActiveQ}
+          flashCau={flashCau}
+          teacherAnnotations={teacherAnnotations}
+          onAddAnnotation={onAddAnnotation}
+          onUpdateAnnotation={onUpdateAnnotation}
+          onRemoveAnnotation={onRemoveAnnotation}
         />
       </div>
     </div>
   );
 }
 
-// AnnotatedAnswer — student work rendered as a single mono stream, with
-// AI ✓ / × notes attached to whichever line they describe. Mirrors the
-// reference's ``AnnotatedAnswer``: each q-block is clickable and the
-// active one gets a peach background; annotations are matched to lines
-// by index, NOT inlined into the source data — keeps the line text clean.
+
+// AnnotatedAnswer — step 3 "đối soát" surface. Word-style annotation:
+// teacher selects a passage in the AI transcript → a floating mini-
+// toolbar appears with "Bình luận" → selection becomes a highlighted
+// quote anchored to a comment thread under the câu. Highlights re-
+// render on every state change by matching the saved quote against the
+// line text (first occurrence wins — adequate for the prototype).
+//
+// AI scores / annotations are intentionally hidden here; the teacher
+// reads blind and only reveals AI's verdict at step 4 or via the
+// "Bản chấm AI" peek modal in the toolbar.
 function AnnotatedAnswer({
   questions,
-  activeQ,
-  setActiveQ,
+  flashCau,
+  teacherAnnotations,
+  onAddAnnotation,
+  onUpdateAnnotation,
+  onRemoveAnnotation,
 }: {
   questions: MockQuestion[];
-  activeQ: number;
-  setActiveQ: (n: number) => void;
+  /** Câu number to briefly pulse with a peach background. Set by the
+   *  mục lục jump action; auto-clears after ~1.2s. */
+  flashCau: number | null;
+  teacherAnnotations?: SelectionAnnotation[];
+  onAddAnnotation?: (a: SelectionAnnotation) => void;
+  onUpdateAnnotation?: (id: string, patch: Partial<SelectionAnnotation>) => void;
+  onRemoveAnnotation?: (id: string) => void;
 }) {
+  // Floating mini-toolbar state. ``pending`` captures the selection
+  // snapshot at the moment of mouseup so it survives the click on the
+  // "Bình luận" button (browsers collapse the native selection as soon
+  // as focus leaves the text). ``x``/``y`` are viewport coords.
+  const [pending, setPending] = useState<
+    | {
+        cau: number;
+        lineIdx: number;
+        quote: string;
+        x: number;
+        y: number;
+      }
+    | null
+  >(null);
+  // When a fresh annotation is created we auto-open its comment input.
+  // null = nothing being edited; string = annotation id whose card is in
+  // edit mode.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  // Which annotation's card is "focused" — drives the peach highlight
+  // ring on the mark and the matching card style. Set when the teacher
+  // clicks a highlight OR completes a new annotation.
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  // Set of annotation IDs currently waiting on /api/analyze-comment.
+  // Drives the "AI đang phân tích…" pill on the card. Cleared when the
+  // response (or error) lands. Component unmount aborts via the
+  // ``mountedRef`` guard inside ``analyzeAnnotation``.
+  const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Build the analyze-comment payload from the câu context, then update
+  // the annotation with the verdict + analysis. Anti-poisoning: comments
+  // AI disputes are NOT auto-staged at step 4 — the teacher has to
+  // explicitly press "Vẫn lưu" to override. Network failures degrade
+  // gracefully (no verdict ⇒ treated like a pending state but doesn't
+  // block step 4 finalize; the comment still stages as before).
+  const analyzeAnnotation = useCallback(
+    async (id: string, cau: number, comment: string) => {
+      const q = questions.find((qq) => qq.num === cau);
+      if (!q || !onUpdateAnnotation) return;
+      // Pull the câu's first line as the question label and the rest as
+      // the student work, slicing to keep the API payload compact.
+      const studentWork = q.lines.join("\n").slice(0, 2000);
+      const questionLabel = q.lines[0] || `Câu ${cau}`;
+      setAnalyzingIds((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+      try {
+        const data = await analyzeComment({
+          question: questionLabel,
+          student_answer: studentWork,
+          teacher_comment: comment,
+        });
+        if (!mountedRef.current) return;
+        onUpdateAnnotation(id, {
+          verdict: (data.verdict as CommentVerdict) || "agree",
+          analysis: (data.analysis || "").trim(),
+        });
+      } catch (err) {
+        console.warn("[step3] analyze-comment failed:", err);
+        // Don't block staging on network errors — clear the analyzing
+        // state and leave verdict undefined so the comment is treated as
+        // an un-vetted annotation (will still stage at step 4).
+      } finally {
+        if (mountedRef.current) {
+          setAnalyzingIds((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+        }
+      }
+    },
+    [questions, onUpdateAnnotation],
+  );
+
+  const handleMouseUp = useCallback(() => {
+    if (!onAddAnnotation) return;
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+      setPending(null);
+      return;
+    }
+    const trimmed = sel.toString().replace(/\s+$/, "");
+    if (!trimmed) {
+      setPending(null);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const startLine = (range.startContainer.parentElement?.closest(
+      "[data-cau][data-line]",
+    ) as HTMLElement) || null;
+    const endLine = (range.endContainer.parentElement?.closest(
+      "[data-cau][data-line]",
+    ) as HTMLElement) || null;
+    if (!startLine || startLine !== endLine) {
+      setPending(null);
+      return;
+    }
+    const cau = Number(startLine.dataset.cau);
+    const lineIdx = Number(startLine.dataset.line);
+    if (Number.isNaN(cau) || Number.isNaN(lineIdx)) {
+      setPending(null);
+      return;
+    }
+    const rect = range.getBoundingClientRect();
+    setPending({
+      cau,
+      lineIdx,
+      quote: trimmed,
+      x: rect.left + rect.width / 2,
+      y: rect.bottom,
+    });
+  }, [onAddAnnotation]);
+
+  // Clear the pending toolbar on outside click. Without this the chip
+  // lingers after the user moves on.
+  useEffect(() => {
+    if (!pending) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (containerRef.current?.contains(target)) return;
+      const toolbar = document.getElementById("step3-selection-toolbar");
+      if (toolbar?.contains(target)) return;
+      setPending(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [pending]);
+
+  const commitPending = () => {
+    if (!pending || !onAddAnnotation) return;
+    const id = `ann_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    onAddAnnotation({
+      id,
+      cau: pending.cau,
+      lineIdx: pending.lineIdx,
+      quote: pending.quote,
+      comment: "",
+    });
+    setPending(null);
+    window.getSelection()?.removeAllRanges();
+    setEditingId(id);
+    setFocusedId(id);
+  };
+
   return (
     <div
+      ref={containerRef}
+      onMouseUp={handleMouseUp}
       style={{
         fontFamily: T.mono,
         fontSize: 14.5,
@@ -1300,105 +1388,1033 @@ function AnnotatedAnswer({
       }}
     >
       {questions.map((q) => {
-        const active = q.num === activeQ;
+        const flashing = q.num === flashCau;
+        const cauAnns = (teacherAnnotations ?? []).filter(
+          (a) => a.cau === q.num,
+        );
         return (
           <div
             key={q.num}
-            onClick={() => setActiveQ(q.num)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                setActiveQ(q.num);
-              }
-            }}
-            role="button"
-            tabIndex={0}
-            aria-pressed={active}
+            data-cau-anchor={q.num}
             style={{
-              cursor: "pointer",
               padding: "14px 16px",
-              // Negative side margins let the active highlight reach the
-              // paper's inner padding edge so the peach band feels like a
-              // proper section, not a chip floating in the middle.
               margin: "0 -16px 18px",
               borderRadius: 8,
-              background: active ? "#FBEEEA" : "transparent",
-              transition: "background 0.15s",
-              outline: "none",
+              background: flashing ? "#FBEEEA" : "transparent",
+              // 0.6s fade-out so the highlight gracefully decays once
+              // the parent's auto-clear timer fires — no abrupt
+              // disappearance.
+              transition: flashing
+                ? "background 0.1s ease-out"
+                : "background 0.6s ease-out",
+              scrollMarginTop: 12,
             }}
           >
             {q.lines.map((line, i) => {
-              const ann = q.annotations.find((a) => a.line === i);
+              const lineAnns = cauAnns.filter((a) => a.lineIdx === i);
               return (
                 <div
                   key={i}
+                  data-cau={q.num}
+                  data-line={i}
                   style={{
-                    display: "flex",
-                    alignItems: "baseline",
-                    gap: 14,
-                    flexWrap: "wrap",
-                    // pre-wrap (not pre): keeps leading-space indentation for
-                    // multi-line math steps AND wraps long prose lines like
-                    // ``[Hình vẽ: …]`` instead of letting them run off the
-                    // paper edge. Geometry transcripts mix both shapes so we
-                    // need the hybrid.
                     whiteSpace: "pre-wrap",
                     wordBreak: "break-word",
                     minWidth: 0,
                   }}
                 >
-                  <span style={{ minWidth: 0, maxWidth: "100%" }}>{line}</span>
-                  {ann && (
-                    <span
-                      style={{
-                        color: T.red,
-                        fontStyle: "italic",
-                        fontFamily: T.font,
-                        fontSize: 13.5,
-                        fontWeight: 500,
-                        // Annotation re-enables normal wrapping so it
-                        // doesn't push the row width past the column.
-                        whiteSpace: "normal",
-                      }}
-                    >
-                      {ann.kind === "good" ? "✓" : "×"} {ann.text}
-                    </span>
+                  {renderLineWithHighlights(
+                    line,
+                    lineAnns,
+                    focusedId,
+                    (id) => {
+                      setFocusedId(id);
+                      setEditingId(null);
+                    },
                   )}
                 </div>
               );
             })}
-            <div
-              style={{
-                marginTop: 10,
-                color: T.red,
-                fontStyle: "italic",
-                fontFamily: T.font,
-                fontSize: 14,
+            <AnnotationList
+              cauAnns={cauAnns}
+              editingId={editingId}
+              focusedId={focusedId}
+              onStartEdit={(id) => {
+                setEditingId(id);
+                setFocusedId(id);
               }}
-            >
-              — {q.earned.toFixed(1)}/{q.max.toFixed(1)}đ
-            </div>
+              onCancelEdit={(id, currentComment) => {
+                if (!currentComment.trim()) {
+                  onRemoveAnnotation?.(id);
+                  setFocusedId(null);
+                }
+                setEditingId(null);
+              }}
+              onSave={(id, comment) => {
+                const trimmed = comment.trim();
+                if (!trimmed) {
+                  onRemoveAnnotation?.(id);
+                  setFocusedId(null);
+                  setEditingId(null);
+                  return;
+                }
+                // Persist the comment, reset prior verdict (so a re-edit
+                // re-triggers AI analysis), then fire /api/analyze-comment.
+                onUpdateAnnotation?.(id, {
+                  comment: trimmed,
+                  verdict: undefined,
+                  analysis: undefined,
+                  disputeDecision: undefined,
+                });
+                setEditingId(null);
+                const ann = (teacherAnnotations ?? []).find((a) => a.id === id);
+                if (ann) {
+                  void analyzeAnnotation(id, ann.cau, trimmed);
+                }
+              }}
+              analyzingIds={analyzingIds}
+              onDecideDispute={(id, decision) => {
+                onUpdateAnnotation?.(id, { disputeDecision: decision });
+              }}
+              onRemove={(id) => {
+                onRemoveAnnotation?.(id);
+                if (focusedId === id) setFocusedId(null);
+                if (editingId === id) setEditingId(null);
+              }}
+            />
           </div>
         );
       })}
+      {pending && (
+        <SelectionToolbar
+          x={pending.x}
+          y={pending.y}
+          onComment={commitPending}
+          onDismiss={() => setPending(null)}
+        />
+      )}
     </div>
   );
 }
 
-// Rail — right-side summary card. Sticky + internally scrollable so the
-// "Tổng quan / Từng câu / Bài học tham chiếu" stack stays in view while
-// the teacher scrolls the long student work in the paper next to it.
-function Rail({
+// renderLineWithHighlights — split a line into segments where each
+// annotation's quote becomes a `<mark>` and the rest stays plain text.
+// Matches are case-sensitive; if a quote appears multiple times, only
+// the FIRST unhighlighted match for each annotation wins. Good enough
+// for the prototype.
+function renderLineWithHighlights(
+  line: string,
+  anns: SelectionAnnotation[],
+  focusedId: string | null,
+  onClickMark: (id: string) => void,
+): React.ReactNode[] {
+  type Seg = { text: string; ann: SelectionAnnotation | null };
+  let segs: Seg[] = [{ text: line, ann: null }];
+  for (const ann of anns) {
+    const next: Seg[] = [];
+    let placed = false;
+    for (const seg of segs) {
+      if (seg.ann || placed) {
+        next.push(seg);
+        continue;
+      }
+      const idx = seg.text.indexOf(ann.quote);
+      if (idx === -1) {
+        next.push(seg);
+        continue;
+      }
+      if (idx > 0) next.push({ text: seg.text.slice(0, idx), ann: null });
+      next.push({ text: ann.quote, ann });
+      const tail = seg.text.slice(idx + ann.quote.length);
+      if (tail.length > 0) next.push({ text: tail, ann: null });
+      placed = true;
+    }
+    segs = next;
+  }
+  return segs.map((seg, i) => {
+    if (!seg.ann) return <span key={i}>{seg.text}</span>;
+    const focused = focusedId === seg.ann.id;
+    const annId = seg.ann.id;
+    return (
+      <mark
+        key={i}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClickMark(annId);
+        }}
+        style={{
+          background: focused ? "#F8C9B9" : "#FBEEEA",
+          color: T.text,
+          padding: "0 2px",
+          borderRadius: 2,
+          cursor: "pointer",
+          transition: "background 0.12s",
+        }}
+      >
+        {seg.text}
+      </mark>
+    );
+  });
+}
+
+// SelectionToolbar — floating mini-toolbar Word-style. Pinned to viewport
+// coords so it survives scroll jitter; positioned just below the selection
+// rect. Uses ``onMouseDown`` (not onClick) so the action fires before the
+// browser collapses the selection.
+function SelectionToolbar({
+  x,
+  y,
+  onComment,
+  onDismiss,
+}: {
+  x: number;
+  y: number;
+  onComment: () => void;
+  onDismiss: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [clamped, setClamped] = useState({ left: x, top: y + 8 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const w = el.offsetWidth;
+    const vw = window.innerWidth;
+    const half = w / 2;
+    const left = Math.max(half + 6, Math.min(vw - half - 6, x));
+    setClamped({ left, top: y + 8 });
+  }, [x, y]);
+  return (
+    <div
+      id="step3-selection-toolbar"
+      ref={ref}
+      style={{
+        position: "fixed",
+        left: clamped.left,
+        top: clamped.top,
+        transform: "translateX(-50%)",
+        background: T.paper,
+        border: `1px solid ${T.border}`,
+        borderRadius: 8,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: 4,
+        zIndex: 50,
+        fontFamily: T.font,
+      }}
+    >
+      <button
+        type="button"
+        onMouseDown={(e) => {
+          e.preventDefault();
+          onComment();
+        }}
+        title="Tô vàng + thêm bình luận"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "6px 12px",
+          fontSize: 12.5,
+          fontWeight: 500,
+          color: T.text,
+          background: T.bgCard,
+          border: "none",
+          borderRadius: 6,
+          cursor: "pointer",
+          fontFamily: T.font,
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "#FBEEEA";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = T.bgCard;
+        }}
+      >
+        <span
+          style={{
+            display: "inline-block",
+            width: 12,
+            height: 12,
+            background: "#FBEEEA",
+            border: `1px solid ${T.accent}`,
+            borderRadius: 2,
+          }}
+        />
+        Bình luận
+      </button>
+      <button
+        type="button"
+        onMouseDown={(e) => {
+          e.preventDefault();
+          onDismiss();
+        }}
+        aria-label="Bỏ qua"
+        title="Bỏ qua"
+        style={{
+          width: 24,
+          height: 24,
+          border: "none",
+          background: "transparent",
+          color: T.textFaint,
+          cursor: "pointer",
+          padding: 0,
+          fontSize: 14,
+          borderRadius: 4,
+        }}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+// AnnotationList — per-câu list of saved annotations. Stops propagation
+// so editing doesn't fire the câu container's click-to-activate.
+function AnnotationList({
+  cauAnns,
+  editingId,
+  focusedId,
+  analyzingIds,
+  onStartEdit,
+  onCancelEdit,
+  onSave,
+  onRemove,
+  onDecideDispute,
+}: {
+  cauAnns: SelectionAnnotation[];
+  editingId: string | null;
+  focusedId: string | null;
+  /** Set of annotation IDs whose /api/analyze-comment request is in
+   *  flight. Cards in this set render a "đang phân tích" pill instead
+   *  of the verdict. */
+  analyzingIds: Set<string>;
+  onStartEdit: (id: string) => void;
+  onCancelEdit: (id: string, currentComment: string) => void;
+  onSave: (id: string, comment: string) => void;
+  onRemove: (id: string) => void;
+  /** Teacher's override on a disputed verdict — "apply" stages the
+   *  lesson anyway, "skip" drops it. */
+  onDecideDispute: (id: string, decision: "apply" | "skip") => void;
+}) {
+  if (cauAnns.length === 0) return null;
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      onMouseUp={(e) => e.stopPropagation()}
+      style={{
+        marginTop: 10,
+        paddingTop: 10,
+        borderTop: `1px dashed ${T.borderLight}`,
+        fontFamily: T.font,
+        fontSize: 13.5,
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+      }}
+    >
+      {cauAnns.map((ann) => (
+        <AnnotationCard
+          key={ann.id}
+          ann={ann}
+          editing={editingId === ann.id}
+          focused={focusedId === ann.id}
+          analyzing={analyzingIds.has(ann.id)}
+          onStartEdit={() => onStartEdit(ann.id)}
+          onCancelEdit={(currentComment) => onCancelEdit(ann.id, currentComment)}
+          onSave={(comment) => onSave(ann.id, comment)}
+          onRemove={() => onRemove(ann.id)}
+          onDecideDispute={(decision) => onDecideDispute(ann.id, decision)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AnnotationCard({
+  ann,
+  editing,
+  focused,
+  analyzing,
+  onStartEdit,
+  onCancelEdit,
+  onSave,
+  onRemove,
+  onDecideDispute,
+}: {
+  ann: SelectionAnnotation;
+  editing: boolean;
+  focused: boolean;
+  analyzing: boolean;
+  onStartEdit: () => void;
+  onCancelEdit: (currentComment: string) => void;
+  onSave: (comment: string) => void;
+  onRemove: () => void;
+  onDecideDispute: (decision: "apply" | "skip") => void;
+}) {
+  const [draft, setDraft] = useState(ann.comment);
+  useEffect(() => {
+    setDraft(ann.comment);
+  }, [ann.comment, editing]);
+
+  // Card-level collapse. Default = card only shows quote + teacher
+  // comment + delete. Teacher clicks the card to reveal the AI verdict
+  // section. Two cases force it open without a click:
+  //   • analyzing — the loading pill belongs in plain view so the
+  //     teacher knows /api/analyze-comment is in flight.
+  //   • dispute with pending decision — the teacher MUST choose
+  //     "Vẫn lưu / Bỏ qua", so we can't hide the buttons behind a click.
+  const [cardExpanded, setCardExpanded] = useState(false);
+  const needsDecision =
+    ann.verdict === "dispute" && ann.disputeDecision === undefined;
+  const forceShowVerdict = analyzing || needsDecision;
+  const showVerdict = (cardExpanded || forceShowVerdict) && !editing;
+  // Re-collapse when the verdict changes — a fresh analysis shouldn't
+  // auto-expand prior state into view.
+  useEffect(() => {
+    setCardExpanded(false);
+  }, [ann.verdict]);
+
+  return (
+    <div
+      onClick={(e) => {
+        // Toggle expansion when the teacher clicks the card chrome (quote
+        // area, padding, card surface). Comment text + × + edit input all
+        // stopPropagation already, so they keep their own click semantics.
+        // Skip the toggle while in edit mode — the input needs every click.
+        if (editing) return;
+        // Don't allow collapse while a dispute decision is still pending —
+        // the buttons must stay visible until the teacher picks.
+        if (forceShowVerdict && cardExpanded === false) {
+          // Already force-open: a click here is harmless, no-op.
+          return;
+        }
+        e.stopPropagation();
+        setCardExpanded((v) => !v);
+      }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+        padding: "8px 10px",
+        background: focused ? "#FBEEEA" : T.bgCard,
+        border: focused ? `1px solid ${T.accent}` : `1px solid ${T.borderLight}`,
+        borderLeft: `3px solid ${T.accent}`,
+        borderRadius: 4,
+        transition: "background 0.12s, border-color 0.12s",
+        cursor: editing ? "default" : "pointer",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          color: T.textSoft,
+          fontStyle: "italic",
+          fontFamily: T.font,
+          lineHeight: 1.45,
+          overflow: "hidden",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+        }}
+      >
+        “{ann.quote}”
+      </div>
+      {editing ? (
+        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                onSave(draft);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                onCancelEdit(draft);
+              }
+            }}
+            placeholder="Ghi nhận xét của bạn…"
+            style={{
+              flex: 1,
+              padding: "6px 10px",
+              borderRadius: 6,
+              border: `1px solid ${T.border}`,
+              background: T.paper,
+              fontFamily: T.font,
+              fontSize: 13.5,
+              color: T.text,
+              outline: "none",
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => onSave(draft)}
+            disabled={!draft.trim()}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 6,
+              border: "none",
+              background: draft.trim() ? T.accent : T.borderLight,
+              color: draft.trim() ? "#fff" : T.textFaint,
+              fontFamily: T.font,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: draft.trim() ? "pointer" : "not-allowed",
+            }}
+          >
+            Lưu
+          </button>
+        </div>
+      ) : (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 8,
+          }}
+        >
+          <span
+            style={{
+              flex: 1,
+              whiteSpace: "pre-wrap",
+              minWidth: 0,
+              color: T.text,
+              lineHeight: 1.5,
+              cursor: "text",
+            }}
+            onClick={(e) => {
+              // Comment text owns the edit affordance; the card-level
+              // expand toggle skips it via this stopPropagation.
+              e.stopPropagation();
+              onStartEdit();
+            }}
+            role="button"
+            tabIndex={0}
+          >
+            {ann.comment || (
+              <span style={{ color: T.textFaint, fontStyle: "italic" }}>
+                Bấm để thêm nhận xét
+              </span>
+            )}
+          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            title="Xoá"
+            style={{
+              flexShrink: 0,
+              width: 22,
+              height: 22,
+              borderRadius: "50%",
+              border: "none",
+              background: "transparent",
+              color: T.textFaint,
+              cursor: "pointer",
+              fontSize: 16,
+              lineHeight: 1,
+              padding: 0,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {/* Verdict block — hidden until the teacher clicks the card.
+          Force-shown when analyzing OR when a dispute decision is
+          pending (anti-poisoning gate can't hide behind a click). */}
+      {showVerdict && ann.comment && (
+        <VerdictRow
+          analyzing={analyzing}
+          verdict={ann.verdict}
+          analysis={ann.analysis}
+          disputeDecision={ann.disputeDecision}
+          onDecideDispute={onDecideDispute}
+        />
+      )}
+    </div>
+  );
+}
+
+// VerdictRow — surfaces /api/analyze-comment's judgment under each
+// annotation card. At rest only the pill is visible (verdict label +
+// status). Clicking the pill expands the analysis + dispute buttons.
+// Force-expanded when a dispute decision is pending — teacher MUST
+// choose "Vẫn lưu" / "Bỏ qua", can't dismiss the prompt.
+function VerdictRow({
+  analyzing,
+  verdict,
+  analysis,
+  disputeDecision,
+  onDecideDispute,
+}: {
+  analyzing: boolean;
+  verdict: CommentVerdict | undefined;
+  analysis: string | undefined;
+  disputeDecision: "apply" | "skip" | undefined;
+  onDecideDispute: (decision: "apply" | "skip") => void;
+}) {
+  const needsDecision = verdict === "dispute" && disputeDecision === undefined;
+  const [expanded, setExpanded] = useState(false);
+  // Reset to collapsed when the verdict changes (re-edit a comment ⇒
+  // fresh analysis ⇒ don't leak the previous analysis text into view).
+  useEffect(() => {
+    setExpanded(false);
+  }, [verdict, analysis]);
+
+  if (analyzing) {
+    return (
+      <div
+        style={{
+          marginTop: 6,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "3px 8px",
+          background: T.bgMuted,
+          border: `1px solid ${T.borderLight}`,
+          borderRadius: 999,
+          fontSize: 11.5,
+          color: T.textMute,
+          fontStyle: "italic",
+          alignSelf: "flex-start",
+        }}
+      >
+        <Icon.RefreshCw size={10} color={T.textMute} />
+        AI đang phân tích…
+      </div>
+    );
+  }
+  if (!verdict) return null;
+  const tone = VERDICT_TONE[verdict];
+  const bodyOpen = expanded || needsDecision;
+
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}
+    >
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setExpanded((v) => !v);
+        }}
+        aria-expanded={bodyOpen}
+        title={bodyOpen ? "Thu gọn" : "Xem phân tích của AI"}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "3px 9px",
+          background: tone.bg,
+          border: `1px solid ${tone.color}`,
+          borderRadius: 999,
+          fontSize: 11.5,
+          color: tone.color,
+          fontWeight: 600,
+          alignSelf: "flex-start",
+          cursor: "pointer",
+          fontFamily: T.font,
+        }}
+      >
+        <span
+          style={{
+            display: "inline-block",
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: tone.color,
+          }}
+        />
+        {tone.label}
+        {verdict !== "dispute" && (
+          <span style={{ fontWeight: 400, color: tone.color }}>
+            · sẽ học vào bộ nhớ
+          </span>
+        )}
+        {verdict === "dispute" && disputeDecision === "apply" && (
+          <span style={{ fontWeight: 400, color: tone.color }}>
+            · bạn vẫn lưu
+          </span>
+        )}
+        {verdict === "dispute" && disputeDecision === "skip" && (
+          <span style={{ fontWeight: 400, color: tone.color }}>
+            · đã bỏ qua
+          </span>
+        )}
+        {/* Chevron — rotates when expanded. Hidden during a pending
+            dispute decision: the body is force-open and toggling it
+            would only confuse the teacher (the buttons must stay). */}
+        {!needsDecision && (
+          <span
+            aria-hidden="true"
+            style={{
+              display: "inline-flex",
+              transform: `rotate(${bodyOpen ? 180 : 0}deg)`,
+              transition: "transform 0.15s",
+              opacity: 0.7,
+              marginLeft: 2,
+            }}
+          >
+            <svg
+              width={9}
+              height={9}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </span>
+        )}
+      </button>
+      {bodyOpen && analysis && (
+        <div
+          style={{
+            fontSize: 12.5,
+            color: T.textSoft,
+            lineHeight: 1.5,
+            background: T.bgMuted,
+            border: `1px solid ${T.borderLight}`,
+            borderRadius: 6,
+            padding: "6px 10px",
+          }}
+        >
+          {analysis}
+        </div>
+      )}
+      {bodyOpen && needsDecision && (
+        <div style={{ display: "inline-flex", gap: 6, marginTop: 2 }}>
+          <button
+            type="button"
+            onClick={() => onDecideDispute("apply")}
+            style={{
+              padding: "5px 12px",
+              fontSize: 12,
+              fontWeight: 600,
+              color: "#fff",
+              background: T.red,
+              border: "none",
+              borderRadius: 6,
+              cursor: "pointer",
+              fontFamily: T.font,
+            }}
+          >
+            Vẫn lưu nhận xét này
+          </button>
+          <button
+            type="button"
+            onClick={() => onDecideDispute("skip")}
+            style={{
+              padding: "5px 12px",
+              fontSize: 12,
+              fontWeight: 500,
+              color: T.textSoft,
+              background: T.bgCard,
+              border: `1px solid ${T.border}`,
+              borderRadius: 6,
+              cursor: "pointer",
+              fontFamily: T.font,
+            }}
+          >
+            Bỏ qua
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Verdict colour map. Three semantic tones aligned with the rest of the
+// app: green = AI concurs, amber = nuance, red = AI disagrees.
+const VERDICT_TONE: Record<
+  CommentVerdict,
+  { color: string; bg: string; label: string }
+> = {
+  agree: { color: "#1F7A4C", bg: "#E3F4EA", label: "AI đồng ý" },
+  partial: { color: "#A8770A", bg: "#FCF1D8", label: "AI đồng ý một phần" },
+  dispute: { color: "#A1392A", bg: "#FBE3DF", label: "AI phản biện" },
+};
+
+// Step3Toolbar — full-width action bar above the doc/sidebar grid.
+// Inspired by document-editor toolbars (Word, Google Docs): identity
+// strip on the left, action pills on the right. Centralises affordances
+// that used to be in the paper-head MetaPills + adds "Bản chấm AI"
+// peek so the teacher can reveal AI's verdict without committing to
+// step 4 yet.
+function Step3Toolbar({
   review,
-  activeQ,
-  setActiveQ,
-  isMobile,
+  onViewOriginal,
+  essayAvailable,
+  onPeekAi,
+  tocOpen,
+  onToggleToc,
 }: {
   review: typeof MOCK_REVIEW;
-  activeQ: number;
-  setActiveQ: (n: number) => void;
-  isMobile: boolean;
+  onViewOriginal?: () => void;
+  essayAvailable?: boolean;
+  onPeekAi: () => void;
+  tocOpen: boolean;
+  onToggleToc: () => void;
 }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        padding: "10px 16px",
+        marginBottom: 14,
+        background: T.bgCard,
+        border: `1px solid ${T.border}`,
+        borderRadius: 12,
+        boxShadow: T.shadowSoft,
+        flexWrap: "wrap",
+      }}
+    >
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 10,
+          minWidth: 0,
+        }}
+      >
+        <ToolbarIconButton
+          onClick={onToggleToc}
+          title={tocOpen ? "Ẩn mục lục" : "Hiện mục lục"}
+          aria-label="Mục lục"
+        >
+          <Icon.Menu size={14} />
+        </ToolbarIconButton>
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: T.textFaint,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+            }}
+          >
+            Bản chấm AI · Lần {review.runNumber}
+          </div>
+          <div
+            style={{
+              fontFamily: T.font,
+              fontSize: 14,
+              fontWeight: 600,
+              color: T.text,
+              lineHeight: 1.3,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {review.studentName} · {review.studentClass}
+          </div>
+        </div>
+      </div>
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          flexShrink: 0,
+          flexWrap: "wrap",
+          justifyContent: "flex-end",
+        }}
+      >
+        <ToolbarButton
+          icon={<Icon.FileText size={12} />}
+          onClick={essayAvailable ? onViewOriginal : undefined}
+          disabled={!essayAvailable}
+          title={
+            essayAvailable
+              ? "Mở bài làm gốc để đối chiếu"
+              : "Chưa có bài làm gốc trong phiên này."
+          }
+        >
+          Xem PDF gốc
+        </ToolbarButton>
+        <ToolbarButton
+          icon={<Icon.Lightbulb size={12} color={T.amber} />}
+          onClick={onPeekAi}
+          title="Xem điểm + nhận xét AI đã chấm"
+        >
+          Bản chấm AI
+        </ToolbarButton>
+        <ToolbarButton
+          icon={<PrinterIcon size={12} />}
+          onClick={() => window.print()}
+          title="In bài chấm"
+        >
+          In
+        </ToolbarButton>
+      </div>
+    </div>
+  );
+}
+
+// ToolbarButton — pill-shaped action button used inside Step3Toolbar.
+// Matches MetaPill's silhouette so adjacent surfaces (PaperHead before
+// the redesign, MucLuc items now) read as part of the same visual
+// system.
+function ToolbarButton({
+  children,
+  icon,
+  onClick,
+  title,
+  disabled = false,
+}: {
+  children: React.ReactNode;
+  icon?: React.ReactNode;
+  onClick?: () => void;
+  title?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || !onClick}
+      title={title}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "6px 12px",
+        fontSize: 12.5,
+        fontFamily: T.font,
+        fontWeight: 500,
+        color: disabled ? T.textFaint : T.textSoft,
+        background: T.bgCard,
+        border: `1px solid ${T.border}`,
+        borderRadius: 999,
+        cursor: disabled || !onClick ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.55 : 1,
+        transition: "color 0.12s, border-color 0.12s",
+        whiteSpace: "nowrap",
+      }}
+      onMouseEnter={(e) => {
+        if (disabled || !onClick) return;
+        e.currentTarget.style.color = T.accent;
+        e.currentTarget.style.borderColor = T.accent;
+      }}
+      onMouseLeave={(e) => {
+        if (disabled || !onClick) return;
+        e.currentTarget.style.color = T.textSoft;
+        e.currentTarget.style.borderColor = T.border;
+      }}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+function PrinterIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="6 9 6 2 18 2 18 9" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="6" y="14" width="12" height="8" />
+    </svg>
+  );
+}
+
+function ToolbarIconButton({
+  children,
+  onClick,
+  title,
+  ...aria
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  title?: string;
+  "aria-label"?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      {...aria}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 30,
+        height: 30,
+        padding: 0,
+        background: "transparent",
+        border: `1px solid ${T.border}`,
+        borderRadius: 8,
+        color: T.textSoft,
+        cursor: "pointer",
+        transition: "color 0.12s, border-color 0.12s, background 0.12s",
+        flexShrink: 0,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.color = T.text;
+        e.currentTarget.style.borderColor = T.textMute;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.color = T.textSoft;
+        e.currentTarget.style.borderColor = T.border;
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// MucLucSidebar — left-side table of contents inspired by document
+// editors (a "mục lục" for the bài làm). Hierarchical: "BÀI LÀM" header
+// → câu items with ghi-chú count badge. Collapsible via the toolbar's
+// menu icon. Sticky so navigation stays in reach while the teacher
+// scrolls long transcripts.
+function MucLucSidebar({
+  review,
+  activeQ,
+  onJumpToCau,
+  teacherAnnotations,
+  onCollapse,
+}: {
+  review: typeof MOCK_REVIEW;
+  /** The câu most recently clicked in the sidebar. Drives the persistent
+   *  border-left peach marker so the teacher knows where they are. */
+  activeQ: number;
+  /** Click handler that owns both the scroll-into-view and the body-side
+   *  flash pulse. Sidebar just fires this; the parent decides what
+   *  happens. */
+  onJumpToCau: (n: number) => void;
+  teacherAnnotations?: SelectionAnnotation[];
+  onCollapse: () => void;
+}) {
+  const totalNotes = (teacherAnnotations ?? []).length;
+  const countByCau = (cau: number) =>
+    (teacherAnnotations ?? []).filter((a) => a.cau === cau).length;
   return (
     <aside
       style={{
@@ -1408,25 +2424,29 @@ function Rail({
         boxShadow: T.shadowSoft,
         display: "flex",
         flexDirection: "column",
-        // Sticky inside a grid item requires alignSelf:start, otherwise the
-        // grid stretches the rail to the row's full height and sticky has
-        // no slack to slide along.
-        position: isMobile ? "static" : "sticky",
+        position: "sticky",
         top: 16,
         alignSelf: "start",
-        maxHeight: isMobile ? "none" : "calc(100vh - 32px)",
+        maxHeight: "calc(100vh - 32px)",
         overflow: "hidden",
       }}
     >
       <div
         style={{
-          padding: "14px 18px",
+          padding: "12px 16px",
           borderBottom: `1px solid ${T.borderLight}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
           flexShrink: 0,
         }}
       >
         <div
           style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
             fontSize: 11,
             fontWeight: 700,
             color: T.textFaint,
@@ -1434,361 +2454,364 @@ function Rail({
             textTransform: "uppercase",
           }}
         >
-          Tổng quan AI
+          Mục lục
+        </div>
+        <button
+          type="button"
+          onClick={onCollapse}
+          aria-label="Thu gọn mục lục"
+          title="Thu gọn"
+          style={{
+            width: 22,
+            height: 22,
+            border: "none",
+            background: "transparent",
+            color: T.textFaint,
+            cursor: "pointer",
+            padding: 0,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 4,
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = T.text)}
+          onMouseLeave={(e) => (e.currentTarget.style.color = T.textFaint)}
+        >
+          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 6l-6 6 6 6" />
+          </svg>
+        </button>
+      </div>
+      <div
+        style={{
+          padding: "12px 0",
+          overflowY: "auto",
+          flex: 1,
+        }}
+      >
+        <div
+          style={{
+            padding: "0 16px 6px",
+            fontSize: 12,
+            fontWeight: 700,
+            color: T.text,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
+          Bài làm
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {review.questions.map((q) => {
+            const noteCount = countByCau(q.num);
+            const active = q.num === activeQ;
+            return (
+              <button
+                key={q.num}
+                type="button"
+                onClick={() => onJumpToCau(q.num)}
+                aria-pressed={active}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  textAlign: "left",
+                  width: "100%",
+                  padding: "8px 16px 8px 22px",
+                  fontFamily: "inherit",
+                  fontSize: 13.5,
+                  color: active ? T.accent : T.textSoft,
+                  fontWeight: active ? 600 : 500,
+                  background: active ? "#FBEEEA" : "transparent",
+                  border: "none",
+                  borderLeft: active
+                    ? `3px solid ${T.accent}`
+                    : "3px solid transparent",
+                  cursor: "pointer",
+                  transition: "color 0.12s, background 0.12s",
+                }}
+                onMouseEnter={(e) => {
+                  if (active) return;
+                  e.currentTarget.style.color = T.text;
+                }}
+                onMouseLeave={(e) => {
+                  if (active) return;
+                  e.currentTarget.style.color = T.textSoft;
+                }}
+              >
+                <span>Câu {q.num}</span>
+                {noteCount > 0 && (
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontFamily: T.mono,
+                      color: active ? T.accent : T.textFaint,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {noteCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
       <div
         style={{
-          padding: "16px 18px",
-          overflowY: "auto",
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          gap: 18,
+          padding: "10px 16px",
+          borderTop: `1px solid ${T.borderLight}`,
+          fontSize: 11.5,
+          color: T.textMute,
+          fontFamily: T.mono,
+          flexShrink: 0,
         }}
       >
-        <OverallCard review={review} />
-        <PerQuestionList
-          questions={review.questions}
-          activeQ={activeQ}
-          setActiveQ={setActiveQ}
-        />
-        <LessonsList lessons={review.referencedLessons} />
+        {totalNotes} ghi chú đối soát
       </div>
     </aside>
   );
 }
 
-function OverallCard({ review }: { review: typeof MOCK_REVIEW }) {
+// BanChamAiModal — escape hatch for the teacher to peek at AI's verdict
+// without committing to step 4. Useful after they've finished blind
+// annotation and want a sanity-check against their own scoring intuition.
+function BanChamAiModal({
+  open,
+  onClose,
+  review,
+  onGoToRegrade,
+}: {
+  open: boolean;
+  onClose: () => void;
+  review: typeof MOCK_REVIEW;
+  onGoToRegrade?: () => void;
+}) {
+  if (!open) return null;
   return (
     <div
+      onClick={onClose}
       style={{
-        background: T.bgMuted,
-        border: `1px solid ${T.borderLight}`,
-        borderRadius: 10,
-        padding: "14px 16px",
-      }}
-    >
-      {/* "điểm dự kiến" eyebrow removed — the section header "Tổng quan
-          AI" above + the big 8.5 / 10.0 already say what this number is.
-          The extra label was just panel noise for long essays. */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          gap: 6,
-          flexWrap: "wrap",
-        }}
-      >
-        <span
-          style={{
-            fontFamily: T.mono,
-            fontSize: 38,
-            fontWeight: 600,
-            color: T.text,
-            letterSpacing: "-0.02em",
-            lineHeight: 1,
-          }}
-        >
-          {review.overallScore.toFixed(1)}
-        </span>
-        <span style={{ fontSize: 16, color: T.textMute, fontFamily: T.mono }}>
-          / {review.overallMax.toFixed(1)}
-        </span>
-      </div>
-      <div
-        style={{
-          marginTop: 8,
-          fontSize: 12.5,
-          color: T.textSoft,
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          flexWrap: "wrap",
-        }}
-      >
-        <span style={{ color: T.green, fontWeight: 600 }}>
-          {review.correctCount} đúng
-        </span>
-        <span style={{ color: T.textFaint }}>·</span>
-        <span style={{ color: T.red, fontWeight: 600 }}>
-          {review.needsReviewCount} cần xem
-        </span>
-        <span style={{ color: T.textFaint }}>·</span>
-        <span style={{ fontFamily: T.mono, color: T.textMute }}>
-          {review.durationSec.toFixed(2)}s
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function PerQuestionList({
-  questions,
-  activeQ,
-  setActiveQ,
-}: {
-  questions: MockQuestion[];
-  activeQ: number;
-  setActiveQ: (n: number) => void;
-}) {
-  return (
-    <div>
-      <RailEyebrow>Từng câu</RailEyebrow>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {questions.map((q) => (
-          <RailQCard
-            key={q.num}
-            q={q}
-            active={q.num === activeQ}
-            onClick={() => setActiveQ(q.num)}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function RailQCard({
-  q,
-  active,
-  onClick,
-}: {
-  q: MockQuestion;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      style={{
-        textAlign: "left",
-        width: "100%",
-        background: active ? "#FBEEEA" : T.bgCard,
-        border: active ? `1.5px solid ${T.red}` : `1px solid ${T.border}`,
-        borderRadius: 10,
-        padding: "12px 14px",
-        cursor: "pointer",
-        transition: "border-color 0.15s, background 0.15s",
-        fontFamily: "inherit",
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.55)",
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+        animation: "fadeUp 0.2s ease-out",
       }}
     >
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
+          width: "min(620px, 100%)",
+          maxHeight: "85vh",
+          background: T.paper,
+          borderRadius: 12,
+          boxShadow: "0 24px 60px rgba(0,0,0,0.35)",
           display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          gap: 8,
-        }}
-      >
-        <span style={{ fontSize: 14, fontWeight: 600, color: T.text }}>
-          Câu {q.num}
-        </span>
-        <span style={{ fontFamily: T.mono, fontSize: 14 }}>
-          <span
-            style={{
-              fontWeight: 700,
-              color:
-                q.earned < q.max
-                  ? T.red
-                  : T.text,
-            }}
-          >
-            {q.earned.toFixed(1)}
-          </span>
-          <span style={{ color: T.textMute }}>/{q.max.toFixed(1)}</span>
-        </span>
-      </div>
-      <div
-        style={{
-          marginTop: 5,
-          fontSize: 12.5,
-          color: T.textSoft,
-          lineHeight: 1.5,
-        }}
-      >
-        {q.summary}
-      </div>
-    </button>
-  );
-}
-
-function LessonsList({ lessons }: { lessons: MockReferencedLesson[] }) {
-  // Default collapsed: long essays (8–10 câu) would push the panel scroll
-  // deep past these cards before the teacher could even see the per-câu
-  // list. The count itself ("3 kết quả") on the toggle still telegraphs
-  // that lessons exist — teacher clicks to inspect.
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div
-      style={{
-        borderTop: `1px dashed ${T.border}`,
-        paddingTop: 14,
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        style={{
-          width: "100%",
-          background: "transparent",
-          border: "none",
-          padding: 0,
-          cursor: "pointer",
-          fontFamily: "inherit",
-          textAlign: "left",
+          flexDirection: "column",
+          overflow: "hidden",
         }}
       >
         <div
           style={{
+            padding: "16px 22px",
+            borderBottom: `1px solid ${T.borderLight}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             gap: 8,
-            marginBottom: open ? 10 : 0,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: T.textFaint,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                marginBottom: 4,
+              }}
+            >
+              Bản chấm AI · Lần {review.runNumber}
+            </div>
+            <div
+              style={{
+                fontFamily: T.font,
+                fontSize: 17,
+                fontWeight: 600,
+                color: T.text,
+              }}
+            >
+              AI chấm: {review.overallScore.toFixed(1)}
+              <span style={{ color: T.textMute, fontWeight: 400 }}>
+                {" "}
+                / {review.overallMax.toFixed(1)}đ
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Đóng"
+            title="Đóng"
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: "50%",
+              border: `1px solid ${T.border}`,
+              background: T.bgCard,
+              color: T.textMute,
+              cursor: "pointer",
+              fontSize: 14,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            ×
+          </button>
+        </div>
+        <div
+          style={{
+            padding: "14px 22px",
+            overflowY: "auto",
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
           }}
         >
           <div
             style={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: T.textFaint,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
+              fontSize: 12.5,
+              color: T.textSoft,
+              lineHeight: 1.55,
             }}
           >
-            <Icon.Lightbulb size={11} color={T.amber} />
-            Bài học AI đã tham chiếu
+            AI đề xuất các mức điểm dưới đây. Bạn vẫn là người quyết định
+            cuối — vào bước "Chấm lại" để chốt điểm chính thức.
           </div>
-          {/* Right cluster: count + toggle affordance. Chevron lives on
-              the right because mixing it with the topic icon on the left
-              made the two icons (9px chevron + 11px lightbulb) read as
-              misaligned — Notion / Material accordions both keep the
-              toggle on the trailing edge. */}
-          <span
+          {review.questions.map((q) => {
+            const lost = q.earned < q.max - 0.001;
+            return (
+              <div
+                key={q.num}
+                style={{
+                  border: `1px solid ${T.borderLight}`,
+                  borderRadius: 10,
+                  padding: "10px 14px",
+                  background: T.bgCard,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                    gap: 8,
+                    marginBottom: 4,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: T.text,
+                    }}
+                  >
+                    Câu {q.num}
+                  </div>
+                  <div style={{ fontFamily: T.mono, fontSize: 13.5 }}>
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        color: lost ? T.red : T.green,
+                      }}
+                    >
+                      {q.earned.toFixed(1)}
+                    </span>
+                    <span style={{ color: T.textMute }}>
+                      /{q.max.toFixed(1)}
+                    </span>
+                  </div>
+                </div>
+                {q.summary && (
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: T.textSoft,
+                      lineHeight: 1.55,
+                    }}
+                  >
+                    {q.summary}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div
+          style={{
+            padding: "12px 22px",
+            borderTop: `1px solid ${T.borderLight}`,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 11,
-              color: T.textMute,
-              fontFamily: T.mono,
+              padding: "8px 14px",
+              fontSize: 13,
+              color: T.textSoft,
+              background: T.bgCard,
+              border: `1px solid ${T.border}`,
+              borderRadius: 8,
+              cursor: "pointer",
+              fontFamily: T.font,
             }}
           >
-            {lessons.length} kết quả
-            <span
-              aria-hidden="true"
+            Tiếp tục đối soát
+          </button>
+          {onGoToRegrade && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onGoToRegrade();
+              }}
               style={{
-                display: "inline-flex",
-                color: T.textFaint,
-                transform: `rotate(${open ? 90 : 0}deg)`,
-                transition: "transform 0.15s",
+                padding: "8px 16px",
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#FFFDF8",
+                background: T.accent,
+                border: "none",
+                borderRadius: 8,
+                cursor: "pointer",
+                fontFamily: T.font,
               }}
             >
-              <svg
-                width={10}
-                height={10}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M9 6l6 6-6 6" />
-              </svg>
-            </span>
-          </span>
+              Đi tới chấm điểm →
+            </button>
+          )}
         </div>
-      </button>
-      {open && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {lessons.map((lesson) => (
-            <LessonItem key={lesson.id} lesson={lesson} />
-          ))}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
 
-function LessonItem({ lesson }: { lesson: MockReferencedLesson }) {
-  return (
-    <div
-      style={{
-        background: T.bgMuted,
-        border: `1px solid ${T.borderLight}`,
-        borderRadius: 8,
-        padding: "10px 12px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 5,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          gap: 8,
-        }}
-      >
-        <span
-          style={{
-            fontFamily: T.mono,
-            fontSize: 11,
-            color: T.textMute,
-          }}
-        >
-          {lesson.id} · {lesson.subject}
-        </span>
-        <span
-          style={{
-            fontFamily: T.mono,
-            fontSize: 11,
-            color: T.red,
-            fontWeight: 600,
-          }}
-        >
-          score {lesson.score.toFixed(1)}
-        </span>
-      </div>
-      <div
-        style={{
-          fontSize: 12.5,
-          color: T.textSoft,
-          lineHeight: 1.5,
-        }}
-      >
-        {lesson.text}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: lesson.similarity > 0 ? "space-between" : "flex-end",
-          fontFamily: T.mono,
-          fontSize: 10,
-          color: T.textFaint,
-        }}
-      >
-        {/* Backend doesn't expose semantic distance per lesson yet — when
-            similarity is 0 we hide the span rather than print "0%", which
-            would mislead the teacher into thinking the match was poor. */}
-        {lesson.similarity > 0 && (
-          <span>similarity {Math.round(lesson.similarity * 100)}%</span>
-        )}
-        <span>{lesson.date}</span>
-      </div>
-    </div>
-  );
-}
+
 
 // ---------------------------------------------------------------------------
 // Main StepReview
@@ -1813,6 +2836,13 @@ interface StepReviewProps {
   task: string;
   t: I18nStrings;
   essayImage: EssayFile | null;
+  /** Teacher's Word-style annotations — each anchored to a quote in the
+   *  AI transcript with a comment. Owned by the workspace so they survive
+   *  step navigation and feed into step 4. */
+  teacherAnnotations: SelectionAnnotation[];
+  setTeacherAnnotations: React.Dispatch<
+    React.SetStateAction<SelectionAnnotation[]>
+  >;
 }
 
 export function StepReview({
@@ -1826,6 +2856,8 @@ export function StepReview({
   task,
   t,
   essayImage,
+  teacherAnnotations,
+  setTeacherAnnotations,
 }: StepReviewProps) {
   const [commentThreads, setCommentThreads] = useState<CommentThreads>({});
   const [analyzingQ, setAnalyzingQ] = useState<number | null>(null);
@@ -1977,9 +3009,10 @@ export function StepReview({
       }}
     >
       {/* Top toolbar — horizontal padding matches the QuestionBox card's
-          internal padding (20 px) so the "Xem PDF gốc" button right-aligns
-          with the card's content right-edge, not the wider page maxWidth.
-          Stops the button from kissing the viewport edge on narrow windows. */}
+          internal padding (20 px). Now hosts only the staged-lessons
+          counter (lightbulb badge); the "Xem PDF gốc" affordance moved
+          into PaperHead as a MetaPill so the document and its actions
+          stay co-located. */}
       <div
         style={{
           display: "flex",
@@ -2044,42 +3077,9 @@ export function StepReview({
               </span>
             </span>
           )}
-          {essayImage?.dataUrl && (
-            <button
-              onClick={() => setShowOriginal(true)}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-                fontSize: 12,
-                fontFamily: T.mono,
-                color: T.textSoft,
-                padding: "4px 12px",
-                background: T.bgCard,
-                borderRadius: 20,
-                border: `1px solid ${T.border}`,
-                cursor: "pointer",
-                transition: "all 0.15s",
-                letterSpacing: "0.04em",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = T.accent;
-                e.currentTarget.style.color = T.accent;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = T.border;
-                e.currentTarget.style.color = T.textSoft;
-              }}
-              title={String(
-                t.originalImageHint ?? "Mở bài làm gốc để đối chiếu với phần AI đã chép",
-              )}
-            >
-              <Icon.FileText size={11} />
-              {essayImage?.isPdf
-                ? String(t.viewOriginalPdf ?? "Xem PDF gốc")
-                : String(t.viewOriginal ?? "Xem ảnh gốc")}
-            </button>
-          )}
+          {/* "Xem PDF gốc" affordance lives inside the paper-head as a
+              MetaPill alongside the lessons-used pill — keeps the action
+              cluster co-located with the document it acts on. */}
         </div>
       </div>
 
@@ -2129,6 +3129,21 @@ export function StepReview({
       <ReviewMockup
         isMobile={isMobile}
         review={reviewData}
+        essayAvailable={!!essayImage?.dataUrl}
+        onViewOriginal={() => setShowOriginal(true)}
+        onGoToRegrade={onGoToRegrade}
+        teacherAnnotations={teacherAnnotations}
+        onAddAnnotation={(a) => {
+          setTeacherAnnotations((prev) => [...prev, a]);
+        }}
+        onUpdateAnnotation={(id, patch) => {
+          setTeacherAnnotations((prev) =>
+            prev.map((a) => (a.id === id ? { ...a, ...patch } : a)),
+          );
+        }}
+        onRemoveAnnotation={(id) => {
+          setTeacherAnnotations((prev) => prev.filter((a) => a.id !== id));
+        }}
       />
       {/* Acknowledge the legacy plumbing as "intentionally suspended" so
           the compiler doesn't complain about unused locals while we wait

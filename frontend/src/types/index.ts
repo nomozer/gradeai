@@ -34,6 +34,11 @@ export type {
 
 export type { Tab, TabMeta, TabsAction, TabsState } from "./tabs";
 
-export type { ThreadMessage, CommentThreads, CommentVerdict } from "./review";
+export type {
+  ThreadMessage,
+  CommentThreads,
+  CommentVerdict,
+  SelectionAnnotation,
+} from "./review";
 
 export type { SubjectLabelSet, SubjectLabels, I18nStrings, I18nDict } from "./i18n";
