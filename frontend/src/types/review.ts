@@ -38,7 +38,13 @@ export type CommentThreads = Record<number, ThreadMessage[]>;
 export interface SelectionAnnotation {
   id: string;
   cau: number;
+  /** Index of the first line the selection covers (within its câu). The
+   *  AnnotationBubble anchors against this line. */
   lineIdx: number;
+  /** Index of the last line the selection covers. Equal to ``lineIdx``
+   *  for single-line selections; renderer highlights every line in the
+   *  inclusive range. */
+  endLineIdx?: number;
   quote: string;
   comment: string;
   /** AI's judgment of teacher's comment vs the student work. Undefined =

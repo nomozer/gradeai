@@ -1226,6 +1226,7 @@ function AnnotatedAnswer({
     | {
         cau: number;
         lineIdx: number;
+        endLineIdx: number;
         quote: string;
         x: number;
         y: number;
@@ -1233,13 +1234,13 @@ function AnnotatedAnswer({
     | null
   >(null);
   // When a fresh annotation is created we auto-open its comment input.
-  // null = nothing being edited; string = annotation id whose card is in
-  // edit mode.
+  // null = nothing being edited; string = annotation id whose bubble is
+  // in edit mode.
   const [editingId, setEditingId] = useState<string | null>(null);
-  // Which annotation's card is "focused" — drives the peach highlight
-  // ring on the mark and the matching card style. Set when the teacher
-  // clicks a highlight OR completes a new annotation.
-  const [focusedId, setFocusedId] = useState<string | null>(null);
+  // Which annotation's bubble is open. Replaces the old "focusedId" —
+  // click a highlight → opens that ann's bubble; click outside →
+  // bubble closes (set to null).
+  const [activeAnnId, setActiveAnnId] = useState<string | null>(null);
   // Set of annotation IDs currently waiting on /api/analyze-comment.
   // Drives the "AI đang phân tích…" pill on the card. Cleared when the
   // response (or error) lands. Component unmount aborts via the
@@ -1312,7 +1313,12 @@ function AnnotatedAnswer({
       setPending(null);
       return;
     }
-    const trimmed = sel.toString().replace(/\s+$/, "");
+    // Normalize to NFC so the stored quote matches the backend
+    // transcript (which the Gemini grader emits in NFC). Selection
+    // .toString() in some browsers/inputs returns NFD for diacritics
+    // — letting that through made indexOf fail later when rendering
+    // the `<mark>`, which left the bubble unable to anchor.
+    const trimmed = sel.toString().normalize("NFC").replace(/\s+$/, "");
     if (!trimmed) {
       setPending(null);
       return;
@@ -1324,9 +1330,20 @@ function AnnotatedAnswer({
     const endLine = (range.endContainer.parentElement?.closest(
       "[data-cau][data-line]",
     ) as HTMLElement) || null;
-    if (!startLine || startLine !== endLine) {
+    if (!startLine) {
       setPending(null);
       return;
+    }
+    // Allow selections that span multiple lines within the same câu
+    // (teacher often highlights a 2–3 line block when commenting on a
+    // multi-step proof). Cross-câu selections are still rejected — those
+    // would need to stage two separate lessons. The annotation is anchored
+    // to the START line; the highlight renders best-effort per line.
+    if (endLine && endLine !== startLine) {
+      if (startLine.dataset.cau !== endLine.dataset.cau) {
+        setPending(null);
+        return;
+      }
     }
     const cau = Number(startLine.dataset.cau);
     const lineIdx = Number(startLine.dataset.line);
@@ -1334,13 +1351,26 @@ function AnnotatedAnswer({
       setPending(null);
       return;
     }
-    const rect = range.getBoundingClientRect();
+    const endLineRaw = endLine
+      ? Number(endLine.dataset.line)
+      : lineIdx;
+    const endLineIdx = Number.isNaN(endLineRaw) ? lineIdx : endLineRaw;
+    // Anchor the toolbar to the FIRST visual line of the selection, not
+    // the whole bounding box. For multi-line selections, getBoundingClientRect
+    // returns a rect spanning every line — its .bottom is the bottom of the
+    // last line, which would push the toolbar far away from the highlight.
+    // getClientRects()[0] is the first line's rect, so the toolbar sits
+    // right under where the teacher started selecting.
+    const rects = range.getClientRects();
+    const anchorRect =
+      rects.length > 0 ? rects[0] : range.getBoundingClientRect();
     setPending({
       cau,
       lineIdx,
+      endLineIdx,
       quote: trimmed,
-      x: rect.left + rect.width / 2,
-      y: rect.bottom,
+      x: anchorRect.left + anchorRect.width / 2,
+      y: anchorRect.bottom,
     });
   }, [onAddAnnotation]);
 
@@ -1367,14 +1397,63 @@ function AnnotatedAnswer({
       id,
       cau: pending.cau,
       lineIdx: pending.lineIdx,
+      endLineIdx: pending.endLineIdx,
       quote: pending.quote,
       comment: "",
     });
     setPending(null);
     window.getSelection()?.removeAllRanges();
     setEditingId(id);
-    setFocusedId(id);
+    setActiveAnnId(id);
   };
+
+  // Locate the active annotation across all câu for the bubble — null
+  // means no bubble open.
+  const activeAnn = activeAnnId
+    ? (teacherAnnotations ?? []).find((a) => a.id === activeAnnId) ?? null
+    : null;
+
+  // Outside-click dismiss for the bubble. Skips clicks on any <mark>,
+  // inside the bubble itself, AND the selection toolbar — without the
+  // toolbar skip, clicking "Bình luận" to create a 2nd annotation would
+  // race with this handler: button click bubbles up → handler sees the
+  // prior empty annotation → removes it + resets state → final activeAnnId
+  // ends up null and the new bubble never shows. If the teacher leaves
+  // an empty comment behind by clicking truly outside, the annotation is
+  // dropped — keeps the corpus free of placeholder rows.
+  useEffect(() => {
+    if (!activeAnnId) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest("mark[data-ann-id]")) return;
+      if (target.closest("#step3-annotation-bubble")) return;
+      if (target.closest("#step3-selection-toolbar")) return;
+      // Discard if the bubble is hosting an unfinished new annotation.
+      if (activeAnn && !activeAnn.comment.trim()) {
+        onRemoveAnnotation?.(activeAnn.id);
+      }
+      setActiveAnnId(null);
+      setEditingId(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [activeAnnId, activeAnn, onRemoveAnnotation]);
+
+  // Escape closes the bubble (mirrors outside-click).
+  useEffect(() => {
+    if (!activeAnnId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (activeAnn && !activeAnn.comment.trim()) {
+        onRemoveAnnotation?.(activeAnn.id);
+      }
+      setActiveAnnId(null);
+      setEditingId(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [activeAnnId, activeAnn, onRemoveAnnotation]);
 
   return (
     <div
@@ -1382,7 +1461,7 @@ function AnnotatedAnswer({
       onMouseUp={handleMouseUp}
       style={{
         fontFamily: T.mono,
-        fontSize: 14.5,
+        fontSize: 16,
         color: T.textSoft,
         lineHeight: 1.85,
       }}
@@ -1401,9 +1480,6 @@ function AnnotatedAnswer({
               margin: "0 -16px 18px",
               borderRadius: 8,
               background: flashing ? "#FBEEEA" : "transparent",
-              // 0.6s fade-out so the highlight gracefully decays once
-              // the parent's auto-clear timer fires — no abrupt
-              // disappearance.
               transition: flashing
                 ? "background 0.1s ease-out"
                 : "background 0.6s ease-out",
@@ -1411,7 +1487,13 @@ function AnnotatedAnswer({
             }}
           >
             {q.lines.map((line, i) => {
-              const lineAnns = cauAnns.filter((a) => a.lineIdx === i);
+              // Multi-line selections (endLineIdx > lineIdx) attach the
+              // annotation to every line in the inclusive range so each
+              // row in the proof gets a highlight.
+              const lineAnns = cauAnns.filter((a) => {
+                const endIdx = a.endLineIdx ?? a.lineIdx;
+                return i >= a.lineIdx && i <= endIdx;
+              });
               return (
                 <div
                   key={i}
@@ -1426,62 +1508,16 @@ function AnnotatedAnswer({
                   {renderLineWithHighlights(
                     line,
                     lineAnns,
-                    focusedId,
+                    i,
+                    activeAnnId,
                     (id) => {
-                      setFocusedId(id);
+                      setActiveAnnId(id);
                       setEditingId(null);
                     },
                   )}
                 </div>
               );
             })}
-            <AnnotationList
-              cauAnns={cauAnns}
-              editingId={editingId}
-              focusedId={focusedId}
-              onStartEdit={(id) => {
-                setEditingId(id);
-                setFocusedId(id);
-              }}
-              onCancelEdit={(id, currentComment) => {
-                if (!currentComment.trim()) {
-                  onRemoveAnnotation?.(id);
-                  setFocusedId(null);
-                }
-                setEditingId(null);
-              }}
-              onSave={(id, comment) => {
-                const trimmed = comment.trim();
-                if (!trimmed) {
-                  onRemoveAnnotation?.(id);
-                  setFocusedId(null);
-                  setEditingId(null);
-                  return;
-                }
-                // Persist the comment, reset prior verdict (so a re-edit
-                // re-triggers AI analysis), then fire /api/analyze-comment.
-                onUpdateAnnotation?.(id, {
-                  comment: trimmed,
-                  verdict: undefined,
-                  analysis: undefined,
-                  disputeDecision: undefined,
-                });
-                setEditingId(null);
-                const ann = (teacherAnnotations ?? []).find((a) => a.id === id);
-                if (ann) {
-                  void analyzeAnnotation(id, ann.cau, trimmed);
-                }
-              }}
-              analyzingIds={analyzingIds}
-              onDecideDispute={(id, decision) => {
-                onUpdateAnnotation?.(id, { disputeDecision: decision });
-              }}
-              onRemove={(id) => {
-                onRemoveAnnotation?.(id);
-                if (focusedId === id) setFocusedId(null);
-                if (editingId === id) setEditingId(null);
-              }}
-            />
           </div>
         );
       })}
@@ -1493,68 +1529,224 @@ function AnnotatedAnswer({
           onDismiss={() => setPending(null)}
         />
       )}
+      {activeAnn && (
+        <AnnotationBubble
+          ann={activeAnn}
+          editing={editingId === activeAnn.id}
+          analyzing={analyzingIds.has(activeAnn.id)}
+          onStartEdit={() => setEditingId(activeAnn.id)}
+          onCancelEdit={(currentComment) => {
+            if (!currentComment.trim()) {
+              onRemoveAnnotation?.(activeAnn.id);
+              setActiveAnnId(null);
+            }
+            setEditingId(null);
+          }}
+          onSave={(comment) => {
+            const trimmed = comment.trim();
+            if (!trimmed) {
+              onRemoveAnnotation?.(activeAnn.id);
+              setActiveAnnId(null);
+              setEditingId(null);
+              return;
+            }
+            onUpdateAnnotation?.(activeAnn.id, {
+              comment: trimmed,
+              verdict: undefined,
+              analysis: undefined,
+              disputeDecision: undefined,
+            });
+            setEditingId(null);
+            void analyzeAnnotation(activeAnn.id, activeAnn.cau, trimmed);
+          }}
+          onRemove={() => {
+            onRemoveAnnotation?.(activeAnn.id);
+            setActiveAnnId(null);
+            setEditingId(null);
+          }}
+          onDecideDispute={(decision) => {
+            onUpdateAnnotation?.(activeAnn.id, { disputeDecision: decision });
+          }}
+        />
+      )}
     </div>
   );
 }
 
+// Color tokens for `<mark>` highlights, keyed by verdict + dispute
+// decision. Rest = soft tone matching the verdict pill; active (= bubble
+// open) = a slightly bolder shade so the teacher sees which mark their
+// bubble belongs to when several are visible. Dispute+skip falls into a
+// muted grey because the lesson is intentionally dropped.
+function highlightColors(ann: SelectionAnnotation, active: boolean): {
+  bg: string;
+  borderColor?: string;
+  strike?: boolean;
+} {
+  // No verdict yet (analyzing or backend error) → default peach.
+  if (!ann.verdict) {
+    return { bg: active ? "#F8C9B9" : "#FBEEEA" };
+  }
+  if (ann.verdict === "dispute" && ann.disputeDecision === "skip") {
+    return { bg: active ? "#E3DDD3" : "#EFE9DF", strike: true };
+  }
+  if (ann.verdict === "agree") {
+    return { bg: active ? "#C9E8D6" : "#E3F4EA" };
+  }
+  if (ann.verdict === "partial") {
+    return { bg: active ? "#F7E2A8" : "#FCF1D8" };
+  }
+  // dispute (pending or applied) — same warm-red base; applied gets a
+  // border so the teacher sees their override is locked in.
+  return {
+    bg: active ? "#F7C8BF" : "#FBE3DF",
+    borderColor: ann.disputeDecision === "apply" ? "#A1392A" : undefined,
+  };
+}
+
+// Normalize a string for quote matching. Vietnamese text + browser
+// selection can disagree on:
+//   • Unicode normalization (NFC vs NFD — e.g. "đ" as one codepoint vs
+//     "d" + combining mark). Selection.toString() sometimes returns NFD
+//     while the source string from the backend transcript is NFC.
+//   • Non-breaking spaces (\u00A0) — some renderers/copies insert these
+//     in place of regular spaces.
+// Normalizing both sides before indexOf makes the highlight resilient to
+// these mismatches without changing the stored quote (we keep the raw
+// teacher-selected text for display in the bubble).
+function normalizeForMatch(s: string): string {
+  return s.normalize("NFC").replace(/\u00A0/g, " ");
+}
+
 // renderLineWithHighlights — split a line into segments where each
-// annotation's quote becomes a `<mark>` and the rest stays plain text.
-// Matches are case-sensitive; if a quote appears multiple times, only
-// the FIRST unhighlighted match for each annotation wins. Good enough
-// for the prototype.
+// annotation's quote becomes a `<mark>` (colored per verdict) and the
+// rest stays plain text. Annotations whose quote can't be found in
+// any seg fall back to an invisible end-of-line anchor `<span>` so the
+// AnnotationBubble still has a `[data-ann-id="…"]` element to query
+// against and position itself — otherwise the bubble would be stranded
+// off-screen and the teacher would think commenting didn't work.
 function renderLineWithHighlights(
   line: string,
   anns: SelectionAnnotation[],
-  focusedId: string | null,
+  lineIdx: number,
+  activeAnnId: string | null,
   onClickMark: (id: string) => void,
 ): React.ReactNode[] {
   type Seg = { text: string; ann: SelectionAnnotation | null };
   let segs: Seg[] = [{ text: line, ann: null }];
+  const unmatched: SelectionAnnotation[] = [];
   for (const ann of anns) {
     const next: Seg[] = [];
     let placed = false;
+    // Multi-line selections: split the stored quote by line breaks and
+    // pick the segment belonging to THIS row. Start row gets the first
+    // segment, end row gets the last, middle rows highlight the whole
+    // line. Single-line annotations keep the full quote as the needle.
+    const endIdx = ann.endLineIdx ?? ann.lineIdx;
+    const isMultiline = endIdx > ann.lineIdx;
+    let needleSource: string;
+    if (!isMultiline) {
+      needleSource = ann.quote;
+    } else if (lineIdx === ann.lineIdx) {
+      needleSource = ann.quote.split("\n")[0] ?? ann.quote;
+    } else if (lineIdx === endIdx) {
+      const parts = ann.quote.split("\n");
+      needleSource = parts[parts.length - 1] ?? ann.quote;
+    } else {
+      // Middle line — highlight the entire line. Using the line itself
+      // as the needle guarantees indexOf hits at offset 0.
+      needleSource = line;
+    }
+    const needle = normalizeForMatch(needleSource);
     for (const seg of segs) {
       if (seg.ann || placed) {
         next.push(seg);
         continue;
       }
-      const idx = seg.text.indexOf(ann.quote);
+      const haystack = normalizeForMatch(seg.text);
+      const idx = haystack.indexOf(needle);
       if (idx === -1) {
         next.push(seg);
         continue;
       }
+      // Use the haystack offset as the slice index — relies on
+      // normalize("NFC") + nbsp→space preserving 1:1 char positions for
+      // typical Vietnamese text. Both normalization steps are idempotent
+      // and length-preserving on this input class.
       if (idx > 0) next.push({ text: seg.text.slice(0, idx), ann: null });
-      next.push({ text: ann.quote, ann });
-      const tail = seg.text.slice(idx + ann.quote.length);
+      next.push({ text: seg.text.slice(idx, idx + needleSource.length), ann });
+      const tail = seg.text.slice(idx + needleSource.length);
       if (tail.length > 0) next.push({ text: tail, ann: null });
       placed = true;
     }
     segs = next;
+    if (!placed) unmatched.push(ann);
   }
-  return segs.map((seg, i) => {
+  const nodes = segs.map((seg, i) => {
     if (!seg.ann) return <span key={i}>{seg.text}</span>;
-    const focused = focusedId === seg.ann.id;
+    const active = activeAnnId === seg.ann.id;
+    const colors = highlightColors(seg.ann, active);
     const annId = seg.ann.id;
     return (
       <mark
         key={i}
+        data-ann-id={annId}
         onClick={(e) => {
           e.stopPropagation();
           onClickMark(annId);
         }}
         style={{
-          background: focused ? "#F8C9B9" : "#FBEEEA",
+          background: colors.bg,
           color: T.text,
-          padding: "0 2px",
-          borderRadius: 2,
+          padding: 0,
+          borderRadius: 0,
           cursor: "pointer",
           transition: "background 0.12s",
+          textDecoration: colors.strike ? "line-through" : "none",
+          border: colors.borderColor
+            ? `1px solid ${colors.borderColor}`
+            : "1px solid transparent",
         }}
       >
         {seg.text}
       </mark>
     );
   });
+  // Fallback anchors for annotations whose quote we couldn't find.
+  // Invisible <mark> elements at end-of-line — the bubble's reposition
+  // uses these as anchor and at least appears somewhere on the right
+  // line. Teacher can still edit/delete; the visible highlight is
+  // simply missing for that ann.
+  for (const ann of unmatched) {
+    const active = activeAnnId === ann.id;
+    const annId = ann.id;
+    nodes.push(
+      <mark
+        key={`fallback-${ann.id}`}
+        data-ann-id={annId}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClickMark(annId);
+        }}
+        style={{
+          background: active ? "rgba(192, 139, 48, 0.20)" : "transparent",
+          padding: 0,
+          margin: 0,
+          // Tiny zero-width-ish anchor — present in the DOM so
+          // getBoundingClientRect returns sensible coords, but
+          // visually a no-op.
+          display: "inline-block",
+          width: 0,
+          overflow: "hidden",
+          cursor: "pointer",
+        }}
+        title={`Bình luận: ${ann.comment || "(chưa có)"}`}
+      >
+        {"​"}
+      </mark>,
+    );
+  }
+  return nodes;
 }
 
 // SelectionToolbar — floating mini-toolbar Word-style. Pinned to viewport
@@ -1670,72 +1862,15 @@ function SelectionToolbar({
   );
 }
 
-// AnnotationList — per-câu list of saved annotations. Stops propagation
-// so editing doesn't fire the câu container's click-to-activate.
-function AnnotationList({
-  cauAnns,
-  editingId,
-  focusedId,
-  analyzingIds,
-  onStartEdit,
-  onCancelEdit,
-  onSave,
-  onRemove,
-  onDecideDispute,
-}: {
-  cauAnns: SelectionAnnotation[];
-  editingId: string | null;
-  focusedId: string | null;
-  /** Set of annotation IDs whose /api/analyze-comment request is in
-   *  flight. Cards in this set render a "đang phân tích" pill instead
-   *  of the verdict. */
-  analyzingIds: Set<string>;
-  onStartEdit: (id: string) => void;
-  onCancelEdit: (id: string, currentComment: string) => void;
-  onSave: (id: string, comment: string) => void;
-  onRemove: (id: string) => void;
-  /** Teacher's override on a disputed verdict — "apply" stages the
-   *  lesson anyway, "skip" drops it. */
-  onDecideDispute: (id: string, decision: "apply" | "skip") => void;
-}) {
-  if (cauAnns.length === 0) return null;
-  return (
-    <div
-      onClick={(e) => e.stopPropagation()}
-      onMouseUp={(e) => e.stopPropagation()}
-      style={{
-        marginTop: 10,
-        paddingTop: 10,
-        borderTop: `1px dashed ${T.borderLight}`,
-        fontFamily: T.font,
-        fontSize: 13.5,
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-      }}
-    >
-      {cauAnns.map((ann) => (
-        <AnnotationCard
-          key={ann.id}
-          ann={ann}
-          editing={editingId === ann.id}
-          focused={focusedId === ann.id}
-          analyzing={analyzingIds.has(ann.id)}
-          onStartEdit={() => onStartEdit(ann.id)}
-          onCancelEdit={(currentComment) => onCancelEdit(ann.id, currentComment)}
-          onSave={(comment) => onSave(ann.id, comment)}
-          onRemove={() => onRemove(ann.id)}
-          onDecideDispute={(decision) => onDecideDispute(ann.id, decision)}
-        />
-      ))}
-    </div>
-  );
-}
-
-function AnnotationCard({
+// AnnotationBubble — floating popover anchored to the highlighted
+// `<mark>` whose id matches ``ann.id``. Positions itself below the mark
+// (preferring below; flips above when there isn't enough space), clamped
+// to the viewport. Repositions on scroll/resize. The bubble owns ONE
+// annotation at a time — clicking a different mark switches the bubble
+// via the parent's ``activeAnnId`` state, not via remounting.
+function AnnotationBubble({
   ann,
   editing,
-  focused,
   analyzing,
   onStartEdit,
   onCancelEdit,
@@ -1745,7 +1880,127 @@ function AnnotationCard({
 }: {
   ann: SelectionAnnotation;
   editing: boolean;
-  focused: boolean;
+  analyzing: boolean;
+  onStartEdit: () => void;
+  onCancelEdit: (currentComment: string) => void;
+  onSave: (comment: string) => void;
+  onRemove: () => void;
+  onDecideDispute: (decision: "apply" | "skip") => void;
+}) {
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  // Start off-screen so the bubble is rendered + interactive + focusable
+  // immediately (no opacity/pointer-events gating), but invisible until
+  // useLayoutEffect finds the anchor mark and sets the real position.
+  // Off-screen position is preserved across renders that haven't yet
+  // located the mark — never a (0,0) flash, never a stuck-at-fallback
+  // dead bubble.
+  const [pos, setPos] = useState<{ left: number; top: number }>({
+    left: -9999,
+    top: -9999,
+  });
+
+  // Try to position. Returns true on success (mark found + measured),
+  // false otherwise so the caller can decide to retry next frame.
+  const reposition = useCallback((): boolean => {
+    const mark = document.querySelector(`mark[data-ann-id="${ann.id}"]`);
+    const bubble = bubbleRef.current;
+    if (!bubble) return false;
+    const bubbleRect = bubble.getBoundingClientRect();
+    if (bubbleRect.width === 0 || bubbleRect.height === 0) return false;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    // No mark found → center the bubble in the viewport so the teacher
+    // always has somewhere to type. Without this fallback the bubble
+    // would stay at (-9999, -9999) and look like the button did nothing.
+    if (!(mark instanceof HTMLElement)) {
+      setPos({
+        left: Math.max(8, (vw - bubbleRect.width) / 2),
+        top: Math.max(8, (vh - bubbleRect.height) / 2),
+      });
+      return true;
+    }
+    const markRect = mark.getBoundingClientRect();
+    let left = markRect.left + markRect.width / 2 - bubbleRect.width / 2;
+    left = Math.max(8, Math.min(vw - bubbleRect.width - 8, left));
+    let top = markRect.bottom + 6;
+    if (top + bubbleRect.height > vh - 8) {
+      const above = markRect.top - bubbleRect.height - 6;
+      if (above >= 8) {
+        top = above;
+      } else {
+        // Neither below nor above fits cleanly — clamp to viewport so
+        // the bubble stays visible instead of hanging off the bottom.
+        top = Math.max(8, vh - bubbleRect.height - 8);
+      }
+    }
+    setPos({ left, top });
+    return true;
+  }, [ann.id]);
+
+  // Position after each commit. If the first attempt fails (bubble not
+  // yet measured), schedule a retry on the next animation frame. Mark
+  // missing is handled inside reposition() via a viewport-center fallback.
+  useLayoutEffect(() => {
+    if (reposition()) return;
+    const raf = requestAnimationFrame(() => {
+      reposition();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [reposition, ann.comment, ann.verdict, ann.analysis, editing]);
+
+  useEffect(() => {
+    const handler = () => reposition();
+    window.addEventListener("scroll", handler, true);
+    window.addEventListener("resize", handler);
+    return () => {
+      window.removeEventListener("scroll", handler, true);
+      window.removeEventListener("resize", handler);
+    };
+  }, [reposition]);
+
+  return (
+    <div
+      id="step3-annotation-bubble"
+      ref={bubbleRef}
+      onMouseDown={(e) => e.stopPropagation()}
+      style={{
+        position: "fixed",
+        left: pos.left,
+        top: pos.top,
+        width: "min(420px, calc(100vw - 32px))",
+        zIndex: 100,
+      }}
+    >
+      <AnnotationCard
+        ann={ann}
+        editing={editing}
+        analyzing={analyzing}
+        onStartEdit={onStartEdit}
+        onCancelEdit={onCancelEdit}
+        onSave={onSave}
+        onRemove={onRemove}
+        onDecideDispute={onDecideDispute}
+      />
+    </div>
+  );
+}
+
+// AnnotationCard — renders inside the AnnotationBubble. Pure
+// presentation: shows the quote + teacher's comment + (verdict row when
+// applicable). Verdict's own collapse (pill click → analysis) lives
+// inside VerdictRow.
+function AnnotationCard({
+  ann,
+  editing,
+  analyzing,
+  onStartEdit,
+  onCancelEdit,
+  onSave,
+  onRemove,
+  onDecideDispute,
+}: {
+  ann: SelectionAnnotation;
+  editing: boolean;
   analyzing: boolean;
   onStartEdit: () => void;
   onCancelEdit: (currentComment: string) => void;
@@ -1758,73 +2013,42 @@ function AnnotationCard({
     setDraft(ann.comment);
   }, [ann.comment, editing]);
 
-  // Card-level collapse. Default = card only shows quote + teacher
-  // comment + delete. Teacher clicks the card to reveal the AI verdict
-  // section. Two cases force it open without a click:
-  //   • analyzing — the loading pill belongs in plain view so the
-  //     teacher knows /api/analyze-comment is in flight.
-  //   • dispute with pending decision — the teacher MUST choose
-  //     "Vẫn lưu / Bỏ qua", so we can't hide the buttons behind a click.
-  const [cardExpanded, setCardExpanded] = useState(false);
-  const needsDecision =
-    ann.verdict === "dispute" && ann.disputeDecision === undefined;
-  const forceShowVerdict = analyzing || needsDecision;
-  const showVerdict = (cardExpanded || forceShowVerdict) && !editing;
-  // Re-collapse when the verdict changes — a fresh analysis shouldn't
-  // auto-expand prior state into view.
+  // Explicit input-focus on each entry into edit mode. ``autoFocus`` only
+  // fires on the input's first mount; without this effect, re-entering
+  // edit mode from display mode (or hopping between annotations) would
+  // leave focus on the previously-focused element.
+  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    setCardExpanded(false);
-  }, [ann.verdict]);
+    if (editing && inputRef.current) {
+      // Defer one frame so the bubble's layout-effect-driven repositioning
+      // settles before we call focus — keeps the page from scroll-jumping
+      // when the input is offscreen mid-mount.
+      const t = requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      });
+      return () => cancelAnimationFrame(t);
+    }
+  }, [editing]);
 
   return (
     <div
-      onClick={(e) => {
-        // Toggle expansion when the teacher clicks the card chrome (quote
-        // area, padding, card surface). Comment text + × + edit input all
-        // stopPropagation already, so they keep their own click semantics.
-        // Skip the toggle while in edit mode — the input needs every click.
-        if (editing) return;
-        // Don't allow collapse while a dispute decision is still pending —
-        // the buttons must stay visible until the teacher picks.
-        if (forceShowVerdict && cardExpanded === false) {
-          // Already force-open: a click here is harmless, no-op.
-          return;
-        }
-        e.stopPropagation();
-        setCardExpanded((v) => !v);
-      }}
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 4,
-        padding: "8px 10px",
-        background: focused ? "#FBEEEA" : T.bgCard,
-        border: focused ? `1px solid ${T.accent}` : `1px solid ${T.borderLight}`,
+        gap: 6,
+        padding: "10px 12px",
+        background: T.paper,
+        border: `1px solid ${T.border}`,
         borderLeft: `3px solid ${T.accent}`,
-        borderRadius: 4,
-        transition: "background 0.12s, border-color 0.12s",
-        cursor: editing ? "default" : "pointer",
+        borderRadius: 2,
+        boxShadow: "0 4px 14px rgba(0,0,0,0.10)",
       }}
     >
-      <div
-        style={{
-          fontSize: 12,
-          color: T.textSoft,
-          fontStyle: "italic",
-          fontFamily: T.font,
-          lineHeight: 1.45,
-          overflow: "hidden",
-          display: "-webkit-box",
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: "vertical",
-        }}
-      >
-        “{ann.quote}”
-      </div>
       {editing ? (
-        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+        <div style={{ display: "flex", gap: 6 }}>
           <input
-            autoFocus
+            ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -1840,7 +2064,7 @@ function AnnotationCard({
             style={{
               flex: 1,
               padding: "6px 10px",
-              borderRadius: 6,
+              borderRadius: 2,
               border: `1px solid ${T.border}`,
               background: T.paper,
               fontFamily: T.font,
@@ -1855,7 +2079,7 @@ function AnnotationCard({
             disabled={!draft.trim()}
             style={{
               padding: "6px 12px",
-              borderRadius: 6,
+              borderRadius: 2,
               border: "none",
               background: draft.trim() ? T.accent : T.borderLight,
               color: draft.trim() ? "#fff" : T.textFaint,
@@ -1885,12 +2109,7 @@ function AnnotationCard({
               lineHeight: 1.5,
               cursor: "text",
             }}
-            onClick={(e) => {
-              // Comment text owns the edit affordance; the card-level
-              // expand toggle skips it via this stopPropagation.
-              e.stopPropagation();
-              onStartEdit();
-            }}
+            onClick={onStartEdit}
             role="button"
             tabIndex={0}
           >
@@ -1902,10 +2121,7 @@ function AnnotationCard({
           </span>
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove();
-            }}
+            onClick={onRemove}
             title="Xoá"
             style={{
               flexShrink: 0,
@@ -1925,10 +2141,10 @@ function AnnotationCard({
           </button>
         </div>
       )}
-      {/* Verdict block — hidden until the teacher clicks the card.
-          Force-shown when analyzing OR when a dispute decision is
-          pending (anti-poisoning gate can't hide behind a click). */}
-      {showVerdict && ann.comment && (
+      {/* Verdict block — always rendered inside the bubble. The pill
+          itself owns the analysis collapse (click pill → expand
+          analysis). Hidden only in edit mode to keep the input focused. */}
+      {!editing && ann.comment && (
         <VerdictRow
           analyzing={analyzing}
           verdict={ann.verdict}
@@ -2085,7 +2301,7 @@ function VerdictRow({
             lineHeight: 1.5,
             background: T.bgMuted,
             border: `1px solid ${T.borderLight}`,
-            borderRadius: 6,
+            borderRadius: 2,
             padding: "6px 10px",
           }}
         >
@@ -2104,7 +2320,7 @@ function VerdictRow({
               color: "#fff",
               background: T.red,
               border: "none",
-              borderRadius: 6,
+              borderRadius: 2,
               cursor: "pointer",
               fontFamily: T.font,
             }}
@@ -2121,7 +2337,7 @@ function VerdictRow({
               color: T.textSoft,
               background: T.bgCard,
               border: `1px solid ${T.border}`,
-              borderRadius: 6,
+              borderRadius: 2,
               cursor: "pointer",
               fontFamily: T.font,
             }}

@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAgentPipeline } from "../../hooks/useAgentPipeline";
+import {
+  getCachedGradeById,
+  updateCachedGradeTeacherData,
+  useAgentPipeline,
+} from "../../hooks/useAgentPipeline";
 import { useFeedback } from "../../hooks/useFeedback";
 import { ApiError, detectSubject, finalizeGrade, type DetectConfidence } from "../../api";
 import { T } from "../../theme/tokens";
@@ -164,12 +168,19 @@ export function EssayWorkspace({
       setFinalizedResult(null);
       setIsFinalizing(false);
       setFinalizeError(null);
-      // Discard the previous run's teacher edits — a fresh AI grade
-      // invalidates them. Without this reset, a teacher who edited câu
-      // scores then regraded would see their old overrides applied
+      // Restore teacher overrides if this grade was reloaded from cache
+      // (history "Xem xét" / "Chấm lại"). The cache stores the teacher's
+      // finalScores + maxOverrides at finalize time, so re-opening shows
+      // the locked numbers instead of falling back to AI's. Fresh grades
+      // (not in cache) reset to {} — without the reset, a teacher who
+      // edited câu scores then regraded would see old overrides applied
       // against new AI scores, producing nonsense deltas in step 5.
-      setFinalScores({});
-      setMaxOverrides({});
+      const cached =
+        pipeline.runId != null
+          ? getCachedGradeById(String(pipeline.runId))
+          : null;
+      setFinalScores(cached?.finalScores ?? {});
+      setMaxOverrides(cached?.maxOverrides ?? {});
       setTeacherAnnotations([]);
       // Reset the step high-water-mark — a regrade restarts the review
       // arc, so the indicator shouldn't claim step 5 is still "done"
@@ -497,6 +508,17 @@ export function EssayWorkspace({
               setFinalizeError(null);
               try {
                 const resp = await persistFinalizedGrade(payload);
+                // Persist teacher overrides into the local history cache
+                // so "Xem xét" / "Chấm lại" re-opens the grade with the
+                // teacher's locked scores, not AI's original numbers.
+                // Keyed by run_id which is the cache id used everywhere.
+                if (pipeline.runId != null) {
+                  updateCachedGradeTeacherData(
+                    String(pipeline.runId),
+                    finalScores,
+                    maxOverrides,
+                  );
+                }
                 // Counts mirror the anti-poisoning gate in
                 // RegradeMockup.handleFinish: disputed-and-skipped
                 // comments are NOT staged into HITL memory, the rest are.

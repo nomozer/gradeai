@@ -793,6 +793,84 @@ function PaperRegrade({
   );
 }
 
+// Normalize a string for quote matching across NFC/NFD + nbsp variants.
+// Mirrors the helper in StepReview so step 3 highlights and step 4
+// highlights match the same teacher quotes.
+function normalizeForMatch(s: string): string {
+  return s.normalize("NFC").replace(/ /g, " ");
+}
+
+// Render a single transcript line with the teacher's step 3 quotes
+// highlighted inline. Read-only — no click handlers, no verdict colors;
+// just a peach background + the teacher's comment as a hover title so
+// the marker carries meaning without a separate notes block.
+function renderLineWithTeacherHighlights(
+  line: string,
+  lineIdx: number,
+  anns: SelectionAnnotation[],
+): React.ReactNode[] {
+  type Seg = { text: string; ann: SelectionAnnotation | null };
+  let segs: Seg[] = [{ text: line, ann: null }];
+  for (const ann of anns) {
+    const endIdx = ann.endLineIdx ?? ann.lineIdx;
+    if (lineIdx < ann.lineIdx || lineIdx > endIdx) continue;
+    const isMultiline = endIdx > ann.lineIdx;
+    let needleSource: string;
+    if (!isMultiline) {
+      needleSource = ann.quote;
+    } else if (lineIdx === ann.lineIdx) {
+      needleSource = ann.quote.split("\n")[0] ?? ann.quote;
+    } else if (lineIdx === endIdx) {
+      const parts = ann.quote.split("\n");
+      needleSource = parts[parts.length - 1] ?? ann.quote;
+    } else {
+      needleSource = line;
+    }
+    const needle = normalizeForMatch(needleSource);
+    const next: Seg[] = [];
+    let placed = false;
+    for (const seg of segs) {
+      if (seg.ann || placed) {
+        next.push(seg);
+        continue;
+      }
+      const haystack = normalizeForMatch(seg.text);
+      const idx = haystack.indexOf(needle);
+      if (idx === -1) {
+        next.push(seg);
+        continue;
+      }
+      if (idx > 0) next.push({ text: seg.text.slice(0, idx), ann: null });
+      next.push({ text: seg.text.slice(idx, idx + needleSource.length), ann });
+      const tail = seg.text.slice(idx + needleSource.length);
+      if (tail.length > 0) next.push({ text: tail, ann: null });
+      placed = true;
+    }
+    segs = next;
+  }
+  return segs.map((seg, i) => {
+    if (!seg.ann) return <span key={i}>{seg.text}</span>;
+    const ann = seg.ann;
+    const tooltip = ann.comment
+      ? `Nhận xét: ${ann.comment}`
+      : `“${ann.quote}” (chưa có nhận xét)`;
+    return (
+      <mark
+        key={i}
+        title={tooltip}
+        style={{
+          background: "#FBEEEA",
+          color: T.text,
+          padding: 0,
+          borderRadius: 0,
+        }}
+      >
+        {seg.text}
+      </mark>
+    );
+  });
+}
+
 function RegradeQuestionBlock({
   q,
   expanded,
@@ -983,9 +1061,9 @@ function RegradeQuestionBlock({
           <div
             style={{
               fontFamily: T.mono,
-              fontSize: 13.5,
+              fontSize: 16,
               color: T.textSoft,
-              lineHeight: 1.75,
+              lineHeight: 1.8,
               padding: "12px 16px",
               background: T.bgCard,
               border: `1px solid ${T.borderLight}`,
@@ -1007,8 +1085,8 @@ function RegradeQuestionBlock({
               AI đã đọc
             </div>
             {q.lines.map((line, i) => (
-              <div key={i} style={{ whiteSpace: "pre" }}>
-                {line}
+              <div key={i} style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                {renderLineWithTeacherHighlights(line, i, teacherNotes)}
               </div>
             ))}
             {q.annotations.length > 0 && (
@@ -1039,205 +1117,123 @@ function RegradeQuestionBlock({
             )}
           </div>
 
-          {/* Teacher's step 3 "đối soát" notes — read-only here, surfaced
-              above the score editor so the teacher's prior judgment is
-              visible while they lock the final number. Hidden when the
-              teacher didn't write anything for this câu, so the panel
-              doesn't bloat for skipped câu. */}
-          {teacherNotes.length > 0 && (
-            <div
-              style={{
-                marginBottom: 12,
-                padding: "10px 14px",
-                background: T.bgCard,
-                border: `1px solid ${T.borderLight}`,
-                borderLeft: `3px solid ${T.accent}`,
-                borderRadius: 8,
-                fontFamily: T.font,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: T.textFaint,
-                  letterSpacing: "0.12em",
-                  textTransform: "uppercase",
-                  marginBottom: 6,
-                }}
-              >
-                Ghi chú đối soát của bạn
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {teacherNotes.map((ann) => (
-                  <div key={ann.id}>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: T.textSoft,
-                        fontStyle: "italic",
-                        lineHeight: 1.45,
-                        marginBottom: 2,
-                      }}
-                    >
-                      “{ann.quote}”
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 13.5,
-                        lineHeight: 1.5,
-                        color: T.text,
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      {ann.comment ||
-                        <span style={{ color: T.textFaint, fontStyle: "italic" }}>
-                          (chưa có nhận xét)
-                        </span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Score editor row — AI score | teacher input */}
+          {/* Score editor row — compact horizontal: AI score → teacher
+              input → delta, all on one line so the teacher can compare
+              at a glance. Grid layout used to waste the full width on
+              two narrow values. */}
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-              gap: 12,
+              display: "flex",
               alignItems: "center",
-              padding: "12px 16px",
+              gap: 14,
+              padding: "10px 16px",
               background: T.bgMuted,
               border: `1px solid ${T.borderLight}`,
               borderRadius: 8,
+              flexWrap: "wrap",
             }}
           >
-            <div>
-              <div
+            <div style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+              <span
                 style={{
                   fontSize: 10,
                   fontWeight: 700,
                   color: T.textFaint,
                   letterSpacing: "0.12em",
                   textTransform: "uppercase",
-                  marginBottom: 4,
                 }}
               >
-                AI chấm
-              </div>
-              <div
+                AI
+              </span>
+              <span
                 style={{
                   fontFamily: T.mono,
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: 600,
-                  color: T.text,
+                  color: T.textSoft,
                 }}
               >
                 {q.aiScore.toFixed(1)}
                 {cap != null && (
                   <span
-                    style={{ color: T.textMute, fontSize: 13, fontWeight: 400 }}
+                    style={{ color: T.textMute, fontSize: 12, fontWeight: 400 }}
                   >
                     /{cap.toFixed(1)}
                   </span>
                 )}
-              </div>
+              </span>
             </div>
-            <div>
-              <div
+
+            <span
+              style={{
+                color: T.textFaint,
+                fontSize: 14,
+                fontWeight: 600,
+                userSelect: "none",
+              }}
+            >
+              →
+            </span>
+
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <span
                 style={{
                   fontSize: 10,
                   fontWeight: 700,
                   color: T.textFaint,
                   letterSpacing: "0.12em",
                   textTransform: "uppercase",
-                  marginBottom: 4,
                 }}
               >
-                Điểm của bạn
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input
-                  type="number"
-                  step={0.25}
-                  min={0}
-                  // Per-câu cap is the effective max (đề-supplied OR teacher
-                  // override). When the teacher hasn't filled in the
-                  // override for a non-quy-định câu, no upper constraint
-                  // applies and the exam-level cap (10đ) catches it at
-                  // the header.
-                  max={cap}
-                  value={myScore}
-                  onChange={(e) => {
-                    const raw = parseFloat(e.target.value || "0");
-                    if (Number.isNaN(raw)) {
-                      onScoreChange(q.aiScore);
-                      return;
-                    }
-                    const clamped =
-                      cap != null
-                        ? Math.max(0, Math.min(cap, raw))
-                        : Math.max(0, raw);
-                    onScoreChange(clamped);
-                  }}
-                  style={{
-                    width: 72,
-                    fontFamily: T.mono,
-                    fontSize: 17,
-                    fontWeight: 600,
-                    padding: "5px 10px",
-                    border: `1px solid ${isEdited ? T.red : T.border}`,
-                    borderRadius: 6,
-                    background: T.bgCard,
-                    color: T.text,
-                    outline: "none",
-                  }}
-                />
-                {Math.abs(delta) > 0.001 && (
-                  <span
-                    style={{
-                      fontFamily: T.mono,
-                      fontSize: 12,
-                      color: T.red,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {delta > 0 ? "+" : ""}
-                    {delta.toFixed(2)}
-                  </span>
-                )}
-              </div>
-              {/* Predictive learning chip — fires when the teacher's delta
-                  crosses the backend's per-câu threshold (0.25). Tells
-                  the teacher that this specific score change is going to
-                  be ingested as a 4.0-weighted delta lesson when they
-                  finalize at step 5. Closes the "what teaches AI?"
-                  awareness gap — score adjustments are otherwise silent
-                  signals. */}
-              {Math.abs(delta) >= 0.25 && (
+                Bạn
+              </span>
+              <input
+                type="number"
+                step={0.25}
+                min={0}
+                // Per-câu cap is the effective max (đề-supplied OR teacher
+                // override). When the teacher hasn't filled in the
+                // override for a non-quy-định câu, no upper constraint
+                // applies and the exam-level cap (10đ) catches it at
+                // the header.
+                max={cap}
+                value={myScore}
+                onChange={(e) => {
+                  const raw = parseFloat(e.target.value || "0");
+                  if (Number.isNaN(raw)) {
+                    onScoreChange(q.aiScore);
+                    return;
+                  }
+                  const clamped =
+                    cap != null
+                      ? Math.max(0, Math.min(cap, raw))
+                      : Math.max(0, raw);
+                  onScoreChange(clamped);
+                }}
+                style={{
+                  width: 68,
+                  fontFamily: T.mono,
+                  fontSize: 16,
+                  fontWeight: 600,
+                  padding: "4px 10px",
+                  border: `1px solid ${isEdited ? T.red : T.border}`,
+                  borderRadius: 6,
+                  background: T.bgCard,
+                  color: T.text,
+                  outline: "none",
+                }}
+              />
+              {Math.abs(delta) > 0.001 && (
                 <span
-                  title="Khi bạn finalize ở bước 5, điều chỉnh này sẽ được lưu thành 1 delta lesson (điểm 4.0) để AI học cách chấm của bạn."
                   style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    marginTop: 6,
-                    padding: "3px 8px",
-                    background: T.amberSoft,
-                    border: `1px solid ${T.amber}`,
-                    borderRadius: 999,
-                    fontSize: 11,
-                    fontFamily: T.font,
-                    color: T.amber,
+                    fontFamily: T.mono,
+                    fontSize: 12,
+                    color: T.red,
                     fontWeight: 600,
-                    letterSpacing: "0.02em",
-                    whiteSpace: "nowrap",
                   }}
                 >
-                  <Icon.Lightbulb size={10} color={T.amber} />
-                  AI sẽ học từ điều chỉnh này
+                  {delta > 0 ? "+" : ""}
+                  {delta.toFixed(2)}
                 </span>
               )}
             </div>

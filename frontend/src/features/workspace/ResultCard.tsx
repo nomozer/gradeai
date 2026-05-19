@@ -149,7 +149,7 @@ function FeedbackBlock({
         borderLeft: `3px solid ${palette.bar}`,
         borderRadius: "0 6px 6px 0",
         marginBottom,
-        fontSize: 13.5,
+        fontSize: 15,
         color: T.textSoft,
         lineHeight: 1.55,
         alignItems: "flex-start",
@@ -298,7 +298,7 @@ function LearningBanner({
         style={{
           margin: 0,
           paddingLeft: 18,
-          fontSize: 13.5,
+          fontSize: 15,
           color: T.text,
           lineHeight: 1.6,
           display: "flex",

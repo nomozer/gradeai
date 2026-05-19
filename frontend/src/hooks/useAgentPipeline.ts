@@ -45,6 +45,12 @@ export interface CachedGrade {
   subject: string | null;
   /** Full response payload — passed straight to PIPELINE_SUCCESS on load. */
   response: GenerateResponse;
+  /** Teacher's per-câu score overrides from step 4 (câu_num → score).
+   *  Persisted on finalize so re-opening from history shows the score
+   *  the teacher actually locked, not AI's original number. */
+  finalScores?: Record<number, number>;
+  /** Teacher's per-câu max-point overrides — same persistence rationale. */
+  maxOverrides?: Record<number, number>;
 }
 
 function readHistory(): CachedGrade[] {
@@ -68,6 +74,27 @@ function writeHistory(items: CachedGrade[]): void {
 
 export function getCachedGrades(): CachedGrade[] {
   return readHistory();
+}
+
+export function getCachedGradeById(id: string): CachedGrade | null {
+  return readHistory().find((e) => e.id === id) ?? null;
+}
+
+/** Patch a cache entry's teacher overrides in-place. Called from
+ *  EssayWorkspace's onFinalize success path so the history dropdown's
+ *  "Xem xét" / "Chấm lại" can restore the teacher's final scores
+ *  instead of falling back to AI's. No-op when the entry is gone (e.g.
+ *  cleared between finalize attempts). */
+export function updateCachedGradeTeacherData(
+  id: string,
+  finalScores: Record<number, number>,
+  maxOverrides: Record<number, number>,
+): void {
+  const items = readHistory();
+  const idx = items.findIndex((e) => e.id === id);
+  if (idx === -1) return;
+  items[idx] = { ...items[idx], finalScores, maxOverrides };
+  writeHistory(items);
 }
 
 export function clearCachedGrades(): void {
