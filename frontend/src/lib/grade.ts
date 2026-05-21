@@ -3,7 +3,7 @@ import type { Grade, PerQuestionFeedback } from "../types";
 /** Split a backend "question" string ("Câu 1: Giải phương trình…") into
  *  the câu number + the trailing prompt text. Tolerant of variants
  *  ("Cau 1", "Câu 1.", "Câu 1 -", missing separator) so we don't lose
- *  data when Gemini emits slightly off format. ResultCard / RegradeMockup
+ *  data when Gemini emits slightly off format. ResultCard / StepRegrade
  *  / StepReview all need this. */
 export function parseCauHeader(
   raw: string,

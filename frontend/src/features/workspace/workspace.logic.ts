@@ -4,7 +4,7 @@
 
 /** Map internal 5-step to the visible wizard progression.
  *  Previously collapsed step 4 → 3 when step 4 was just a transient
- *  re-grading loader. Step 4 now has its own RegradeMockup UI ("Chấm lại")
+ *  re-grading loader. Step 4 now has its own StepRegrade UI ("Chấm lại")
  *  so the stepper should reflect the actual position, otherwise the
  *  teacher sees a CHẤM LẠI page while the stepper still highlights XEM XÉT. */
 export function deriveDisplayStep(step: number): number {

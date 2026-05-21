@@ -13,7 +13,7 @@ import { ResultCard } from "./ResultCard";
 import { ErrorBoundary } from "../../components/ui/ErrorBoundary";
 import { StepUpload } from "../upload/StepUpload";
 import { StepReview } from "../review/StepReview";
-import { RegradeMockup } from "../regrade/RegradeMockup";
+import { StepRegrade } from "../regrade/StepRegrade";
 import {
   buildTaskContext,
   deriveDisplayStep,
@@ -530,7 +530,7 @@ export function EssayWorkspace({
           />
         ) : (
           <ErrorBoundary label="Regrade mockup failed">
-            <RegradeMockup
+            <StepRegrade
               onPrev={() => setStep(3)}
               onFinish={() => setStep(5)}
               grade={grade}

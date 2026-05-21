@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { T } from "../../theme/tokens";
 import { ApiError, listGradeHistory } from "../../api";
+import { subjectLabelRaw } from "../../lib/subject";
 import type { GradeHistoryEntry } from "../../types";
+import { parseTaskContext } from "./utils";
+import { HistoryRow } from "./components/HistoryRow";
 
 interface GradeHistoryDropdownProps {
   open: boolean;
@@ -10,66 +13,10 @@ interface GradeHistoryDropdownProps {
   anchorRect: DOMRect | null;
 }
 
-const SUBJECT_LABEL: Record<string, string> = {
-  cs:   "Tin học",
-  math: "Toán",
-  phys: "Vật lý",
-  chem: "Hoá học",
-  bio:  "Sinh học",
-  stem: "STEM",
-};
+// subjectLabelRaw lives in lib/subject.ts — single source of truth shared
+// with the Memory panel.
 
-function subjectLabel(code: string | null): string {
-  if (!code) return "Khác";
-  if (code in SUBJECT_LABEL) return SUBJECT_LABEL[code];
-  return code.charAt(0).toUpperCase() + code.slice(1);
-}
-
-// "5 phút trước" / "2 giờ trước" / "3 ngày trước" — friendlier than a raw
-// ISO timestamp for a history dropdown where exact time rarely matters.
-function relativeTime(ts: number): string {
-  const diff = Date.now() - ts;
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return "vừa xong";
-  if (m < 60) return `${m} phút trước`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h} giờ trước`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d} ngày trước`;
-  return new Date(ts).toLocaleDateString("vi-VN");
-}
-
-// Decode the task-context string that ``buildTaskContext`` produces and
-// any legacy variants still present in stored history:
-//
-//   current  : "<Môn X> · <tên đề>"                  (no class)
-//   current  : "<Môn X>" / ""                        (subject only / empty)
-//   legacy   : "Môn X · Lớp Y · <tên đề>"            (pre header-cleanup)
-//
-// Returns:
-//   body       = the essay's actual name (shown as the row title)
-//   classLabel = "Lớp 10" / "" — only populated by legacy entries; the
-//                current header has no class pill so new entries always
-//                return "". The dropdown still renders the label when
-//                present so the teacher's older stored grades don't
-//                lose their visual breadcrumb.
-//
-// Subject itself is read from entry.subject (the backend code), so the
-// regex only needs to skip the "Môn X" prefix. The subject segment can
-// be multi-word ("Sinh học", "Vật lý", "Hoá học") so it matches
-// ``[^·]+?`` instead of ``\S+`` — the old single-token regex bailed on
-// 2-word subjects and left the entire prefix in the title.
-function parseTaskContext(task: string): { body: string; classLabel: string } {
-  const legacy = task.match(/^Môn\s+[^·]+?\s*·\s*(Lớp\s+\d+)\s*·\s*(.+)$/iu);
-  if (legacy) {
-    return { classLabel: legacy[1].trim(), body: legacy[2].trim() || "(không tên)" };
-  }
-  const current = task.match(/^Môn\s+[^·]+?\s*·\s*(.+)$/iu);
-  if (current) {
-    return { classLabel: "", body: current[1].trim() || "(không tên)" };
-  }
-  return { classLabel: "", body: (task || "").trim() || "(không tên)" };
-}
+// relativeTime + parseTaskContext live in features/history/utils.ts.
 
 // Recency buckets so a 30-50 row list still gives the teacher a temporal
 // anchor without a real timeline. Comparing day-boundaries (not wall
@@ -147,7 +94,7 @@ export function GradeHistoryDropdown({ open, onClose, anchorRect }: GradeHistory
     const filtered = q
       ? entries.filter((e) => {
           const { body } = parseTaskContext(e.task);
-          const subj = subjectLabel(e.subject).toLowerCase();
+          const subj = subjectLabelRaw(e.subject).toLowerCase();
           return body.toLowerCase().includes(q) || subj.includes(q);
         })
       : entries;
@@ -389,170 +336,4 @@ export function GradeHistoryDropdown({ open, onClose, anchorRect }: GradeHistory
   );
 }
 
-// Row layout:
-//   Title (clickable, body sans) ─────────────────► (opens step 5 — phiếu chấm)
-//   Subject pill · 1 giờ trước
-//   [Xem xét]  [Chấm lại]                     ◄── secondary affordances
-//
-// The whole row is the primary "open" action — defaults to step 5 (Xong /
-// phiếu chấm) because "Bài đã chấm" implies the teacher wants to SEE the
-// completed grade, not re-evaluate it. Two small secondary buttons let
-// the teacher jump back to step 3 (Xem xét, re-review) or step 4 (Chấm
-// lại, regrade) when that IS the intent. Earlier design defaulted to
-// step 3 and surprised teachers who clicked a row expecting the final
-// grade sheet (real user report 2026-05-19).
-
-function HistoryRow({
-  entry,
-  onLoad,
-}: {
-  entry: GradeHistoryEntry;
-  onLoad: (step: 3 | 4 | 5) => void;
-}) {
-  const [hovered, setHovered] = useState(false);
-  const { body, classLabel } = parseTaskContext(entry.task);
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onLoad(5)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onLoad(5);
-        }
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      title="Xem bài chấm này (mở thẳng phiếu chấm)"
-      style={{
-        background: hovered ? T.bgHover : "transparent",
-        borderBottom: `1px solid ${T.borderLight}`,
-        padding: `${T.space[3]}px ${T.space[4]}px`,
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
-        cursor: "pointer",
-        outline: "none",
-        transition: "background 0.12s",
-      }}
-    >
-      <div
-        style={{
-          // Use the body sans-serif (T.font) — the inherited display
-          // serif made user-entered titles like "ĐỀ HÌNH" read as a
-          // section header instead of a list item.
-          fontFamily: T.font,
-          fontSize: 15,
-          color: T.text,
-          fontWeight: 600,
-          letterSpacing: 0,
-          textTransform: "none",
-          lineHeight: 1.3,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {body}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: T.space[2],
-          fontSize: T.fontSize.xs,
-          color: T.textMute,
-          flexWrap: "wrap",
-        }}
-      >
-        <span
-          style={{
-            padding: "1px 8px",
-            background: T.accentSoft,
-            color: T.accent,
-            borderRadius: 999,
-            fontWeight: 600,
-            fontSize: 11,
-          }}
-        >
-          {subjectLabel(entry.subject)}
-        </span>
-        {classLabel && (
-          <>
-            <span>·</span>
-            <span>{classLabel}</span>
-          </>
-        )}
-        <span>·</span>
-        <span>{relativeTime(entry.ts)}</span>
-      </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          marginTop: 6,
-        }}
-      >
-        {/* Secondary jumps. ``stopPropagation`` prevents the parent row
-            click handler from firing — without it, clicking these would
-            also open step 5 (the row default) in succession. */}
-        <SecondaryJump
-          label="Xem xét"
-          hint="Mở ở bước Xem xét (đọc lại nhận xét của AI)"
-          onClick={(e) => {
-            e.stopPropagation();
-            onLoad(3);
-          }}
-        />
-        <span style={{ color: T.textFaint, fontSize: 11 }}>·</span>
-        <SecondaryJump
-          label="Chấm lại"
-          hint="Mở thẳng ở bước Chấm lại (bỏ qua Xem xét)"
-          onClick={(e) => {
-            e.stopPropagation();
-            onLoad(4);
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function SecondaryJump({
-  label,
-  hint,
-  onClick,
-}: {
-  label: string;
-  hint: string;
-  onClick: (e: React.MouseEvent) => void;
-}) {
-  const [hover, setHover] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      title={hint}
-      aria-label={hint}
-      style={{
-        background: "transparent",
-        border: "none",
-        padding: "2px 4px",
-        color: hover ? T.accent : T.textSoft,
-        fontSize: 12,
-        fontFamily: T.font,
-        fontWeight: 500,
-        cursor: "pointer",
-        textDecoration: hover ? "underline" : "none",
-        textUnderlineOffset: 3,
-        transition: "color 0.12s",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
+// HistoryRow + SecondaryJump live in components/HistoryRow.tsx.

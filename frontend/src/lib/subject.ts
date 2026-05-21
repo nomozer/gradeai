@@ -18,6 +18,29 @@ export function subjectLabelOf(code: BackendSubject | null | undefined): string 
   return SUBJECT_LABEL[code] ?? code;
 }
 
+// Extra display-only labels for raw subject strings that ride along on
+// HITL memory rows (legacy code "stem", explicit "unknown"). Kept separate
+// from SUBJECT_LABEL because they are not BackendSubject codes — the
+// pipeline never emits them, but lessons saved from older runs do.
+const EXTRA_RAW_LABELS: Record<string, string> = {
+  stem: "STEM",
+  unknown: "Khác",
+};
+
+/**
+ * Permissive label lookup for raw lesson.subject strings. Use this when
+ * displaying the label for data that may carry legacy / unknown subjects
+ * (e.g. HITL lessons listed in the Memory panel and Grade History
+ * dropdown). Falls back to capitalizing the raw code so a brand-new
+ * subject still renders without a code change.
+ */
+export function subjectLabelRaw(code: string | null | undefined): string {
+  if (!code) return "Khác";
+  if (code in SUBJECT_LABEL) return SUBJECT_LABEL[code as BackendSubject];
+  if (code in EXTRA_RAW_LABELS) return EXTRA_RAW_LABELS[code];
+  return code.charAt(0).toUpperCase() + code.slice(1);
+}
+
 export interface SubjectOption {
   code: BackendSubject;
   label: string;
