@@ -1,21 +1,20 @@
 import React from "react";
 import { T } from "../../../theme/tokens";
 import { Icon } from "../../../components/ui/Icon";
-import type { ReviewPayload } from "../types";
 
-// Step3Toolbar — full-width action bar above the doc/sidebar grid.
-// Inspired by document-editor toolbars (Word, Google Docs): identity
-// strip on the left, action pills on the right. Centralises affordances
-// that used to be in the paper-head MetaPills + adds "Bản chấm AI"
-// peek so the teacher can reveal AI's verdict without committing to
-// step 4 yet.
+// Step3Toolbar — full-width strip above the doc/sidebar grid: a usage
+// hint on the left (đối soát is a select-to-annotate surface with no
+// button — the hint makes that affordance discoverable), action pills
+// on the right. Student identity is NOT shown here — it lives once in
+// PaperHead as the document's heading; rendering it in both places
+// duplicated the identity strip. Centralises affordances that used to
+// be in the paper-head MetaPills + adds "Bản chấm AI" peek so the
+// teacher can reveal AI's verdict without committing to step 4 yet.
 export function Step3Toolbar({
-  review,
   onViewOriginal,
   essayAvailable,
   onPeekAi,
 }: {
-  review: ReviewPayload;
   onViewOriginal?: () => void;
   essayAvailable?: boolean;
   onPeekAi: () => void;
@@ -36,41 +35,31 @@ export function Step3Toolbar({
         flexWrap: "wrap",
       }}
     >
+      {/* Usage hint — đối soát has no "annotate" button; the teacher
+          drag-selects a passage to comment. This caption surfaces that
+          otherwise-invisible interaction. Muted + ellipsis so it never
+          competes with the action pills. */}
       <div
         style={{
           display: "inline-flex",
           alignItems: "center",
-          gap: 10,
+          gap: 7,
           minWidth: 0,
+          color: T.textMute,
+          fontSize: 12.5,
+          fontFamily: T.font,
         }}
       >
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              color: T.textFaint,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-            }}
-          >
-            Bản chấm AI · Lần {review.runNumber}
-          </div>
-          <div
-            style={{
-              fontFamily: T.font,
-              fontSize: 14,
-              fontWeight: 600,
-              color: T.text,
-              lineHeight: 1.3,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {review.studentName} · {review.studentClass}
-          </div>
-        </div>
+        <Icon.PenTool size={13} color={T.textFaint} style={{ flexShrink: 0 }} />
+        <span
+          style={{
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Bôi đen đoạn cần góp ý để thêm ghi chú đối soát
+        </span>
       </div>
       <div
         style={{

@@ -3,15 +3,18 @@ import { T } from "../../../theme/tokens";
 import { Icon } from "../../../components/ui/Icon";
 import type { CommentVerdict } from "../../../types";
 
-// Verdict colour map. Three semantic tones aligned with the rest of the
-// app: green = AI concurs, amber = nuance, red = AI disagrees.
+// Verdict colour map. Three distinct hues aligned with the rest of the
+// app: green = AI concurs, amber = nuance, indigo = AI disagrees.
+// Dispute is deliberately NOT red — a dispute means the AI disagrees
+// with the teacher's comment, not that the student erred; red would
+// mislabel the transcript. Indigo reads as "contested — review this".
 const VERDICT_TONE: Record<
   CommentVerdict,
   { color: string; bg: string; label: string }
 > = {
   agree: { color: "#1F7A4C", bg: "#E3F4EA", label: "AI đồng ý" },
   partial: { color: "#A8770A", bg: "#FCF1D8", label: "AI đồng ý một phần" },
-  dispute: { color: "#A1392A", bg: "#FBE3DF", label: "AI phản biện" },
+  dispute: { color: "#2A3B6B", bg: "#E5E8F2", label: "AI phản biện" },
 };
 
 // VerdictRow — surfaces /api/analyze-comment's judgment under each
@@ -175,7 +178,7 @@ export function VerdictRow({
               fontSize: 12,
               fontWeight: 600,
               color: "#fff",
-              background: T.red,
+              background: T.accent,
               border: "none",
               borderRadius: 2,
               cursor: "pointer",

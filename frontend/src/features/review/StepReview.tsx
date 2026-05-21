@@ -87,7 +87,7 @@ function ReviewMockup({
   // page width on long transcripts. Mobile starts collapsed (paper first).
   const [tocOpen, setTocOpen] = useState(!isMobile);
   const [aiPeekOpen, setAiPeekOpen] = useState(false);
-  // ``flashCau`` drives a brief peach pulse on the câu in the document
+  // ``flashCau`` drives a brief indigo pulse on the câu in the document
   // body — set when the teacher clicks a mục lục entry, auto-cleared
   // after ~1.2s. The sidebar's own active state (activeQ) is sticky;
   // the body highlight is just a "you're here" pulse so the teacher
@@ -115,7 +115,6 @@ function ReviewMockup({
   return (
     <div>
       <Step3Toolbar
-        review={review}
         onViewOriginal={onViewOriginal}
         essayAvailable={essayAvailable}
         onPeekAi={() => setAiPeekOpen(true)}
@@ -193,17 +192,20 @@ function PaperContainer({
     <div
       style={{
         background: T.paper,
-        border: `1px solid ${T.border}`,
-        borderRadius: 12,
-        boxShadow: T.shadowSoft,
+        border: `1px solid ${T.borderLight}`,
+        borderRadius: 4,
+        boxShadow: T.shadowStrong,
         minWidth: 0,
-        // overflow:hidden keeps the elevated paper-head bg clipped to the
-        // outer rounded corners — without it the head bleeds past the radius.
+        // overflow:hidden clips the paper-head's bottom rule to the
+        // rounded corners — without it the rule bleeds past the radius.
         overflow: "hidden",
       }}
     >
       <PaperHead review={review} />
-      <div style={{ padding: "16px 20px 4px" }}>
+      {/* Generous horizontal padding = the document's page margins; the
+          clamp shrinks them on narrow screens so the transcript never
+          gets squeezed. This is what makes the card read as a Word page. */}
+      <div style={{ padding: "40px clamp(24px, 5vw, 64px) 24px" }}>
         <AnnotatedAnswer
           questions={review.questions}
           flashCau={flashCau}
@@ -237,7 +239,7 @@ function AnnotatedAnswer({
   onRemoveAnnotation,
 }: {
   questions: MockQuestion[];
-  /** Câu number to briefly pulse with a peach background. Set by the
+  /** Câu number to briefly pulse with an indigo background. Set by the
    *  mục lục jump action; auto-clears after ~1.2s. */
   flashCau: number | null;
   teacherAnnotations?: SelectionAnnotation[];
@@ -507,7 +509,7 @@ function AnnotatedAnswer({
               padding: "14px 16px",
               margin: "0 -16px 18px",
               borderRadius: 8,
-              background: flashing ? "#FBEEEA" : "transparent",
+              background: flashing ? T.accentGlow : "transparent",
               transition: flashing
                 ? "background 0.1s ease-out"
                 : "background 0.6s ease-out",
@@ -625,11 +627,14 @@ function highlightColors(ann: SelectionAnnotation, active: boolean): {
   if (ann.verdict === "partial") {
     return { bg: active ? "#F7E2A8" : "#FCF1D8" };
   }
-  // dispute (pending or applied) — same warm-red base; applied gets a
-  // border so the teacher sees their override is locked in.
+  // dispute (pending or applied) — indigo, deliberately NOT red. A
+  // dispute flags that the AI disagrees with the *teacher's* comment;
+  // red on the transcript would misread as "the student got this wrong".
+  // Indigo = "contested — review this". Applied gets a border so the
+  // teacher sees their override is locked in.
   return {
-    bg: active ? "#F7C8BF" : "#FBE3DF",
-    borderColor: ann.disputeDecision === "apply" ? "#A1392A" : undefined,
+    bg: active ? "#C9D0E6" : "#E5E8F2",
+    borderColor: ann.disputeDecision === "apply" ? "#2A3B6B" : undefined,
   };
 }
 

@@ -1,16 +1,17 @@
 import { T } from "../../../theme/tokens";
 import type { ReviewPayload } from "../types";
 
-// PaperHead — slim title strip inside the paper card. The action pills
-// (Xem PDF gốc, Bản chấm AI…) live in Step3Toolbar above the grid now,
-// so this just carries the student identity as the document's heading.
+// PaperHead — the document's title block at the top of the paper page.
+// Flush white with the page body (no tinted strip) so the paper reads
+// as one continuous Word-style sheet. The action pills live in
+// Step3Toolbar above the grid; this just carries the student identity.
 export function PaperHead({ review }: { review: ReviewPayload }) {
   return (
     <div
       style={{
-        padding: "14px 20px",
-        background: T.bgElevated,
-        borderBottom: `1px solid ${T.border}`,
+        padding: "32px clamp(24px, 5vw, 64px) 20px",
+        background: T.paper,
+        borderBottom: `1px solid ${T.borderLight}`,
       }}
     >
       <div
@@ -28,7 +29,7 @@ export function PaperHead({ review }: { review: ReviewPayload }) {
       <div
         style={{
           fontFamily: T.font,
-          fontSize: 18,
+          fontSize: 20,
           fontWeight: 600,
           color: T.text,
           letterSpacing: "-0.005em",
