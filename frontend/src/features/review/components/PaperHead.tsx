@@ -6,6 +6,11 @@ import type { ReviewPayload } from "../types";
 // as one continuous Word-style sheet. The action pills live in
 // Step3Toolbar above the grid; this just carries the student identity.
 export function PaperHead({ review }: { review: ReviewPayload }) {
+  // The paper identity has no data source yet — show a neutral placeholder
+  // rather than a fake default name. Class is appended only when present.
+  const name = review.studentName.trim();
+  const studentClass = review.studentClass.trim();
+  const identity = [name, studentClass].filter(Boolean).join(" · ");
   return (
     <div
       style={{
@@ -31,12 +36,13 @@ export function PaperHead({ review }: { review: ReviewPayload }) {
           fontFamily: T.font,
           fontSize: 20,
           fontWeight: 600,
-          color: T.text,
+          color: identity ? T.text : T.textMute,
+          fontStyle: identity ? "normal" : "italic",
           letterSpacing: "-0.005em",
           lineHeight: 1.25,
         }}
       >
-        {review.studentName} · {review.studentClass}
+        {identity || "Chưa rõ tên học sinh"}
       </div>
     </div>
   );

@@ -1,22 +1,15 @@
 /**
  * resultCard.mock.ts — UI fixture data for the ResultCard component.
  *
- * Two pieces of mock data live here:
- *
- *   • MOCK_STUDENT — used unconditionally because the app has no upload-
- *     form field for student name / class / STT yet. When the upload
- *     step gains those fields, swap this for props from the workspace.
- *
  *   • MOCK_QUESTIONS — fallback only, used when the grade payload has no
  *     per_question_feedback with scores (legacy grade or salvaged). Once
  *     every grade carries real max_points + score, this can be deleted.
+ *
+ * There used to be a MOCK_STUDENT fixture here, rendered unconditionally
+ * as the student identity. It was removed: showing a fake default name
+ * on a real paper is misleading. The app now renders a neutral
+ * placeholder until a real identity source exists.
  */
-
-export const MOCK_STUDENT = {
-  name: "Trần Minh Khôi",
-  classRoom: "Lớp 10A1",
-  roll: "STT 14",
-};
 
 export const MOCK_QUESTIONS = [
   {

@@ -3,7 +3,7 @@ import { T } from "../../theme/tokens";
 import { Icon } from "../../components/ui/Icon";
 import { parseCauHeader } from "../../lib/grade";
 import { PhieuChamPrint } from "./PhieuChamPrint";
-import { MOCK_STUDENT, MOCK_QUESTIONS } from "./__mocks__/resultCard.mock";
+import { MOCK_QUESTIONS } from "./__mocks__/resultCard.mock";
 import { FeedbackBlock } from "./components/FeedbackBlock";
 import { ScoreChip } from "./components/ScoreChip";
 import { LearningBanner } from "./components/LearningBanner";
@@ -39,8 +39,8 @@ import type {
 // identity is still mocked — no upload-form field for name/class yet.
 // ---------------------------------------------------------------------------
 
-// MOCK_STUDENT + MOCK_QUESTIONS fixtures live in __mocks__/resultCard.mock.ts
-// so this file stays focused on layout and finalization logic.
+// MOCK_QUESTIONS fixture lives in __mocks__/resultCard.mock.ts so this
+// file stays focused on layout and finalization logic.
 
 /** Thin label-adapter on top of the shared parseCauHeader — keeps the
  *  row layout's "label" string concern colocated with the row code. */
@@ -202,14 +202,12 @@ export function ResultCard({
     // Swap document.title for the duration of the print job so the
     // browser-rendered header (when the user keeps "Headers and footers"
     // checked in the print dialog) shows something useful — e.g.
-    // "Phiếu chấm — Trần Minh Khôi — Toán · Lớp 10" — instead of the app
-    // chrome title "MIRROR — A Reader's Grading Desk". URL and page
-    // number are still browser-controlled; teachers wanting a fully
-    // clean print should uncheck the option.
+    // "Phiếu chấm — Toán · Lớp 10" — instead of the app chrome title
+    // "MIRROR — A Reader's Grading Desk". URL and page number are still
+    // browser-controlled; teachers wanting a fully clean print should
+    // uncheck the option.
     const original = document.title;
-    const parts = ["Phiếu chấm", MOCK_STUDENT.name, subjectLabel].filter(
-      Boolean,
-    );
+    const parts = ["Phiếu chấm", subjectLabel].filter(Boolean);
     document.title = parts.join(" — ");
     // ``afterprint`` fires once the dialog closes (print OR cancel) in
     // every Chromium/Firefox/Safari we target — safer than a setTimeout.
@@ -293,9 +291,9 @@ export function ResultCard({
       {/* ── PRINT-ONLY: formal phiếu chấm ───────────────────────────── */}
       <div className="rc-print-only">
         <PhieuChamPrint
-          studentName={MOCK_STUDENT.name}
-          studentClass={MOCK_STUDENT.classRoom}
-          studentRoll={MOCK_STUDENT.roll}
+          studentName=""
+          studentClass=""
+          studentRoll=""
           subjectLabel={subjectLabel}
           maxTotal={maxTotal}
           overall={displayOverall}
@@ -478,25 +476,21 @@ export function ResultCard({
               >
                 Điểm cuối · {maxTotal.toFixed(1)} tối đa
               </div>
+              {/* No paper-identity source yet — neutral placeholder
+                  instead of a fake name. The class/STT line is dropped
+                  because there is nothing to fill it; the printed phiếu
+                  keeps blank handwriting lines for those. */}
               <div
                 style={{
                   fontSize: 20,
                   fontWeight: 600,
-                  color: T.text,
+                  color: T.textMute,
+                  fontStyle: "italic",
                   letterSpacing: "-0.005em",
                   marginBottom: 2,
                 }}
               >
-                {MOCK_STUDENT.name}
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  fontFamily: T.mono,
-                  color: T.textMute,
-                }}
-              >
-                {MOCK_STUDENT.classRoom} · {MOCK_STUDENT.roll}
+                {String(t.studentNamePlaceholder ?? "Chưa rõ tên học sinh")}
               </div>
             </div>
 

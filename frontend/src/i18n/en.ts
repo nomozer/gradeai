@@ -132,6 +132,7 @@ export const en: I18nStrings = {
   reset: "Clear All",
   // Review step extras
   studentAnswer: "Student's Answer",
+  studentNamePlaceholder: "Unidentified student",
   questionScore: "Score",
   teacherNote: "Teacher Comment",
   teacherNotePlaceholder: "Add your comment for this question…",

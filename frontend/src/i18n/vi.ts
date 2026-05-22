@@ -125,6 +125,7 @@ export const vi: I18nStrings = {
   idle: "Sẵn sàng",
   reset: "Xóa Tất Cả",
   studentAnswer: "Câu trả lời học sinh",
+  studentNamePlaceholder: "Chưa rõ tên học sinh",
   questionScore: "Điểm",
   teacherNote: "Nhận xét giáo viên",
   teacherNotePlaceholder: "Nhập nhận xét cho câu này…",

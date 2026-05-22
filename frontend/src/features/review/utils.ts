@@ -138,8 +138,10 @@ export function alignByQuestionNumber(
  *  pipeline state. Falls through to MOCK_REVIEW when the grade has no
  *  scored per-câu data, so dev runs and salvaged grades still render.
  *
- *  Fields still mocked (no source yet):
- *    - studentName / studentClass — no upload-form field for them.
+ *  Fields with no data source:
+ *    - studentName / studentClass — returned empty; the paper identity is
+ *      not extracted or entered anywhere, so PaperHead shows a neutral
+ *      placeholder instead of a fake name.
  *    - durationSec — pipeline doesn't measure VLM call time yet.
  *    - similarity — backend doesn't expose semantic-distance per lesson.
  *  When those sources land, replace the placeholders here without
@@ -152,7 +154,7 @@ export function deriveStepReviewData(
   const pqf = grade?.per_question_feedback ?? [];
   const hasReal =
     pqf.length > 0 && pqf.some((q) => typeof q.score === "number");
-  if (!hasReal) return MOCK_REVIEW;
+  if (!hasReal) return { ...MOCK_REVIEW, studentName: "", studentClass: "" };
 
   const linesByCau = splitTranscriptByCau(grade?.transcript ?? "");
   const questions: MockQuestion[] = pqf.map((q, i) => {
@@ -190,8 +192,8 @@ export function deriveStepReviewData(
   }));
 
   return {
-    studentName: MOCK_REVIEW.studentName, // No upload-form field yet.
-    studentClass: MOCK_REVIEW.studentClass,
+    studentName: "", // No identity source — PaperHead renders a placeholder.
+    studentClass: "",
     runNumber,
     lessonsUsed: lessonsUsed.length,
     modelName: "gemini-3-flash-preview",
