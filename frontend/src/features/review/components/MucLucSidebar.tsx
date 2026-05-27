@@ -48,8 +48,9 @@ export function MucLucSidebar({
           top: STICKY_TOP,
           alignSelf: "start",
           display: "flex",
-          justifyContent: "center",
-          paddingTop: 4,
+          justifyContent: "flex-start",
+          paddingLeft: 2,
+          animation: "fadeUp 0.15s ease-out",
         }}
       >
         <button
@@ -58,29 +59,66 @@ export function MucLucSidebar({
           aria-label="Hiện mục lục"
           title="Hiện mục lục"
           style={{
-            width: 18,
-            height: 40,
-            border: `1px solid ${T.border}`,
-            background: T.bgCard,
-            borderRadius: 6,
-            color: T.textFaint,
-            cursor: "pointer",
-            padding: 0,
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            transition: "color 0.12s, border-color 0.12s, background 0.12s",
+            gap: 5,
+            width: 44,
+            height: 32,
+            border: `1px solid ${T.border}`,
+            background: T.bgCard,
+            borderRadius: 8,
+            color: T.textSoft,
+            cursor: "pointer",
+            padding: 0,
+            boxShadow: T.shadowSoft,
+            transition: "all 0.15s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.color = T.text;
-            e.currentTarget.style.borderColor = T.textMute;
+            e.currentTarget.style.background = T.bgHover;
+            e.currentTarget.style.color = T.accent;
+            e.currentTarget.style.borderColor = T.accent;
+            e.currentTarget.style.transform = "translateX(2px)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.color = T.textFaint;
+            e.currentTarget.style.background = T.bgCard;
+            e.currentTarget.style.color = T.textSoft;
             e.currentTarget.style.borderColor = T.border;
+            e.currentTarget.style.transform = "translateX(0)";
           }}
         >
-          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+          {/* Minimal list icon */}
+          <svg
+            width={13}
+            height={13}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ opacity: 0.8 }}
+          >
+            <line x1="8" y1="6" x2="21" y2="6"></line>
+            <line x1="8" y1="12" x2="21" y2="12"></line>
+            <line x1="8" y1="18" x2="21" y2="18"></line>
+            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+          </svg>
+
+          {/* Tiny arrow indicating expansion */}
+          <svg
+            width={8}
+            height={8}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ opacity: 0.6 }}
+          >
             <path d="M9 18l6-6-6-6" />
           </svg>
         </button>
@@ -173,7 +211,7 @@ export function MucLucSidebar({
                 // stays at the same x-coordinate whether active or not.
                 padding: "9px 14px 9px 11px",
                 fontFamily: "inherit",
-                fontSize: 13.5,
+                fontSize: T.fontSize.caption,
                 color: active ? T.accent : T.textSoft,
                 fontWeight: active ? 600 : 500,
                 background: active ? T.accentSoft : "transparent",
@@ -223,14 +261,92 @@ export function MucLucSidebar({
       <div
         style={{
           padding: "10px 14px 0",
-          fontSize: 11.5,
+          fontSize: T.fontSize.xxs,
           color: T.textMute,
-          fontFamily: T.mono,
+          fontFamily: T.font,
           flexShrink: 0,
         }}
       >
         {totalNotes} ghi chú đối soát
       </div>
     </aside>
+  );
+}
+
+// Horizontal chip strip — mobile / tablet variant of the câu navigation.
+// The vertical rail is too wide to coexist with the paper at <900px so it
+// gets hidden there; without something taking its place the teacher loses
+// the ability to jump between câu and has to scroll-hunt. The chips give
+// back that affordance using minimal vertical room. Sticky-top so it stays
+// reachable while reading.
+export function MucLucChips({
+  review,
+  activeQ,
+  onJumpToCau,
+}: {
+  review: ReviewPayload;
+  activeQ: number;
+  onJumpToCau: (n: number) => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "sticky",
+        top: 52,
+        zIndex: 20,
+        display: "flex",
+        gap: 6,
+        overflowX: "auto",
+        padding: "8px 4px",
+        marginBottom: 12,
+        background: T.bg,
+        // Hairline below so the strip reads as separate from the paper
+        // while not adding a heavy card frame.
+        borderBottom: `1px solid ${T.borderLight}`,
+        // Hide scrollbar visually but keep scroll behaviour — chips look
+        // cleaner without the OS-level bar peeking through.
+        scrollbarWidth: "none",
+      }}
+    >
+      {review.questions.map((q) => {
+        const active = q.num === activeQ;
+        return (
+          <button
+            key={q.num}
+            type="button"
+            onClick={() => onJumpToCau(q.num)}
+            aria-pressed={active}
+            style={{
+              flex: "0 0 auto",
+              padding: "6px 12px",
+              borderRadius: 999,
+              border: `1px solid ${active ? T.accent : T.border}`,
+              background: active ? T.accent : T.bgCard,
+              color: active ? "#fff" : T.textSoft,
+              fontFamily: T.font,
+              fontSize: 13,
+              fontWeight: active ? 600 : 500,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              whiteSpace: "nowrap",
+              transition: "background 0.12s, color 0.12s, border-color 0.12s",
+            }}
+          >
+            <span>Câu {q.num}</span>
+            <span
+              style={{
+                fontFamily: T.mono,
+                fontSize: 11,
+                color: active ? "rgba(255,255,255,0.85)" : T.textFaint,
+              }}
+            >
+              {q.earned.toFixed(1)}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }

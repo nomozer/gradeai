@@ -8,7 +8,7 @@ function init(): TabsState {
 }
 
 export interface UseTabsResult extends TabsState {
-  addTab: () => void;
+  addTab: (meta?: TabMeta) => void;
   closeTab: (id: string) => void;
   clearAll: () => void;
   setActive: (id: string) => void;
@@ -18,7 +18,7 @@ export interface UseTabsResult extends TabsState {
 export function useTabs(): UseTabsResult {
   const [state, dispatch] = useReducer(tabsReducer, undefined, init);
 
-  const addTab = useCallback(() => dispatch({ type: "ADD" }), []);
+  const addTab = useCallback((meta?: TabMeta) => dispatch({ type: "ADD", meta }), []);
   const closeTab = useCallback((id: string) => dispatch({ type: "CLOSE", id }), []);
   const clearAll = useCallback(() => dispatch({ type: "CLEAR" }), []);
   const setActive = useCallback((id: string) => dispatch({ type: "SET_ACTIVE", id }), []);

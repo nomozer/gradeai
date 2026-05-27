@@ -12,23 +12,60 @@ export function ProgressBar({ completed, total, label }: ProgressBarProps) {
     <div
       style={{
         display: "flex",
-        alignItems: "center",
-        gap: T.space[4],
+        flexDirection: "column",
+        gap: 6,
         padding: `${T.space[2]}px 0 ${T.space[3]}px`,
+        fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
       }}
     >
-      {label && (
-        <span style={{ fontSize: T.fontSize.xs, color: T.textMute, minWidth: 64 }}>
-          {label}
-        </span>
-      )}
       <div
         style={{
-          flex: 1,
-          height: 2,
-          background: T.borderLight,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+        }}
+      >
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: T.textSoft,
+            letterSpacing: "0.02em",
+          }}
+        >
+          {label}
+        </span>
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: T.accent,
+            fontFamily: T.mono,
+          }}
+        >
+          {completed}/{total}
+          <span
+            style={{
+              fontWeight: 500,
+              color: T.textMute,
+              fontSize: 10,
+              marginLeft: 6,
+              fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
+            }}
+          >
+            ({Math.round(pct)}%)
+          </span>
+        </span>
+      </div>
+      <div
+        style={{
+          height: 6,
+          background: T.bgMuted,
+          borderRadius: 999,
           position: "relative",
           overflow: "hidden",
+          border: `1px solid ${T.borderLight}`,
+          boxShadow: "inset 0 1px 2px rgba(44, 46, 58, 0.04)",
         }}
       >
         {/* Animate via transform scaleX instead of width so the progress
@@ -38,24 +75,15 @@ export function ProgressBar({ completed, total, label }: ProgressBarProps) {
           style={{
             position: "absolute",
             inset: 0,
-            background: T.accent,
+            background: `linear-gradient(90deg, ${T.accent} 0%, ${T.accentLight} 100%)`,
+            borderRadius: 999,
             transformOrigin: "left center",
             transform: `scaleX(${pct / 100})`,
-            transition: "transform 0.6s ease",
+            transition: "transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
+            boxShadow: `0 1px 3px ${T.accentSoft}`,
           }}
         />
       </div>
-      <span
-        style={{
-          fontSize: T.fontSize.xs,
-          color: T.textMute,
-          fontFamily: T.mono,
-          minWidth: 40,
-          textAlign: "right",
-        }}
-      >
-        {completed}/{total}
-      </span>
     </div>
   );
 }

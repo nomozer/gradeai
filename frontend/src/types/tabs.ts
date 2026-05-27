@@ -1,4 +1,5 @@
 import type { PipelinePhase } from "./domain";
+import type { EssayFile, TaskFile } from "./grade";
 
 export interface Tab {
   id: string;
@@ -6,12 +7,17 @@ export interface Tab {
   phase: PipelinePhase;
   step: number;
   hasGrade: boolean;
+  canRun?: boolean;
+  initialEssayFile?: EssayFile | null;
+  initialTaskFile?: TaskFile | null;
+  initialSubject?: any;
+  questions?: { num: number; score: number; label: string }[];
 }
 
-export type TabMeta = Partial<Pick<Tab, "label" | "phase" | "step" | "hasGrade">>;
+export type TabMeta = Partial<Tab>;
 
 export type TabsAction =
-  | { type: "ADD" }
+  | { type: "ADD"; meta?: TabMeta }
   | { type: "CLOSE"; id: string }
   | { type: "CLEAR" }
   | { type: "SET_ACTIVE"; id: string }

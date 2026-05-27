@@ -108,6 +108,20 @@ export function splitTranscriptByCau(
       result.get(current)!.push(line);
     }
   }
+
+  // Trim leading and trailing empty lines for each question
+  for (const [key, lines] of result.entries()) {
+    let start = 0;
+    while (start < lines.length && !lines[start].trim()) {
+      start++;
+    }
+    let end = lines.length - 1;
+    while (end >= start && !lines[end].trim()) {
+      end--;
+    }
+    result.set(key, lines.slice(start, end + 1));
+  }
+
   return result;
 }
 

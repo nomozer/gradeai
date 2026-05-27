@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import { T } from "../../theme/tokens";
 import { Icon } from "../../components/ui/Icon";
+import { ActionBar, PrimaryButton, GhostButton } from "../../components/ui/ActionBar";
 import { OriginalImageModal } from "../../components/ui/OriginalImageModal";
 import { getStageableLesson } from "../../lib/hitl";
 import { analyzeComment } from "../../api";
@@ -14,12 +15,13 @@ import {
   normalizeAiAnalysisText,
   parseIntoQuestions,
 } from "./utils";
-import { MucLucSidebar } from "./components/MucLucSidebar";
+import { MucLucSidebar, MucLucChips } from "./components/MucLucSidebar";
 import { BanChamAiModal } from "./components/BanChamAiModal";
 import { Step3Toolbar } from "./components/Step3Toolbar";
 import { PaperHead } from "./components/PaperHead";
 import { QuestionBox } from "./components/QuestionBox";
 import { VerdictRow } from "./components/VerdictRow";
+import { formatLine } from "../../lib/mathFormat";
 import type {
   BackendSubject,
   CommentThreads,
@@ -112,34 +114,58 @@ function ReviewMockup({
       }
     });
   }, []);
+
+  useEffect(() => {
+    const handleJump = (e: Event) => {
+      const qNum = (e as CustomEvent<{ qNum: number }>).detail.qNum;
+      if (typeof qNum === "number") {
+        jumpToCau(qNum);
+      }
+    };
+    window.addEventListener("hitl.jumpToQuestion", handleJump);
+    return () => {
+      window.removeEventListener("hitl.jumpToQuestion", handleJump);
+    };
+  }, [jumpToCau]);
+
   return (
     <div>
       <Step3Toolbar
         onViewOriginal={onViewOriginal}
         essayAvailable={essayAvailable}
         onPeekAi={() => setAiPeekOpen(true)}
+        tocOpen={tocOpen}
+        onToggleToc={() => setTocOpen((v) => !v)}
       />
+      {isMobile && (
+        <MucLucChips
+          review={review}
+          activeQ={activeQ}
+          onJumpToCau={jumpToCau}
+        />
+      )}
       <div
+        className="review-layout-grid"
         style={{
           display: isMobile ? "block" : "grid",
           gridTemplateColumns: isMobile
             ? undefined
             : tocOpen
               ? "180px minmax(0, 1fr)"
-              : "24px minmax(0, 1fr)",
-          gap: tocOpen ? 24 : 12,
+              : "1fr", // Hide left column completely when collapsed so paper container expands
+          gap: tocOpen ? 24 : 0, // No layout gap when collapsed
           alignItems: "start",
           transition: "grid-template-columns 0.18s ease, gap 0.18s ease",
         }}
       >
-        {!isMobile && (
+        {!isMobile && tocOpen && (
           <MucLucSidebar
             review={review}
             activeQ={activeQ}
             onJumpToCau={jumpToCau}
             teacherAnnotations={teacherAnnotations}
-            collapsed={!tocOpen}
-            onToggle={() => setTocOpen((v) => !v)}
+            collapsed={false}
+            onToggle={() => setTocOpen(false)}
           />
         )}
         <PaperContainer
@@ -205,7 +231,7 @@ function PaperContainer({
       {/* Generous horizontal padding = the document's page margins; the
           clamp shrinks them on narrow screens so the transcript never
           gets squeezed. This is what makes the card read as a Word page. */}
-      <div style={{ padding: "40px clamp(24px, 5vw, 64px) 24px" }}>
+      <div className="paper-body-content" style={{ padding: "40px clamp(24px, 5vw, 64px) 24px" }}>
         <AnnotatedAnswer
           questions={review.questions}
           flashCau={flashCau}
@@ -490,7 +516,7 @@ function AnnotatedAnswer({
       ref={containerRef}
       onMouseUp={handleMouseUp}
       style={{
-        fontFamily: T.mono,
+        fontFamily: T.font,
         fontSize: 16,
         color: T.textSoft,
         lineHeight: 1.85,
@@ -506,8 +532,8 @@ function AnnotatedAnswer({
             key={q.num}
             data-cau-anchor={q.num}
             style={{
-              padding: "14px 16px",
-              margin: "0 -16px 18px",
+              padding: "8px 16px",
+              margin: "0 -16px 12px",
               borderRadius: 8,
               background: flashing ? T.accentGlow : "transparent",
               transition: flashing
@@ -614,18 +640,18 @@ function highlightColors(ann: SelectionAnnotation, active: boolean): {
   borderColor?: string;
   strike?: boolean;
 } {
-  // No verdict yet (analyzing or backend error) → default peach.
+  // No verdict yet (analyzing or backend error) → default vibrant highlighter yellow.
   if (!ann.verdict) {
-    return { bg: active ? "#F8C9B9" : "#FBEEEA" };
+    return { bg: active ? "#FDE68A" : "#FFFDF0" };
   }
   if (ann.verdict === "dispute" && ann.disputeDecision === "skip") {
-    return { bg: active ? "#E3DDD3" : "#EFE9DF", strike: true };
+    return { bg: active ? "#D1D5DB" : "#F3F4F6", strike: true };
   }
   if (ann.verdict === "agree") {
-    return { bg: active ? "#C9E8D6" : "#E3F4EA" };
+    return { bg: active ? "#A7F3D0" : "#ECFDF5" };
   }
   if (ann.verdict === "partial") {
-    return { bg: active ? "#F7E2A8" : "#FCF1D8" };
+    return { bg: active ? "#FDE68A" : "#FEF3C7" };
   }
   // dispute (pending or applied) — indigo, deliberately NOT red. A
   // dispute flags that the AI disagrees with the *teacher's* comment;
@@ -633,8 +659,8 @@ function highlightColors(ann: SelectionAnnotation, active: boolean): {
   // Indigo = "contested — review this". Applied gets a border so the
   // teacher sees their override is locked in.
   return {
-    bg: active ? "#C9D0E6" : "#E5E8F2",
-    borderColor: ann.disputeDecision === "apply" ? "#2A3B6B" : undefined,
+    bg: active ? "#C7D2FE" : "#EEF2FF",
+    borderColor: ann.disputeDecision === "apply" ? "#3730A3" : undefined,
   };
 }
 
@@ -717,7 +743,7 @@ function renderLineWithHighlights(
     if (!placed) unmatched.push(ann);
   }
   const nodes = segs.map((seg, i) => {
-    if (!seg.ann) return <span key={i}>{seg.text}</span>;
+    if (!seg.ann) return <span key={i}>{formatLine(seg.text, `rh-${lineIdx}-${i}`)}</span>;
     const active = activeAnnId === seg.ann.id;
     const colors = highlightColors(seg.ann, active);
     const annId = seg.ann.id;
@@ -732,8 +758,9 @@ function renderLineWithHighlights(
         style={{
           background: colors.bg,
           color: T.text,
-          padding: 0,
-          borderRadius: 0,
+          padding: "1px 4px",
+          margin: "0 1px",
+          borderRadius: 3,
           cursor: "pointer",
           transition: "background 0.12s",
           textDecoration: colors.strike ? "line-through" : "none",
@@ -742,7 +769,7 @@ function renderLineWithHighlights(
             : "1px solid transparent",
         }}
       >
-        {seg.text}
+        {formatLine(seg.text, `rh-${lineIdx}-m${i}`)}
       </mark>
     );
   });
@@ -1102,7 +1129,7 @@ function AnnotationCard({
               border: `1px solid ${T.border}`,
               background: T.paper,
               fontFamily: T.font,
-              fontSize: 13.5,
+              fontSize: T.fontSize.caption,
               color: T.text,
               outline: "none",
             }}
@@ -1573,89 +1600,20 @@ export function StepReview({
           {feedbackHook.error}
         </div>
       )}
-      <div
-        style={{
-          marginTop: 20,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <button
-          onClick={onPrev}
-          disabled={!onPrev}
-          style={{
-            padding: "10px 18px",
-            fontSize: 14,
-            color: T.textSoft,
-            background: T.bgCard,
-            border: `1px solid ${T.border}`,
-            borderRadius: 10,
-            cursor: onPrev ? "pointer" : "not-allowed",
-            transition: "color 0.15s, border-color 0.15s",
-            fontWeight: 500,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            opacity: onPrev ? 1 : 0.5,
-          }}
-          onMouseEnter={(e) => {
-            if (!onPrev) return;
-            e.currentTarget.style.color = T.text;
-            e.currentTarget.style.borderColor = T.textMute;
-          }}
-          onMouseLeave={(e) => {
-            if (!onPrev) return;
-            e.currentTarget.style.color = T.textSoft;
-            e.currentTarget.style.borderColor = T.border;
-          }}
-        >
-          ← Đọc lại
-        </button>
-        <div
-          style={{
-            fontSize: 13,
-            color: T.textMute,
-            textAlign: "center",
-            flex: "1 1 200px",
-            minWidth: 0,
-          }}
-        >
-          Bạn là người chấm cuối. AI chỉ đề xuất.
-        </div>
-        <button
+      <ActionBar status="Bạn là người chấm cuối. AI chỉ đề xuất.">
+        <GhostButton onClick={onPrev}>
+          <Icon.ArrowLeft size={14} />
+          Tải bài khác
+        </GhostButton>
+        <PrimaryButton
           onClick={onGoToRegrade}
-          disabled={pipeline.phase === "generating" || !onGoToRegrade}
-          style={{
-            padding: "12px 22px",
-            fontSize: 14,
-            color: "#fff",
-            background: T.red,
-            border: "none",
-            borderRadius: 10,
-            cursor:
-              pipeline.phase === "generating" || !onGoToRegrade
-                ? "not-allowed"
-                : "pointer",
-            transition: "all 0.2s",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            opacity:
-              pipeline.phase === "generating" || !onGoToRegrade ? 0.5 : 1,
-            fontWeight: 600,
-            boxShadow:
-              pipeline.phase === "generating" ? "none" : T.shadowSoft,
-            whiteSpace: "nowrap",
-          }}
+          disabled={pipeline.phase === "generating"}
           title="Mở bảng chấm lại — sửa điểm từng câu, chat với AI về phần chưa chắc."
         >
           Chấm lại / Phản hồi
           <Icon.ChevronRight size={14} color="#fff" />
-        </button>
-      </div>
+        </PrimaryButton>
+      </ActionBar>
       {/* Suspend the approve plumbing we no longer render but want to
           keep alive for the eventual backend rewire (mirrors the legacy
           QuestionBox suspension a few hundred lines up). */}

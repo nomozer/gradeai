@@ -55,7 +55,7 @@ export function VerdictRow({
           background: T.bgMuted,
           border: `1px solid ${T.borderLight}`,
           borderRadius: 999,
-          fontSize: 11.5,
+          fontSize: T.fontSize.xxs,
           color: T.textMute,
           fontStyle: "italic",
           alignSelf: "flex-start",
@@ -91,7 +91,7 @@ export function VerdictRow({
           background: tone.bg,
           border: `1px solid ${tone.color}`,
           borderRadius: 999,
-          fontSize: 11.5,
+          fontSize: T.fontSize.xxs,
           color: tone.color,
           fontWeight: 600,
           alignSelf: "flex-start",
@@ -156,7 +156,7 @@ export function VerdictRow({
       {bodyOpen && analysis && (
         <div
           style={{
-            fontSize: 12.5,
+            fontSize: T.fontSize.caption,
             color: T.textSoft,
             lineHeight: 1.5,
             background: T.bgMuted,

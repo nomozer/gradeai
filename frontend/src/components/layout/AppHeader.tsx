@@ -1,4 +1,6 @@
-import { useRef } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useBreakpoint } from "../../hooks/useBreakpoint";
+import { Icon } from "../ui/Icon";
 import { T } from "../../theme/tokens";
 
 interface AppHeaderProps {
@@ -6,26 +8,49 @@ interface AppHeaderProps {
   onOpenMemory: () => void;
   onOpenHelp: () => void;
   memoryActive: boolean;
-  /** Toggle the "Bài đã chấm" history dropdown. Called with the trigger
-   *  button's bounding rect so the dropdown can anchor under it. */
   onToggleHistory: (anchorRect: DOMRect | null) => void;
   historyActive: boolean;
+  onOpenSidebar?: () => void;
+}
+
+// Two nav idioms — keeps the top bar legible at all widths and follows
+// the convention used by Notion / Linear / Vercel:
+//   • "text"  — primary destinations carry a written label, no icon. The
+//               label IS the affordance; an icon would only crowd it.
+//   • "icon"  — utility actions (help, settings, share-like) collapse to
+//               a single recognisable glyph. Tooltip carries the name.
+type NavKind = "text" | "icon";
+
+interface NavItem {
+  id: string;
+  kind: NavKind;
+  /** Full label — used by `text` kind at laptop+, and by every kind as
+   *  the aria-label / tooltip. */
+  label: string;
+  /** Shortened label for `text` kind at mobile / tablet. */
+  labelShort?: string;
+  /** Required when `kind === "icon"`. Ignored otherwise. */
+  icon?: ReactNode;
+  active: boolean;
+  onClick: () => void;
+  buttonRef?: React.Ref<HTMLButtonElement>;
 }
 
 /**
- * Top app bar — global navigation. Visible on both desktop and mobile.
+ * Top app bar — global navigation.
  *
- * Layout:
- *   [MIRROR]                                      Bài đã chấm | Bộ nhớ HITL | Hướng dẫn
+ *   Desktop  : [MIRROR]                  Bài đã chấm   Bộ nhớ AI   (?)
+ *   Laptop   : [☰]                       Bài đã chấm   Bộ nhớ AI   (?)
+ *   Tablet   : [☰]                       Lịch sử       Bộ nhớ      (?)
+ *   Mobile   : [☰]                       Lịch sử       Bộ nhớ      (?)
  *
- * Brand-only header: tagline was removed because it duplicated the
- * brand for a single-user app — user already knows what MIRROR is, the
- * subtitle was just visual noise competing with the brand for reading
- * order. Subject picker and class label are also gone (replaced by the
- * per-tab SubjectChip inside StepUpload, fed by /api/detect-subject).
+ * The Help icon's round shape (vs the rounded-square text buttons)
+ * already signals "different category" — no separator needed. If we
+ * later add 2–3 more utility icons, reintroduce a separator then.
  *
- * Nav items remain plain text links with a thin vertical separator — same
- * restrained style as a top-of-page document menu.
+ * To add a new top-level destination or utility, append an entry to the
+ * `navItems` array — `kind` determines styling, no other code changes
+ * are needed.
  */
 export function AppHeader({
   brand,
@@ -34,10 +59,52 @@ export function AppHeader({
   memoryActive,
   onToggleHistory,
   historyActive,
+  onOpenSidebar,
 }: AppHeaderProps) {
-  // Anchor ref so the History dropdown can position itself under the
-  // trigger button regardless of header padding / responsive padding.
+  const bp = useBreakpoint();
+  const [hamburgerHovered, setHamburgerHovered] = useState(false);
   const historyBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  const navItems = useMemo<NavItem[]>(
+    () => [
+      {
+        id: "history",
+        kind: "text",
+        label: "Bài đã chấm",
+        labelShort: "Lịch sử",
+        active: historyActive,
+        buttonRef: historyBtnRef,
+        onClick: () => {
+          const rect = historyBtnRef.current?.getBoundingClientRect() ?? null;
+          onToggleHistory(rect);
+        },
+      },
+      {
+        id: "memory",
+        kind: "text",
+        label: "Bộ nhớ AI",
+        labelShort: "Bộ nhớ",
+        active: memoryActive,
+        onClick: onOpenMemory,
+      },
+      {
+        id: "help",
+        kind: "icon",
+        label: "Hướng dẫn",
+        icon: <Icon.HelpCircle size={16} />,
+        active: false,
+        onClick: onOpenHelp,
+      },
+    ],
+    [historyActive, memoryActive, onOpenMemory, onOpenHelp, onToggleHistory],
+  );
+
+  // Destinations vs utilities — preserve declaration order within each
+  // group so the array stays the source of truth for ordering.
+  const textItems = navItems.filter((it) => it.kind === "text");
+  const iconItems = navItems.filter((it) => it.kind === "icon");
+  const useShortLabel = bp === "mobile" || bp === "tablet";
+
   return (
     <header
       style={{
@@ -54,7 +121,32 @@ export function AppHeader({
         flexWrap: "wrap",
       }}
     >
+      {bp !== "desktop" && onOpenSidebar && (
+        <button
+          type="button"
+          onClick={onOpenSidebar}
+          onMouseEnter={() => setHamburgerHovered(true)}
+          onMouseLeave={() => setHamburgerHovered(false)}
+          aria-label="Open sidebar"
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 8,
+            border: "none",
+            background: hamburgerHovered ? T.bgHover : "transparent",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            color: T.text,
+            transition: "background 0.15s ease",
+          }}
+        >
+          <Icon.Menu size={20} />
+        </button>
+      )}
       <span
+        className="header-brand"
         style={{
           fontFamily: T.display,
           fontSize: T.fontSize.xl,
@@ -63,112 +155,109 @@ export function AppHeader({
           letterSpacing: 0,
           lineHeight: 1,
           flex: "0 0 auto",
+          display: bp === "desktop" ? undefined : "none",
         }}
       >
         {brand}
       </span>
 
       <nav
+        className="header-nav"
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 0,
+          gap: bp === "mobile" ? 2 : 4,
           flexShrink: 0,
         }}
       >
-        <HeaderLink
-          label="Bài đã chấm"
-          title="Xem lại các bài đã chấm (lưu trong trình duyệt, không gọi API)"
-          onClick={() => {
-            const rect = historyBtnRef.current?.getBoundingClientRect() ?? null;
-            onToggleHistory(rect);
-          }}
-          active={historyActive}
-          buttonRef={historyBtnRef}
-        />
-        <Separator />
-        <HeaderLink
-          label="Bộ nhớ HITL"
-          title={memoryActive ? "Quay lại bàn chấm" : "Bộ nhớ HITL"}
-          onClick={onOpenMemory}
-          active={memoryActive}
-        />
-        <Separator />
-        <HeaderLink label="Hướng dẫn" onClick={onOpenHelp} />
+        {textItems.map((item) => (
+          <NavTextLink key={item.id} item={item} short={useShortLabel} />
+        ))}
+        {iconItems.map((item) => (
+          <NavIconButton key={item.id} item={item} />
+        ))}
       </nav>
     </header>
   );
 }
 
-function Separator() {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: "inline-block",
-        width: 1,
-        height: T.space[4],
-        background: T.border,
-        margin: `0 ${T.space[5]}px`,
-      }}
-    />
-  );
-}
+function NavTextLink({ item, short }: { item: NavItem; short: boolean }) {
+  const [hovered, setHovered] = useState(false);
+  const active = item.active;
+  const label = short && item.labelShort ? item.labelShort : item.label;
 
-function HeaderLink({
-  label,
-  title,
-  onClick,
-  active = false,
-  buttonRef,
-}: {
-  label: string;
-  /** Optional tooltip/aria override — defaults to ``label`` when omitted. */
-  title?: string;
-  onClick: () => void;
-  active?: boolean;
-  /** Optional ref so parent can read the trigger's bounding rect for
-   *  anchoring popovers (e.g. the history dropdown). */
-  buttonRef?: React.Ref<HTMLButtonElement>;
-}) {
-  const hover = title ?? label;
+  const color = active ? T.accentDark : hovered ? T.text : T.textSoft;
+  const background = active
+    ? "rgba(59, 79, 138, 0.10)"
+    : hovered
+      ? "rgba(44, 46, 58, 0.05)"
+      : "transparent";
+
   return (
     <button
-      ref={buttonRef}
+      ref={item.buttonRef}
       type="button"
-      onClick={onClick}
-      aria-label={hover}
-      title={hover}
+      onClick={item.onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      aria-label={item.label}
+      title={item.label}
+      aria-current={active ? "page" : undefined}
       style={{
-        background: "transparent",
+        background,
+        color,
         border: "none",
-        // Reserve 2px below the text for the underline cue so hover does
-        // not cause a layout shift. Transparent by default, accent when
-        // hovered or active.
-        borderBottom: `2px solid ${active ? T.accent : "transparent"}`,
-        padding: `${T.space[2]}px ${T.space[1]}px ${T.space[1]}px`,
-        color: active ? T.text : T.textSoft,
+        borderRadius: 8,
+        padding: "8px 12px",
         fontSize: T.fontSize.sm,
         fontFamily: T.font,
         fontWeight: active ? 600 : 500,
-        cursor: "pointer",
-        transition: "color 0.15s, border-color 0.15s",
         whiteSpace: "nowrap",
-      }}
-      onMouseEnter={(e) => {
-        if (!active) {
-          e.currentTarget.style.color = T.text;
-          e.currentTarget.style.borderBottomColor = T.accent;
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!active) {
-          e.currentTarget.style.color = T.textSoft;
-          e.currentTarget.style.borderBottomColor = "transparent";
-        }
+        cursor: "pointer",
+        transition: "background-color 0.15s ease, color 0.15s ease",
       }}
     >
       {label}
     </button>
   );
 }
+
+function NavIconButton({ item }: { item: NavItem }) {
+  const [hovered, setHovered] = useState(false);
+  const active = item.active;
+  const color = active ? T.accentDark : hovered ? T.text : T.textSoft;
+  const background = active
+    ? "rgba(59, 79, 138, 0.10)"
+    : hovered
+      ? "rgba(44, 46, 58, 0.05)"
+      : "transparent";
+
+  return (
+    <button
+      ref={item.buttonRef}
+      type="button"
+      onClick={item.onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      aria-label={item.label}
+      title={item.label}
+      aria-current={active ? "page" : undefined}
+      style={{
+        width: 36,
+        height: 36,
+        background,
+        color,
+        border: "none",
+        borderRadius: "50%",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "pointer",
+        transition: "background-color 0.15s ease, color 0.15s ease",
+      }}
+    >
+      {item.icon}
+    </button>
+  );
+}
+

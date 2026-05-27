@@ -23,12 +23,12 @@ interface CommentThreadProps {
  *  stays consistent across bubble + badge + decision panel. */
 function verdictStyle(verdict: CommentVerdict | undefined) {
   if (verdict === "dispute") {
-    return { bg: T.redSoft, accent: T.red, label: "AI" };
+    return { bg: T.redSoft, accent: T.red, label: <Icon.Bot size={13} /> };
   }
   if (verdict === "partial") {
-    return { bg: T.amberSoft, accent: T.amber, label: "AI" };
+    return { bg: T.amberSoft, accent: T.amber, label: <Icon.Bot size={13} /> };
   }
-  return { bg: T.accentSoft, accent: T.accent, label: "AI" };
+  return { bg: T.aiVoiceBg, accent: T.aiVoiceBorder, label: <Icon.Bot size={13} /> };
 }
 
 export function CommentThread({
@@ -72,7 +72,7 @@ export function CommentThread({
           {comments.map((c, i) => {
             const isTeacher = c.type === "teacher";
             const vstyle = isTeacher
-              ? { bg: T.amberSoft, accent: T.amber, label: "GV" }
+              ? { bg: T.teacherVoiceBg, accent: T.teacherVoiceBorder, label: <Icon.User size={13} /> }
               : verdictStyle(c.verdict);
             const isDispute = !isTeacher && c.verdict === "dispute";
             const isPartial = !isTeacher && c.verdict === "partial";

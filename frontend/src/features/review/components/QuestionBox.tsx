@@ -85,6 +85,7 @@ export function QuestionBox({
 }: QuestionBoxProps) {
   const [bodyExpanded, setBodyExpanded] = useState(true);
   const [teacherOpen, setTeacherOpen] = useState(false);
+  const [commentsCollapsed, setCommentsCollapsed] = useState(false);
 
   // ``stacked`` no longer changes layout (the box is single-column now), so
   // the prop is intentionally unread. Kept on the interface in case a
@@ -112,12 +113,17 @@ export function QuestionBox({
     //   4. teacher reply box, collapsed by default behind a "Thêm nhận
     //      xét" link to keep the page clean until needed
     <div
+      className={`question-card${
+        feedback && typeof feedback.score === "number" && typeof feedback.max_points === "number" && feedback.max_points > 0
+          ? (feedback.score >= feedback.max_points
+              ? " question-card--correct"
+              : feedback.score >= feedback.max_points * 0.5
+                ? " question-card--partial"
+                : " question-card--error")
+          : ""
+      }`}
       style={{
         marginBottom: 16,
-        border: `1px solid ${T.border}`,
-        borderRadius: 14,
-        boxShadow: T.shadowSoft,
-        background: T.paper,
         overflow: "hidden",
       }}
     >
@@ -191,12 +197,9 @@ export function QuestionBox({
 
       {bodyExpanded && (
         <div
+          className="student-work"
           style={{
             padding: "12px 20px 0",
-            fontSize: 14.5,
-            color: T.textSoft,
-            lineHeight: 1.7,
-            fontFamily: T.mono,
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
             tabSize: 4,
@@ -211,36 +214,75 @@ export function QuestionBox({
           so the teacher can skim the AI's marks like a margin note. */}
       {bodyExpanded && (hasAnnotations || showFallback || isSalvaged) && (
         <div
+          className="voice-ai"
           style={{
             margin: "14px 20px 0",
-            padding: "10px 14px",
-            background: T.bgCard,
-            border: `1px solid ${T.borderLight}`,
-            borderRadius: 8,
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
           }}
         >
-          {goodLines.map((line, i) => (
-            <AnnotationRow key={`g-${i}`} kind="good" text={line} />
-          ))}
-          {errorLines.map((line, i) => (
-            <AnnotationRow key={`e-${i}`} kind="error" text={line} />
-          ))}
-          {showFallback && (
-            // Legacy / unstructured response — emit the freeform comment
-            // as a single neutral row so we don't drop the AI signal.
-            <AnnotationRow kind="note" text={fallbackComment} />
-          )}
-          {!hasAnnotations && !showFallback && isSalvaged && (
-            <AnnotationRow
-              kind="warn"
-              text={String(
-                t.noCommentSalvaged ??
-                  "Phản hồi cho câu này bị cắt — hãy đối chiếu bài làm hoặc chấm lại.",
+          <div
+            className="voice-label"
+            style={{
+              color: T.aiVoiceText,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              cursor: "pointer",
+              userSelect: "none",
+              marginBottom: commentsCollapsed ? 0 : 12,
+            }}
+            onClick={() => setCommentsCollapsed(!commentsCollapsed)}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Icon.Bot size={13} />
+              {String(t.aiVoiceLabel ?? "AI đã đọc")}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 10,
+                fontWeight: 600,
+                color: T.aiVoiceBorder,
+                fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
+              }}
+            >
+              <Icon.MessageCircle size={11} />
+              <span>{commentsCollapsed ? "Hiện nhận xét" : "Ẩn nhận xét"}</span>
+              <span
+                style={{
+                  transform: `rotate(${commentsCollapsed ? 0 : 180}deg)`,
+                  transition: "transform 0.2s",
+                  display: "inline-flex",
+                }}
+              >
+                <Icon.ChevronRight size={11} style={{ transform: "rotate(90deg)" }} />
+              </span>
+            </div>
+          </div>
+          {!commentsCollapsed && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <AnnotationGroup kind="good" lines={goodLines} subject={subject} t={t} />
+              <AnnotationGroup kind="error" lines={errorLines} subject={subject} t={t} />
+              {showFallback && (
+                // Legacy / unstructured response — emit the freeform comment
+                // as a single neutral row so we don't drop the AI signal.
+                <AnnotationGroup kind="note" lines={[fallbackComment]} subject={subject} t={t} />
               )}
-            />
+              {!hasAnnotations && !showFallback && isSalvaged && (
+                <AnnotationGroup
+                  kind="warn"
+                  lines={[
+                    String(
+                      t.noCommentSalvaged ??
+                        "Phản hồi cho câu này bị cắt — hãy đối chiếu bài làm hoặc chấm lại.",
+                    ),
+                  ]}
+                  subject={subject}
+                  t={t}
+                />
+              )}
+            </div>
           )}
         </div>
       )}
@@ -306,52 +348,126 @@ export function QuestionBox({
   );
 }
 
-// One row of inline AI markup — ✓ điểm tốt (green), × cần sửa (red),
-// or a neutral fallback for unstructured prose / salvage warnings.
-// Mirrors a teacher's red-pen mark on a printed exam: glyph + italic
-// short phrase, sitting just under the body it refers to.
-function AnnotationRow({
+// One grouped container of inline AI markup — ✓ good points (green) and × errors (red).
+// Styled as a clean, compact Notion-style callout box with left vertical accent line.
+// Inside it lists all bullet points with correct LaTeX math formatting.
+function AnnotationGroup({
   kind,
-  text,
+  lines,
+  subject,
+  t,
 }: {
   kind: "good" | "error" | "note" | "warn";
-  text: string;
+  lines: string[];
+  subject: any;
+  t: I18nStrings;
 }) {
-  const palette: Record<typeof kind, { color: string; glyph: string; weight: number }> = {
-    good:  { color: T.green, glyph: "✓", weight: 600 },
-    error: { color: T.red,   glyph: "×", weight: 600 },
-    note:  { color: T.textSoft, glyph: "•", weight: 500 },
-    warn:  { color: T.amber, glyph: "⚠", weight: 600 },
+  if (lines.length === 0) return null;
+
+  const palette = {
+    good: {
+      bg: "rgba(46, 125, 91, 0.03)",
+      borderLeft: `3px solid ${T.green || "#2E7D5B"}`,
+      color: T.green || "#2E7D5B",
+      icon: <Icon.Check size={11} />,
+      label: String(t.commentLabelGood ?? "Ưu điểm"),
+    },
+    error: {
+      bg: "rgba(184, 66, 58, 0.03)",
+      borderLeft: "3px solid #E07A5F",
+      color: T.red || "#E07A5F",
+      icon: <Icon.X size={11} />,
+      label: String(t.commentLabelError ?? "Cần khắc phục"),
+    },
+    note: {
+      bg: "rgba(74, 76, 92, 0.02)",
+      borderLeft: "3px solid #7B6D8D",
+      color: T.textSoft,
+      icon: <Icon.MessageCircle size={11} />,
+      label: String(t.commentLabelNote ?? "Ghi chú"),
+    },
+    warn: {
+      bg: "rgba(192, 139, 48, 0.03)",
+      borderLeft: "3px solid #C08B30",
+      color: T.amber || "#C08B30",
+      icon: <Icon.AlertTriangle size={11} />,
+      label: String(t.commentLabelWarn ?? "Cảnh báo"),
+    },
   };
-  const p = palette[kind];
+  const p = palette[kind] ?? palette.note;
+
   return (
     <div
       style={{
+        background: p.bg,
+        borderLeft: p.borderLeft,
+        borderRadius: "0 8px 8px 0",
+        padding: "10px 14px",
         display: "flex",
-        alignItems: "flex-start",
+        flexDirection: "column",
         gap: 8,
-        fontSize: 13.5,
-        lineHeight: 1.55,
-        color: T.textSoft,
-        fontStyle: "italic",
+        animation: "fadeUp 0.2s ease-out",
       }}
     >
-      <span
-        aria-hidden="true"
+      {/* Group Header */}
+      <div
         style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
           color: p.color,
-          fontWeight: p.weight,
-          fontFamily: T.mono,
-          fontStyle: "normal",
-          flexShrink: 0,
-          minWidth: 12,
-          textAlign: "center",
-          lineHeight: 1.55,
+          fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
         }}
       >
-        {p.glyph}
-      </span>
-      <span style={{ color: p.color, fontWeight: 500 }}>{text}</span>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 14,
+            height: 14,
+            borderRadius: "50%",
+            background: "white",
+            border: `1.5px solid ${p.color}`,
+            color: p.color,
+          }}
+        >
+          {p.icon}
+        </div>
+        <span>{p.label}</span>
+      </div>
+
+      {/* Group Body - Compact Bullet List */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 5,
+          paddingLeft: 4,
+        }}
+      >
+        {lines.map((line, idx) => (
+          <div
+            key={idx}
+            style={{
+              fontSize: 13,
+              color: T.textSoft,
+              lineHeight: "1.45",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 6,
+              fontFamily: T.font,
+            }}
+          >
+            <span style={{ color: p.color, fontSize: 14, flexShrink: 0, userSelect: "none" }}>•</span>
+            <div style={{ flex: 1 }}>{formatTranscript(line, subject)}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

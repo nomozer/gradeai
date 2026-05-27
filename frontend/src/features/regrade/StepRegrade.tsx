@@ -1,6 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { T } from "../../theme/tokens";
 import { OriginalImageModal } from "../../components/ui/OriginalImageModal";
+import { ActionBar, GhostButton, PrimaryButton } from "../../components/ui/ActionBar";
+import { Icon } from "../../components/ui/Icon";
 import {
   buildSyntheticAnnotations,
   parseCauHeader,
@@ -89,6 +91,16 @@ function deriveReview(grade: Grade | null | undefined): RegradePayload {
   };
 }
 
+function defaultExpandedQuestions(questions: RegradeQuestion[]): Set<number> {
+  const init = new Set<number>();
+  for (const q of questions) {
+    const hasError = q.annotations.some((a) => a.kind === "error");
+    const lostPoints = q.maxPoints != null && q.aiScore < q.maxPoints - 0.001;
+    if (hasError || lostPoints) init.add(q.num);
+  }
+  return init;
+}
+
 export interface StepRegradeProps {
   /** Back action — go to step 3 to re-read AI's review. */
   onPrev?: () => void;
@@ -117,6 +129,7 @@ export interface StepRegradeProps {
    *  câu's score input so the teacher can recall their independent
    *  judgment when finalizing. Step 5 saves them with the final grade. */
   teacherAnnotations?: SelectionAnnotation[];
+  subject?: any;
 }
 
 export function StepRegrade({
@@ -129,6 +142,7 @@ export function StepRegrade({
   maxOverrides,
   setMaxOverrides,
   teacherAnnotations,
+  subject,
 }: StepRegradeProps) {
   // Derive the review payload: real grade data when the pipeline produced
   // scored per-câu, else the legacy mock so the UI still renders for
@@ -143,15 +157,24 @@ export function StepRegrade({
   // from 3 to 10+ câu without becoming a wall. Teacher can override either
   // direction; opening chat on a câu also forces it expanded (see openChat).
   const [expandedQs, setExpandedQs] = useState<Set<number>>(() => {
-    const init = new Set<number>();
-    for (const q of review.questions) {
-      const hasError = q.annotations.some((a) => a.kind === "error");
-      const lostPoints =
-        q.maxPoints != null && q.aiScore < q.maxPoints - 0.001;
-      if (hasError || lostPoints) init.add(q.num);
-    }
-    return init;
+    return defaultExpandedQuestions(review.questions);
   });
+  const questionSignature = useMemo(
+    () =>
+      review.questions
+        .map((q) => {
+          const annotationKinds = q.annotations.map((a) => a.kind).join(",");
+          return `${q.num}:${q.aiScore}:${q.maxPoints ?? ""}:${annotationKinds}`;
+        })
+        .join("|"),
+    [review.questions],
+  );
+  const lastQuestionSignature = useRef(questionSignature);
+  useEffect(() => {
+    if (lastQuestionSignature.current === questionSignature) return;
+    lastQuestionSignature.current = questionSignature;
+    setExpandedQs(defaultExpandedQuestions(review.questions));
+  }, [questionSignature, review.questions]);
 
   const toggleExpanded = (n: number) =>
     setExpandedQs((prev) => {
@@ -163,7 +186,9 @@ export function StepRegrade({
   const expandAll = () =>
     setExpandedQs(new Set(review.questions.map((q) => q.num)));
   const collapseAll = () => setExpandedQs(new Set());
-  const allExpanded = expandedQs.size === review.questions.length;
+  const allExpanded =
+    review.questions.length > 0 &&
+    review.questions.every((q) => expandedQs.has(q.num));
 
   // "Hoàn tất bài này" is now pure navigation. Saving HITL lessons in Step
   // 4 used to mark the AI's original grade as approved before the teacher
@@ -208,69 +233,16 @@ export function StepRegrade({
         essayImage={essayImage}
         onViewOriginal={() => setShowOriginal(true)}
         teacherAnnotations={teacherAnnotations}
+        subject={subject}
       />
 
-      {/* Bottom action bar — mirrors step 3's pattern: back / status /
-          forward. Status text uses the live teacher total when anything
-          has been edited, otherwise the "lessons sẽ lưu" disclaimer so
-          the teacher knows what committing means. */}
-      <div
-        style={{
-          marginTop: 20,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <button
-          type="button"
-          onClick={onPrev}
-          disabled={!onPrev}
-          style={{
-            padding: "10px 18px",
-            fontSize: 14,
-            color: T.textSoft,
-            background: T.bgCard,
-            border: `1px solid ${T.border}`,
-            borderRadius: 10,
-            cursor: onPrev ? "pointer" : "not-allowed",
-            transition: "color 0.15s, border-color 0.15s",
-            fontWeight: 500,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            opacity: onPrev ? 1 : 0.5,
-          }}
-          onMouseEnter={(e) => {
-            if (!onPrev) return;
-            e.currentTarget.style.color = T.text;
-            e.currentTarget.style.borderColor = T.textMute;
-          }}
-          onMouseLeave={(e) => {
-            if (!onPrev) return;
-            e.currentTarget.style.color = T.textSoft;
-            e.currentTarget.style.borderColor = T.border;
-          }}
-        >
-          ← Xem lại bản chấm
-        </button>
-        <div
-          style={{
-            fontSize: 13,
-            color: T.textMute,
-            textAlign: "center",
-            flex: "1 1 200px",
-            minWidth: 0,
-          }}
-        >
-          {anyEdited ? (
+      <ActionBar
+        status={
+          anyEdited ? (
             <>
               Điểm cuối:{" "}
               <span
                 style={{
-                  fontFamily: T.mono,
                   fontWeight: 700,
                   color: T.text,
                 }}
@@ -286,47 +258,22 @@ export function StepRegrade({
             </>
           ) : (
             "Nhận xét và điểm sẽ lưu khi bạn xác nhận điểm ở bước cuối."
-          )}
-        </div>
-        <button
-          type="button"
+          )
+        }
+      >
+        <GhostButton onClick={onPrev} disabled={!onPrev}>
+          <Icon.ArrowLeft size={14} />
+          Xem lại bản chấm
+        </GhostButton>
+        <PrimaryButton
           onClick={handleFinish}
           disabled={!onFinish}
-          style={{
-            padding: "12px 22px",
-            fontSize: 14,
-            color: "#fff",
-            background: T.red,
-            border: "none",
-            borderRadius: 10,
-            cursor: !onFinish ? "not-allowed" : "pointer",
-            transition: "all 0.2s",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            fontWeight: 600,
-            boxShadow: T.shadowSoft,
-            opacity: !onFinish ? 0.5 : 1,
-            whiteSpace: "nowrap",
-          }}
           title="Sang bước Hoàn thành. Nhận xét HITL sẽ lưu khi bạn xác nhận điểm."
         >
           Hoàn tất bài này
-          <svg
-            width={14}
-            height={14}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M9 6l6 6-6 6" />
-          </svg>
-        </button>
-      </div>
+          <Icon.ChevronRight size={14} color="#fff" />
+        </PrimaryButton>
+      </ActionBar>
 
       <OriginalImageModal
         open={showOriginal}

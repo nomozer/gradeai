@@ -1,6 +1,7 @@
 import React from "react";
 import { T } from "../../../theme/tokens";
 import { Icon } from "../../../components/ui/Icon";
+import { useBreakpoint } from "../../../hooks/useBreakpoint";
 
 // Step3Toolbar — full-width strip above the doc/sidebar grid: a usage
 // hint on the left (đối soát is a select-to-annotate surface with no
@@ -14,53 +15,68 @@ export function Step3Toolbar({
   onViewOriginal,
   essayAvailable,
   onPeekAi,
+  tocOpen,
+  onToggleToc,
 }: {
   onViewOriginal?: () => void;
   essayAvailable?: boolean;
   onPeekAi: () => void;
+  tocOpen?: boolean;
+  onToggleToc?: () => void;
 }) {
+  const bp = useBreakpoint();
+  const isMobile = bp === "mobile";
   return (
     <div
       style={{
         display: "flex",
         alignItems: "center",
-        justifyContent: "space-between",
+        justifyContent: isMobile ? "flex-end" : "space-between",
         gap: 12,
-        padding: "10px 16px",
+        padding: isMobile ? "8px 10px" : "10px 16px",
         marginBottom: 14,
         background: T.bgCard,
         border: `1px solid ${T.border}`,
+        borderLeft: `4px solid ${T.accent}`,
         borderRadius: 12,
         boxShadow: T.shadowSoft,
         flexWrap: "wrap",
       }}
     >
       {/* Usage hint — đối soát has no "annotate" button; the teacher
-          drag-selects a passage to comment. This caption surfaces that
-          otherwise-invisible interaction. Muted + ellipsis so it never
-          competes with the action pills. */}
-      <div
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 7,
-          minWidth: 0,
-          color: T.textMute,
-          fontSize: 12.5,
-          fontFamily: T.font,
-        }}
-      >
-        <Icon.PenTool size={13} color={T.textFaint} style={{ flexShrink: 0 }} />
-        <span
+          drag-selects a passage to comment. Hidden on mobile to keep the
+          toolbar from wrapping into two rows; teachers on touch UAs
+          typically discover the long-press-select affordance natively. */}
+      {!isMobile && (
+        <div
           style={{
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            minWidth: 0,
+            background: "rgba(59, 79, 138, 0.04)",
+            border: `1px solid rgba(59, 79, 138, 0.08)`,
+            padding: "5px 12px",
+            borderRadius: 8,
+            color: T.accent,
+            fontSize: 12,
+            fontFamily: `"Inter", "Outfit", system-ui, -apple-system, sans-serif`,
+            fontWeight: 500,
           }}
         >
-          Bôi đen đoạn cần góp ý để thêm ghi chú đối soát
-        </span>
-      </div>
+          <Icon.PenTool size={12} color={T.accent} style={{ flexShrink: 0 }} />
+          <span
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <strong style={{ fontWeight: 700, marginRight: 4 }}>Hướng dẫn:</strong>
+            Bôi đen đoạn cần góp ý để thêm ghi chú đối soát
+          </span>
+        </div>
+      )}
       <div
         style={{
           display: "inline-flex",
@@ -71,6 +87,25 @@ export function Step3Toolbar({
           justifyContent: "flex-end",
         }}
       >
+        {!isMobile && onToggleToc && (
+          <ToolbarButton
+            icon={
+              <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.9 }}>
+                <line x1="8" y1="6" x2="21" y2="6"></line>
+                <line x1="8" y1="12" x2="21" y2="12"></line>
+                <line x1="8" y1="18" x2="21" y2="18"></line>
+                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+              </svg>
+            }
+            onClick={onToggleToc}
+            variant={tocOpen ? "accent" : "default"}
+            title={tocOpen ? "Ẩn mục lục (Mở rộng bài làm)" : "Hiện mục lục"}
+          >
+            {tocOpen ? "Ẩn mục lục" : "Mục lục"}
+          </ToolbarButton>
+        )}
         <ToolbarButton
           icon={<Icon.FileText size={12} />}
           onClick={essayAvailable ? onViewOriginal : undefined}
@@ -86,6 +121,7 @@ export function Step3Toolbar({
         <ToolbarButton
           icon={<Icon.Lightbulb size={12} color={T.amber} />}
           onClick={onPeekAi}
+          variant="accent"
           title="Xem điểm + nhận xét AI đã chấm"
         >
           Bản chấm AI
@@ -112,13 +148,46 @@ function ToolbarButton({
   onClick,
   title,
   disabled = false,
+  variant = "default",
 }: {
   children: React.ReactNode;
   icon?: React.ReactNode;
   onClick?: () => void;
   title?: string;
   disabled?: boolean;
+  variant?: "default" | "accent";
 }) {
+  const isAccent = variant === "accent";
+
+  // Custom styles based on variant
+  const getStyle = (): React.CSSProperties => {
+    if (disabled || !onClick) {
+      return {
+        color: T.textFaint,
+        background: T.bgCard,
+        border: `1px solid ${T.borderLight}`,
+        opacity: 0.55,
+        cursor: "not-allowed",
+      };
+    }
+
+    if (isAccent) {
+      return {
+        color: T.amber,
+        background: "rgba(192, 139, 48, 0.05)",
+        border: `1.5px solid rgba(192, 139, 48, 0.25)`,
+        boxShadow: "0 1px 2px rgba(192, 139, 48, 0.05)",
+      };
+    }
+
+    // default
+    return {
+      color: T.textSoft,
+      background: T.bgCard,
+      border: `1px solid ${T.border}`,
+    };
+  };
+
   return (
     <button
       type="button"
@@ -129,28 +198,37 @@ function ToolbarButton({
         display: "inline-flex",
         alignItems: "center",
         gap: 6,
-        padding: "6px 12px",
-        fontSize: 12.5,
-        fontFamily: T.font,
-        fontWeight: 500,
-        color: disabled ? T.textFaint : T.textSoft,
-        background: T.bgCard,
-        border: `1px solid ${T.border}`,
+        padding: "6px 14px",
+        fontSize: 12,
+        fontFamily: `"Inter", "Outfit", system-ui, -apple-system, sans-serif`,
+        fontWeight: 600,
         borderRadius: 999,
-        cursor: disabled || !onClick ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
-        transition: "color 0.12s, border-color 0.12s",
+        cursor: "pointer",
+        transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
         whiteSpace: "nowrap",
+        ...getStyle(),
       }}
       onMouseEnter={(e) => {
         if (disabled || !onClick) return;
-        e.currentTarget.style.color = T.accent;
-        e.currentTarget.style.borderColor = T.accent;
+        if (isAccent) {
+          e.currentTarget.style.background = "rgba(192, 139, 48, 0.09)";
+          e.currentTarget.style.borderColor = "rgba(192, 139, 48, 0.4)";
+        } else {
+          e.currentTarget.style.color = T.accent;
+          e.currentTarget.style.borderColor = T.accent;
+          e.currentTarget.style.background = "rgba(59, 79, 138, 0.04)";
+        }
       }}
       onMouseLeave={(e) => {
         if (disabled || !onClick) return;
-        e.currentTarget.style.color = T.textSoft;
-        e.currentTarget.style.borderColor = T.border;
+        if (isAccent) {
+          e.currentTarget.style.background = "rgba(192, 139, 48, 0.05)";
+          e.currentTarget.style.borderColor = "rgba(192, 139, 48, 0.25)";
+        } else {
+          e.currentTarget.style.color = T.textSoft;
+          e.currentTarget.style.borderColor = T.border;
+          e.currentTarget.style.background = T.bgCard;
+        }
       }}
     >
       {icon}

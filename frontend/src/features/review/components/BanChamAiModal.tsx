@@ -69,10 +69,11 @@ export function BanChamAiModal({
             </div>
             <div
               style={{
-                fontFamily: T.font,
-                fontSize: 17,
-                fontWeight: 600,
+                fontFamily: `"Inter", "Outfit", system-ui, -apple-system, sans-serif`,
+                fontSize: 18,
+                fontWeight: 700,
                 color: T.text,
+                letterSpacing: "-0.01em",
               }}
             >
               AI chấm: {review.overallScore.toFixed(1)}
@@ -91,14 +92,23 @@ export function BanChamAiModal({
               width: 28,
               height: 28,
               borderRadius: "50%",
-              border: `1px solid ${T.border}`,
-              background: T.bgCard,
+              border: "none",
+              background: "transparent",
               color: T.textMute,
               cursor: "pointer",
-              fontSize: 14,
+              fontSize: 18,
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
+              transition: "background-color 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(44, 46, 58, 0.06)";
+              e.currentTarget.style.color = T.text;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = T.textMute;
             }}
           >
             ×
@@ -116,7 +126,7 @@ export function BanChamAiModal({
         >
           <div
             style={{
-              fontSize: 12.5,
+              fontSize: T.fontSize.caption,
               color: T.textSoft,
               lineHeight: 1.55,
             }}
@@ -154,7 +164,7 @@ export function BanChamAiModal({
                   >
                     Câu {q.num}
                   </div>
-                  <div style={{ fontFamily: T.mono, fontSize: 13.5 }}>
+                  <div style={{ fontSize: T.fontSize.caption }}>
                     <span
                       style={{
                         fontWeight: 700,
@@ -198,39 +208,56 @@ export function BanChamAiModal({
             type="button"
             onClick={onClose}
             style={{
-              padding: "8px 14px",
+              padding: "8px 16px",
               fontSize: 13,
+              fontWeight: 600,
               color: T.textSoft,
               background: T.bgCard,
               border: `1px solid ${T.border}`,
               borderRadius: 8,
               cursor: "pointer",
-              fontFamily: T.font,
+              fontFamily: `"Inter", "Outfit", system-ui, -apple-system, sans-serif`,
+              transition: "background-color 0.15s ease, color 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = T.bgHover;
+              e.currentTarget.style.color = T.text;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = T.bgCard;
+              e.currentTarget.style.color = T.textSoft;
             }}
           >
             Tiếp tục đối soát
           </button>
           {onGoToRegrade && (
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onGoToRegrade();
-              }}
-              style={{
-                padding: "8px 16px",
-                fontSize: 13,
-                fontWeight: 600,
-                color: "#FFFDF8",
-                background: T.accent,
-                border: "none",
-                borderRadius: 8,
-                cursor: "pointer",
-                fontFamily: T.font,
-              }}
-            >
-              Đi tới chấm điểm →
-            </button>
+             <button
+               type="button"
+               onClick={() => {
+                 onClose();
+                 onGoToRegrade();
+               }}
+               style={{
+                 padding: "8px 18px",
+                 fontSize: 13,
+                 fontWeight: 600,
+                 color: "#FFFFFF",
+                 background: T.accent,
+                 border: "none",
+                 borderRadius: 8,
+                 cursor: "pointer",
+                 fontFamily: `"Inter", "Outfit", system-ui, -apple-system, sans-serif`,
+                 transition: "background-color 0.15s ease",
+               }}
+               onMouseEnter={(e) => {
+                 e.currentTarget.style.background = T.accentLight;
+               }}
+               onMouseLeave={(e) => {
+                 e.currentTarget.style.background = T.accent;
+               }}
+             >
+               Đi tới chấm điểm →
+             </button>
           )}
         </div>
       </div>

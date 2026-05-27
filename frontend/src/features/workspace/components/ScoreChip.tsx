@@ -57,6 +57,7 @@ export function ScoreChip({
         whiteSpace: "nowrap",
         fontVariantNumeric: "tabular-nums",
         lineHeight: 1.15,
+        transition: "background 0.3s, color 0.3s, border-color 0.3s",
       }}
     >
       {score.toFixed(1)}

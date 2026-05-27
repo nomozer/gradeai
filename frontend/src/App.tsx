@@ -18,7 +18,7 @@
  * because it's purely display metadata (not used by any grading prompt).
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { vi as t } from "./i18n/vi";
 import { T } from "./theme/tokens";
 import { GlobalStyles } from "./theme/GlobalStyles";
@@ -94,6 +94,52 @@ function WorkspacePage() {
 
   const { tabs, activeId, addTab, closeTab, clearAll, setActive, updateMeta } = useTabs();
 
+  // Pending queue of tab IDs waiting to be graded
+  const [pendingQueue, setPendingQueue] = useState<string[]>([]);
+
+  // Maximum number of parallel grading calls
+  const MAX_CONCURRENCY = 2;
+
+  // Listen for the custom "hitl.startBatchGrading" event from TabBar
+  useEffect(() => {
+    const handleStartBatch = () => {
+      // Find all tabs that can run and are currently idle (not running, not graded yet)
+      const readyTabIds = tabs
+        .filter((tab) => tab.canRun && tab.phase === "idle" && !tab.hasGrade)
+        .map((tab) => tab.id);
+
+      if (readyTabIds.length > 0) {
+        setPendingQueue(readyTabIds);
+      }
+    };
+
+    window.addEventListener("hitl.startBatchGrading", handleStartBatch);
+    return () => {
+      window.removeEventListener("hitl.startBatchGrading", handleStartBatch);
+    };
+  }, [tabs]);
+
+  // Queue worker: monitors the running tasks and feeds more tasks from pendingQueue
+  useEffect(() => {
+    if (pendingQueue.length === 0) return;
+
+    // Count how many tabs are currently generating
+    const currentRunning = tabs.filter((t) => t.phase === "generating").length;
+    const slotsAvailable = MAX_CONCURRENCY - currentRunning;
+
+    if (slotsAvailable > 0) {
+      const nextBatchIds = pendingQueue.slice(0, slotsAvailable);
+
+      // Update pending queue
+      setPendingQueue((prev) => prev.slice(nextBatchIds.length));
+
+      // Activate next batch
+      nextBatchIds.forEach((id) => {
+        updateMeta(id, { phase: "generating" });
+      });
+    }
+  }, [tabs, pendingQueue, updateMeta]);
+
   useHeartbeat();
 
   const completedCount = tabs.filter((tab) => tab.hasGrade).length;
@@ -115,6 +161,7 @@ function WorkspacePage() {
         memoryActive={false}
         onToggleHistory={toggleHistory}
         historyActive={historyOpen}
+        onOpenSidebar={() => window.dispatchEvent(new CustomEvent("hitl.openSidebar"))}
       />
 
       <TabBar
@@ -124,18 +171,28 @@ function WorkspacePage() {
         onAdd={addTab}
         onClose={closeTab}
         onClear={clearAll}
+        onRename={(id, label) => updateMeta(id, { label })}
         completedCount={completedCount}
         t={t}
       />
 
-      <main style={{ paddingTop: 12 }}>
-        {tabs.map((tab) => (
-          <EssayWorkspace
-            key={tab.id}
-            active={tab.id === activeId}
-            onMeta={(meta) => updateMeta(tab.id, meta)}
-          />
-        ))}
+      <main className="workspace-main" style={{ paddingTop: 12 }}>
+        {tabs.map((tab) => {
+          const isActive = tab.id === activeId;
+          const shouldMount = isActive || tab.hasGrade || tab.phase === "generating";
+          if (!shouldMount) return null;
+
+          return (
+            <div key={tab.id} style={{ display: isActive ? "block" : "none" }}>
+              <EssayWorkspace
+                active={isActive}
+                tab={tab}
+                onAddTab={addTab}
+                onMeta={(meta) => updateMeta(tab.id, meta)}
+              />
+            </div>
+          );
+        })}
       </main>
 
       {helpOpen && <HelpModal onClose={closeHelp} />}

@@ -1,8 +1,11 @@
 import React from "react";
 import { T } from "../../../theme/tokens";
+import { vi as t } from "../../../i18n/vi";
+import { formatLine, formatTranscript } from "../../../lib/mathFormat";
 import type { SelectionAnnotation } from "../../../types";
 import type { RegradeQuestion } from "../types";
 import { Chevron, HeaderScoreChip } from "./RegradeControls";
+import { Icon } from "../../../components/ui/Icon";
 
 // Normalize a string for quote matching across NFC/NFD + nbsp variants.
 // Mirrors the helper in StepReview so step 3 highlights and step 4
@@ -60,23 +63,24 @@ function renderLineWithTeacherHighlights(
     segs = next;
   }
   return segs.map((seg, i) => {
-    if (!seg.ann) return <span key={i}>{seg.text}</span>;
+    if (!seg.ann) return <span key={i}>{formatLine(seg.text, `rh-${lineIdx}-${i}`)}</span>;
     const ann = seg.ann;
     const tooltip = ann.comment
       ? `Nhận xét: ${ann.comment}`
-      : `“${ann.quote}” (chưa có nhận xét)`;
+      : `"${ann.quote}" (chưa có nhận xét)`;
     return (
       <mark
         key={i}
         title={tooltip}
         style={{
-          background: "#FBEEEA",
+          background: "#FFF9DB",
           color: T.text,
-          padding: 0,
-          borderRadius: 0,
+          padding: "1px 4px",
+          margin: "0 1px",
+          borderRadius: 3,
         }}
       >
-        {seg.text}
+        {formatLine(seg.text, `rh-${lineIdx}-m${i}`)}
       </mark>
     );
   });
@@ -95,6 +99,7 @@ export function RegradeQuestionBlock({
   onMaxOverrideChange,
   onScoreChange,
   teacherNotes,
+  subject,
 }: {
   q: RegradeQuestion;
   expanded: boolean;
@@ -112,11 +117,14 @@ export function RegradeQuestionBlock({
    *  own prior reasoning before locking the score. Each entry has a
    *  quoted snippet + comment. */
   teacherNotes: SelectionAnnotation[];
+  subject?: any;
 }) {
   const delta = myScore - q.aiScore;
   const hasError = q.annotations.some((a) => a.kind === "error");
+  const [commentsCollapsed, setCommentsCollapsed] = React.useState(false);
   return (
     <div
+      data-cau-anchor={q.num}
       style={{
         borderBottom: isLast ? "none" : `1px solid ${T.borderLight}`,
       }}
@@ -270,11 +278,8 @@ export function RegradeQuestionBlock({
               read. The "AI đã đọc" eyebrow makes the relationship to
               the image above explicit. */}
           <div
+            className="student-work"
             style={{
-              fontFamily: T.mono,
-              fontSize: 16,
-              color: T.textSoft,
-              lineHeight: 1.8,
               padding: "12px 16px",
               background: T.bgCard,
               border: `1px solid ${T.borderLight}`,
@@ -290,7 +295,7 @@ export function RegradeQuestionBlock({
                 letterSpacing: "0.12em",
                 textTransform: "uppercase",
                 marginBottom: 8,
-                fontFamily: T.font,
+                fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
               }}
             >
               AI đã đọc
@@ -303,28 +308,78 @@ export function RegradeQuestionBlock({
             {q.annotations.length > 0 && (
               <div
                 style={{
-                  marginTop: 10,
-                  paddingTop: 10,
-                  borderTop: `1px dashed ${T.borderLight}`,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
+                  marginTop: 14,
+                  paddingTop: 14,
+                  borderTop: `1px solid ${T.borderLight}`,
                 }}
               >
-                {q.annotations.map((a, i) => (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    cursor: "pointer",
+                    userSelect: "none",
+                    marginBottom: commentsCollapsed ? 0 : 12,
+                  }}
+                  onClick={() => setCommentsCollapsed(!commentsCollapsed)}
+                >
                   <div
-                    key={i}
                     style={{
-                      color: T.red,
-                      fontStyle: "italic",
-                      fontFamily: T.font,
-                      fontSize: 14.5,
-                      lineHeight: 1.55,
+                      fontSize: 10,
+                      fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
+                      fontWeight: 700,
+                      color: T.accent,
+                      letterSpacing: "0.12em",
+                      textTransform: "uppercase",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
                     }}
                   >
-                    {a.kind === "good" ? "✓" : "×"} {a.text}
+                    <Icon.Bot size={13} />
+                    Nhận xét của AI
                   </div>
-                ))}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      fontSize: 10,
+                      fontWeight: 600,
+                      color: T.textMute,
+                      fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
+                    }}
+                  >
+                    <Icon.MessageCircle size={11} />
+                    <span>{commentsCollapsed ? "Hiện nhận xét" : "Ẩn nhận xét"}</span>
+                    <span
+                      style={{
+                        transform: `rotate(${commentsCollapsed ? 0 : 180}deg)`,
+                        transition: "transform 0.2s",
+                        display: "inline-flex",
+                      }}
+                    >
+                      <Icon.ChevronRight size={11} style={{ transform: "rotate(90deg)" }} />
+                    </span>
+                  </div>
+                </div>
+
+                {!commentsCollapsed && (() => {
+                  const goodLines = q.annotations.filter(a => a.kind === "good").map(a => a.text);
+                  const errorLines = q.annotations.filter(a => a.kind === "error").map(a => a.text);
+                  const otherAnnotations = q.annotations.filter(a => a.kind !== "good" && a.kind !== "error");
+
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <AnnotationGroup kind="good" lines={goodLines} subject={subject} />
+                      <AnnotationGroup kind="error" lines={errorLines} subject={subject} />
+                      {otherAnnotations.map((a, idx) => (
+                        <AnnotationGroup key={idx} kind={a.kind} lines={[a.text]} subject={subject} />
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -349,6 +404,7 @@ export function RegradeQuestionBlock({
               <span
                 style={{
                   fontSize: 10,
+                  fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
                   fontWeight: 700,
                   color: T.textFaint,
                   letterSpacing: "0.12em",
@@ -379,6 +435,7 @@ export function RegradeQuestionBlock({
             <span
               style={{
                 color: T.textFaint,
+                fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
                 fontSize: 14,
                 fontWeight: 600,
                 userSelect: "none",
@@ -391,6 +448,7 @@ export function RegradeQuestionBlock({
               <span
                 style={{
                   fontSize: 10,
+                  fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
                   fontWeight: 700,
                   color: T.textFaint,
                   letterSpacing: "0.12em",
@@ -452,6 +510,128 @@ export function RegradeQuestionBlock({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// One grouped container of inline AI markup — ✓ good points (green) and × errors (red).
+// Styled as a clean, compact Notion-style callout box with left vertical accent line.
+// Inside it lists all bullet points with correct LaTeX math formatting.
+function AnnotationGroup({
+  kind,
+  lines,
+  subject,
+}: {
+  kind: "good" | "error" | "note" | "warn";
+  lines: string[];
+  subject: any;
+}) {
+  if (lines.length === 0) return null;
+
+  const palette = {
+    good: {
+      bg: "rgba(46, 125, 91, 0.03)",
+      borderLeft: `3px solid ${T.green || "#2E7D5B"}`,
+      color: T.green || "#2E7D5B",
+      icon: <Icon.Check size={11} />,
+      label: String(t.commentLabelGood ?? "Ưu điểm"),
+    },
+    error: {
+      bg: "rgba(184, 66, 58, 0.03)",
+      borderLeft: "3px solid #E07A5F",
+      color: T.red || "#E07A5F",
+      icon: <Icon.X size={11} />,
+      label: String(t.commentLabelError ?? "Cần khắc phục"),
+    },
+    note: {
+      bg: "rgba(74, 76, 92, 0.02)",
+      borderLeft: "3px solid #7B6D8D",
+      color: T.textSoft,
+      icon: <Icon.MessageCircle size={11} />,
+      label: String(t.commentLabelNote ?? "Ghi chú"),
+    },
+    warn: {
+      bg: "rgba(192, 139, 48, 0.03)",
+      borderLeft: "3px solid #C08B30",
+      color: T.amber || "#C08B30",
+      icon: <Icon.AlertTriangle size={11} />,
+      label: String(t.commentLabelWarn ?? "Cảnh báo"),
+    },
+  };
+  const p = palette[kind] ?? palette.note;
+
+  return (
+    <div
+      style={{
+        background: p.bg,
+        borderLeft: p.borderLeft,
+        borderRadius: "0 8px 8px 0",
+        padding: "10px 14px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        animation: "fadeUp 0.2s ease-out",
+      }}
+    >
+      {/* Group Header */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          color: p.color,
+          fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 14,
+            height: 14,
+            borderRadius: "50%",
+            background: "white",
+            border: `1.5px solid ${p.color}`,
+            color: p.color,
+          }}
+        >
+          {p.icon}
+        </div>
+        <span>{p.label}</span>
+      </div>
+
+      {/* Group Body - Compact Bullet List */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 5,
+          paddingLeft: 4,
+        }}
+      >
+        {lines.map((line, idx) => (
+          <div
+            key={idx}
+            style={{
+              fontSize: 13,
+              color: T.textSoft,
+              lineHeight: "1.45",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 6,
+              fontFamily: T.font,
+            }}
+          >
+            <span style={{ color: p.color, fontSize: 14, flexShrink: 0, userSelect: "none" }}>•</span>
+            <div style={{ flex: 1 }}>{formatTranscript(line, subject)}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -106,7 +106,7 @@ export function LearningBanner({
           </li>
         )}
         {deltaLessonId == null && commentsSaved > 0 && (
-          <li style={{ color: T.textSoft, fontSize: 12.5 }}>
+          <li style={{ color: T.textSoft, fontSize: T.fontSize.caption }}>
             Điểm bạn chốt khớp với AI — không tạo delta lesson.
           </li>
         )}

@@ -21,7 +21,7 @@ export function blankTab(): Tab {
 export function tabsReducer(state: TabsState, action: TabsAction): TabsState {
   switch (action.type) {
     case "ADD": {
-      const fresh = blankTab();
+      const fresh = { ...blankTab(), ...action.meta };
       return { tabs: [...state.tabs, fresh], activeId: fresh.id };
     }
     case "CLOSE": {

@@ -8,7 +8,7 @@ export function GlobalStyles() {
       body {
         color: ${T.text};
         font-family: ${T.font};
-        font-feature-settings: "onum", "liga", "kern";
+        font-feature-settings: "lnum", "liga", "kern";
         background: ${T.bg};
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;

@@ -26,6 +26,7 @@ export function PaperRegrade({
   essayImage,
   onViewOriginal,
   teacherAnnotations,
+  subject,
 }: {
   review: RegradePayload;
   finalScores: Record<number, number>;
@@ -43,6 +44,7 @@ export function PaperRegrade({
   essayImage: EssayFile | null | undefined;
   onViewOriginal?: () => void;
   teacherAnnotations?: SelectionAnnotation[];
+  subject?: any;
 }) {
   // Exam-level cap check. When per-câu maxPoints isn't supplied by the đề
   // we let the input run free; this is where the safety net catches it.
@@ -111,24 +113,27 @@ export function PaperRegrade({
           <div
             style={{
               fontSize: 12,
-              fontFamily: T.mono,
+              fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
               color: T.textMute,
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
             }}
           >
-            <span>điểm AI: {review.aiOverall.toFixed(1)}</span>
-            <span style={{ color: T.textFaint }}>→</span>
+            <span>điểm AI:</span>
+            <span style={{ fontWeight: 600 }}>{review.aiOverall.toFixed(1)}</span>
+            <span style={{ color: T.textFaint, padding: "0 2px" }}>→</span>
+            <span>bạn:</span>
             <span
               style={{
                 color: overCap ? T.red : anyEdited ? T.text : T.textMute,
                 fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
               }}
             >
-              bạn: {anyEdited ? teacherTotal.toFixed(1) : "—"}
-              <span style={{ color: T.textFaint, fontWeight: 400 }}>
-                {" "}
+              <span>{anyEdited ? teacherTotal.toFixed(1) : "—"}</span>
+              <span style={{ color: T.textFaint, fontWeight: 400, marginLeft: 4 }}>
                 / {review.maxTotal.toFixed(1)}
               </span>
             </span>
@@ -195,6 +200,7 @@ export function PaperRegrade({
             teacherNotes={
               (teacherAnnotations ?? []).filter((a) => a.cau === q.num)
             }
+            subject={subject}
             // "Edited" = teacher set a value that's MATERIALLY different
             // from AI's. Just touching the input (e.g. clicking it then
             // tabbing away) used to flip this true with a 0.00 delta —

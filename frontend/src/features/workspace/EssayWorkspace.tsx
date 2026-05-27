@@ -30,12 +30,16 @@ import type {
   RubricScores,
   SelectionAnnotation,
   StagedLesson,
+  Tab,
   TabMeta,
   TaskFile,
 } from "../../types";
+import { readOptimizedUploadDataUrl } from "../../lib/file";
 
 interface EssayWorkspaceProps {
   active: boolean;
+  tab: Tab;
+  onAddTab: (meta?: TabMeta) => void;
   onMeta: (meta: TabMeta) => void;
 }
 
@@ -76,6 +80,8 @@ function buildAnnotationFinalizePayload(annotations: SelectionAnnotation[]): {
 
 export function EssayWorkspace({
   active,
+  tab,
+  onAddTab,
   onMeta,
 }: EssayWorkspaceProps) {
   const lang = "vi" as const;
@@ -85,32 +91,6 @@ export function EssayWorkspace({
 
   const [taskPdf, setTaskPdf] = useState<TaskFile | null>(null);
   const [essayImage, setEssayImage] = useState<EssayFile | null>(null);
-  const [grade, setGrade] = useState<Grade | null>(null);
-  const [step, setStep] = useState<number>(1);
-  // High-water-mark of the step the teacher reached this session. The
-  // StepIndicator uses this so steps the user walked past keep their
-  // green-check state even when they navigate back (e.g. step 5 →
-  // "Sửa lại" → step 4). Without it, 4 and 5 collapse back to grey,
-  // which read like "you haven't done these" — a bug the teacher
-  // flagged 2026-05-18.
-  const [maxStepReached, setMaxStepReached] = useState<number>(1);
-  const [finalizedResult, setFinalizedResult] = useState<FinalizedResult | null>(null);
-  const [isFinalizing, setIsFinalizing] = useState<boolean>(false);
-  const [finalizeError, setFinalizeError] = useState<string | null>(null);
-  // Teacher per-câu score overrides — lifted up here so step 5 ResultCard
-  // can read the numbers the teacher set in step 4 (without it, step 4's
-  // local state would die on unmount and step 5 would show only AI's
-  // numbers). Reset together with grade when a fresh pipeline finishes
-  // — see the parseGrade effect below.
-  const [finalScores, setFinalScores] = useState<Record<number, number>>({});
-  const [maxOverrides, setMaxOverrides] = useState<Record<number, number>>({});
-  // Step 3 "đối soát" annotations — Word-style highlights with comments
-  // anchored to specific quotes in the AI transcript. Stored as a flat
-  // array (filtered by `cau` for per-câu display). Wiped on every fresh
-  // grade together with finalScores (see the parseGrade effect below).
-  const [teacherAnnotations, setTeacherAnnotations] = useState<
-    SelectionAnnotation[]
-  >([]);
 
   // Per-tab subject state. Replaces the old App-level `selectedSubject`
   // (which was the same value across all tabs — a latent bug when the
@@ -127,6 +107,88 @@ export function EssayWorkspace({
   const [subjectDetectError, setSubjectDetectError] = useState<string | null>(null);
   const [manualSubject, setManualSubject] = useState(false);
 
+  const [grade, setGrade] = useState<Grade | null>(null);
+  const [step, setStep] = useState<number>(1);
+  // High-water-mark of the step the teacher reached this session. The
+  // StepIndicator uses this so steps the user walked past keep their
+  // green-check state even when they navigate back (e.g. step 5 →
+  // "Sửa lại" → step 4). Without it, 4 and 5 collapse back to grey,
+  // which read like "you haven't done these" — a bug the teacher
+  // flagged 2026-05-18.
+  const [maxStepReached, setMaxStepReached] = useState<number>(1);
+  const [finalizedResult, setFinalizedResult] = useState<FinalizedResult | null>(null);
+  const [isFinalizing, setIsFinalizing] = useState<boolean>(false);
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
+
+  // Load initial files from tab metadata (used for batch uploads)
+  useEffect(() => {
+    if (tab.initialEssayFile) {
+      setEssayImage(tab.initialEssayFile);
+    }
+    if (tab.initialTaskFile) {
+      setTaskPdf(tab.initialTaskFile);
+    }
+    if (tab.initialSubject) {
+      setSubject(tab.initialSubject);
+      setDetectedSubject(tab.initialSubject);
+      setManualSubject(true);
+    }
+
+    // Clear initial files after consuming them to avoid re-runs
+    if (tab.initialEssayFile || tab.initialTaskFile || tab.initialSubject) {
+      onMeta({
+        initialEssayFile: null,
+        initialTaskFile: null,
+        initialSubject: null,
+      });
+    }
+  }, [tab.initialEssayFile, tab.initialTaskFile, tab.initialSubject, onMeta]);
+
+  // Batch Essay Upload handler
+  const handleBatchEssayUpload = useCallback(
+    (files: File[]) => {
+      files.forEach(async (file) => {
+        try {
+          const dataUrl = await readOptimizedUploadDataUrl(file);
+          if (dataUrl) {
+            onAddTab({
+              label: file.name.slice(0, 30),
+              initialEssayFile: {
+                dataUrl,
+                name: file.name,
+                isPdf: file.type === "application/pdf" || file.name.endsWith(".pdf"),
+              },
+              initialTaskFile: taskPdf,
+              initialSubject: subject,
+            });
+          }
+        } catch (err) {
+          console.error("Batch essay upload failed:", err);
+        }
+      });
+    },
+    [onAddTab, taskPdf, subject],
+  );
+  // Teacher per-câu score overrides — lifted up here so step 5 ResultCard
+  // can read the numbers the teacher set in step 4 (without it, step 4's
+  // local state would die on unmount and step 5 would show only AI's
+  // numbers). Reset together with grade when a fresh pipeline finishes
+  // — see the parseGrade effect below.
+  const [finalScores, setFinalScores] = useState<Record<number, number>>({});
+  const [maxOverrides, setMaxOverrides] = useState<Record<number, number>>({});
+  // Step 3 "đối soát" annotations — Word-style highlights with comments
+  // anchored to specific quotes in the AI transcript. Stored as a flat
+  // array (filtered by `cau` for per-câu display). Wiped on every fresh
+  // grade together with finalScores (see the parseGrade effect below).
+  const [teacherAnnotations, setTeacherAnnotations] = useState<
+    SelectionAnnotation[]
+  >([]);
+
+  // When a grade is loaded from history, taskPdf is null so the normal
+  // label derivation yields "". We stash the entry's task descriptor
+  // (e.g. "Toán · ĐỀ HÌNH") so the tab still shows a meaningful title.
+  const [historyTaskLabel, setHistoryTaskLabel] = useState<string>("");
+
   const handleSubjectChange = useCallback((code: BackendSubject) => {
     setSubject(code);
     setManualSubject(true);
@@ -138,6 +200,9 @@ export function EssayWorkspace({
   // request gets to mutate state, preventing race-condition flicker.
   const detectionSeqRef = useRef(0);
   useEffect(() => {
+    if (manualSubject && subject) {
+      return;
+    }
     if (!taskPdf?.dataUrl) {
       // PDF cleared → reset everything subject-related so the chip goes
       // back to its "Tải đề bài để phát hiện môn" idle state.
@@ -183,11 +248,24 @@ export function EssayWorkspace({
     return () => {
       ctrl.abort();
     };
-  }, [taskPdf?.dataUrl]);
+  }, [taskPdf?.dataUrl, manualSubject, subject]);
 
   const subjectLabel = useMemo(() => subjectLabelOf(subject), [subject]);
 
   const taskLabel = useMemo(() => taskFromPdfName(taskPdf?.name), [taskPdf]);
+
+  const tabQuestions = useMemo(() => {
+    if (!grade?.per_question_feedback) return undefined;
+    return grade.per_question_feedback.map((q, i) => {
+      const parsed = parseCauHeader(q.question ?? "", i + 1);
+      const score = finalScores[parsed.num] ?? q.score ?? 0;
+      return {
+        num: parsed.num,
+        score,
+        label: `Câu ${parsed.num}`,
+      };
+    });
+  }, [grade, finalScores]);
   const task = useMemo(
     () => buildTaskContext(taskPdf?.name, subjectLabel === "—" ? "" : subjectLabel),
     [taskPdf, subjectLabel],
@@ -260,20 +338,38 @@ export function EssayWorkspace({
         setIsFinalizing(false);
         setFinalizeError(null);
         setFinalizedResult(null);
-        setStep(detail?.step ?? 3);
+        const targetStep = detail?.step ?? 3;
+        setStep(targetStep);
+        // History entries represent already-completed grades — mark all
+        // steps through 5 as reached so the stepper shows green checks
+        // and the teacher can freely navigate between steps.
+        setMaxStepReached(5);
+        // Restore subject from the history entry so the subject chip
+        // isn't blank and the workspace knows which prompt set was used.
+        if (entry.subject) {
+          setSubject(entry.subject as BackendSubject);
+          setDetectedSubject(entry.subject as BackendSubject);
+          setManualSubject(true);
+        }
+        // Stash the history entry's task descriptor ("Toán · ĐỀ HÌNH")
+        // for the tab label — taskPdf stays null when loading from
+        // history so the normal PDF-based label derivation yields "".
+        setHistoryTaskLabel(entry.task || "");
       }
     };
     window.addEventListener("hitl.loadGrade", handler);
     return () => window.removeEventListener("hitl.loadGrade", handler);
   }, [active, pipeline, feedbackHook]);
 
-  // Report tab metadata
-  const label = useMemo(() => taskLabel.slice(0, 30), [taskLabel]);
+  // Report tab metadata. When loading from history, taskPdf is null so
+  // taskLabel is empty — fall back to the entry's task string (e.g.
+  // "Toán · ĐỀ HÌNH") which was persisted when the grade was saved.
+  const historyTask = historyTaskLabel && !taskPdf ? historyTaskLabel : "";
+  const label = useMemo(
+    () => (taskLabel || historyTask).slice(0, 30),
+    [taskLabel, historyTask],
+  );
 
-  useEffect(() => {
-    onMeta({ label, phase: pipeline.phase, step, hasGrade: step === 5 });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [label, pipeline.phase, step]);
 
   // Subject must be confirmed (either auto-detected at "high" confidence
   // or explicitly picked by the teacher) before grading is allowed. Without
@@ -298,6 +394,25 @@ export function EssayWorkspace({
     );
   }, [task, lang, essayImage, taskPdf, pipeline, feedbackHook, subject]);
 
+  // Auto-run grading when the workspace is mounted/updated and in the "generating" phase
+  useEffect(() => {
+    if (tab.phase === "generating" && pipeline.phase === "idle" && !grade && canRun && step === 1) {
+      handleRun();
+    }
+  }, [tab.phase, pipeline.phase, grade, canRun, step, handleRun]);
+
+  useEffect(() => {
+    onMeta({
+      label,
+      phase: pipeline.phase,
+      step,
+      hasGrade: step === 5,
+      canRun,
+      questions: tabQuestions,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [label, pipeline.phase, step, canRun, tabQuestions]);
+
   const handleApprove = useCallback(() => setStep(5), []);
 
   // Click on a completed step in the indicator → jump back. Only user
@@ -312,7 +427,7 @@ export function EssayWorkspace({
   // the UI mockup phase we expose it as a navigable checkpoint so the
   // teacher can review the regrade design without triggering a real call.
   const isStepNavigable = useCallback(
-    (n: number) => n === 1 || n === 3 || n === 4,
+    (n: number) => n === 1 || n === 3 || n === 4 || n === 5,
     [],
   );
 
@@ -434,7 +549,7 @@ export function EssayWorkspace({
   ];
 
   return (
-    <div style={{ padding: "0 clamp(16px, 4vw, 32px) 96px", display: active ? "block" : "none" }}>
+    <div className="workspace-container" style={{ padding: "0 clamp(16px, 4vw, 32px) 96px", display: active ? "block" : "none" }}>
       <StepIndicator
         steps={stepLabels}
         currentStep={displayStep}
@@ -486,6 +601,7 @@ export function EssayWorkspace({
             subjectDetectError={subjectDetectError}
             manualSubject={manualSubject}
             onSubjectChange={handleSubjectChange}
+            onBatchEssayUpload={handleBatchEssayUpload}
           />
         </ErrorBoundary>
       )}
@@ -540,6 +656,7 @@ export function EssayWorkspace({
               maxOverrides={maxOverrides}
               setMaxOverrides={setMaxOverrides}
               teacherAnnotations={teacherAnnotations}
+              subject={subject}
             />
           </ErrorBoundary>
         )

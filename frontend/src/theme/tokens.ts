@@ -42,14 +42,16 @@ export const T = {
   goldSoft: "rgba(46, 125, 91, 0.10)",
 
   // Typography — font families
-  font: `"Newsreader", Georgia, "Times New Roman", serif`,
-  display: `"Fraunces", Georgia, "Times New Roman", serif`,
+  font: `"Inter", "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`,
+  display: `"Outfit", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`,
   mono: `"JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace`,
 
   // Type scale — Tailwind-aligned, used for sizes that recur across the UI.
   // Keep declarations to one of these values so the hierarchy stays consistent.
   fontSize: {
+    xxs: 11,   // micro labels, icon-badge text
     xs: 12,    // captions, eyebrow tags, small meta
+    caption: 13, // sidebar links, annotation text, secondary labels
     sm: 14,    // secondary body, nav links, button text
     base: 16,  // primary body, form labels
     lg: 18,    // section heading inside a card
@@ -82,6 +84,26 @@ export const T = {
     content: 960, // dashboard / dual-column
     app: 1280,    // outer app cap
   },
+
+  // Card question status
+  questionCorrect: "#2E7D5B",
+  questionPartial: "#C08B30",
+  questionError: "#E07A5F",
+  questionCorrectSoft: "rgba(46, 125, 91, 0.06)",
+  questionPartialSoft: "rgba(192, 139, 48, 0.06)",
+  questionErrorSoft: "rgba(224, 122, 95, 0.06)",
+
+  // AI / Teacher voice
+  aiVoiceBg: "rgba(123, 109, 141, 0.08)",
+  aiVoiceBorder: "#7B6D8D",
+  aiVoiceText: "#5B4F6D",
+  teacherVoiceBg: "rgba(192, 139, 48, 0.08)",
+  teacherVoiceBorder: "#C08B30",
+  teacherVoiceText: "#8B6914",
+
+  // Card
+  cardRadius: 10,
+  cardBorderLeft: 4,
 
   shadowSoft: "0 1px 3px rgba(44, 46, 58, 0.04), 0 8px 24px -12px rgba(44, 46, 58, 0.08)",
   shadowStrong: "0 2px 6px rgba(44, 46, 58, 0.06), 0 20px 40px -16px rgba(44, 46, 58, 0.12)",

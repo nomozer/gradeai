@@ -45,3 +45,9 @@ frontend/dist/
 # Project specific
 test/
 CLAUDE.md
+AGENTS.md
+
+# Visual audit and tests
+screenshots/
+test-results/
+test_papers/

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { T } from "../../theme/tokens";
 import { Icon } from "../ui/Icon";
+import { useBreakpoint } from "../../hooks/useBreakpoint";
 
 interface StepIndicatorProps {
   steps: string[];
@@ -23,12 +24,19 @@ interface StepIndicatorProps {
   isStepNavigable?: (step: number) => boolean;
 }
 
+function getShortStep(step: string): string {
+  const s = step.trim().toUpperCase();
+  if (s.includes("TẢI LÊN") || s.includes("UPLOAD")) return "Lên";
+  if (s.includes("ĐỌC") || s.includes("READ")) return "Đọc";
+  if (s.includes("XEM XÉT") || s.includes("REVIEW")) return "Xét";
+  if (s.includes("CHẤM LẠI") || s.includes("REGRADE")) return "Sửa";
+  if (s.includes("XONG") || s.includes("DONE") || s.includes("FINISH")) return "Xong";
+  return step;
+}
+
 /**
- * Horizontal stepper inspired by Stripe / Shadcn — completed steps show a
- * Check icon (not a duplicated number), the active step gets a filled
- * circle with a subtle glow, and the connector between two completed
- * steps fills with the accent colour. Completed steps are clickable so
- * the user can revisit earlier stages without losing state.
+ * Horizontal segmented capsule stepper inspired by modern SaaS applications.
+ * Clean, compact, and highly visible status states for active/completed/future.
  */
 export function StepIndicator({
   steps,
@@ -38,42 +46,128 @@ export function StepIndicator({
   isStepNavigable,
 }: StepIndicatorProps) {
   const [hovered, setHovered] = useState<number | null>(null);
-  // "Done" = past the current step OR previously reached and we're now
-  // looking backwards at it. Without maxStepReached this collapses to
-  // the legacy "n < currentStep" behaviour.
   const ceiling = Math.max(currentStep, maxStepReached ?? 0);
+  const bp = useBreakpoint();
 
+  // ── Mobile: numbered circle stepper ──────────────────────────────────
+  if (bp === "mobile") {
+    return (
+      <div style={{
+        padding: "16px 24px",
+        display: "flex",
+        justifyContent: "center",
+      }}>
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 0,
+        }}>
+          {steps.map((step, i) => {
+            const n = i + 1;
+            const isActive = n === currentStep;
+            const isDone = n < currentStep || (n !== currentStep && n <= ceiling);
+            const isClickable = isDone && !!onStepClick && (isStepNavigable ? isStepNavigable(n) : true);
+            return (
+              <Fragment key={step}>
+                <button
+                  type="button"
+                  onClick={isClickable ? () => onStepClick!(n) : undefined}
+                  disabled={!isClickable}
+                  title={isClickable ? `Quay lại: ${step}` : step}
+                  aria-current={isActive ? "step" : undefined}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: isActive
+                      ? "none"
+                      : isDone
+                        ? `2px solid ${T.accent}`
+                        : `2px solid ${T.border}`,
+                    background: isActive
+                      ? T.accent
+                      : isDone
+                        ? "transparent"
+                        : "transparent",
+                    color: isActive
+                      ? "#FFFFFF"
+                      : isDone
+                        ? T.accent
+                        : T.textFaint,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    fontFamily: T.font,
+                    cursor: isClickable ? "pointer" : "default",
+                    transition: "all 0.2s ease",
+                    padding: 0,
+                    flexShrink: 0,
+                  }}
+                >
+                  {isDone ? <Icon.Check size={14} color={T.accent} /> : n}
+                </button>
+                {i < steps.length - 1 && (
+                  <div style={{
+                    width: 28,
+                    height: 2,
+                    background: (n < currentStep || (n !== currentStep && n + 1 <= ceiling))
+                      ? T.accent
+                      : T.border,
+                    flexShrink: 0,
+                    transition: "background 0.3s ease",
+                  }} />
+                )}
+              </Fragment>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Desktop / Laptop / Tablet: capsule stepper ───────────────────────
   return (
     <div
       style={{
-        padding: "32px clamp(12px, 3vw, 24px) 28px",
+        padding: "24px clamp(12px, 3vw, 24px) 20px",
         display: "flex",
         justifyContent: "center",
         overflowX: "auto",
+        width: "100%",
       }}
     >
       <div
+        className="stepper-capsule"
         style={{
           display: "flex",
-          alignItems: "flex-start",
-          gap: 0,
-          flexShrink: 0,
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 6,
+          background: T.bgCard,
+          border: `1px solid ${T.border}`,
+          borderRadius: 999,
+          padding: "6px 8px",
+          boxShadow: T.shadowSoft,
+          width: "100%",
+          maxWidth: 720,
+          boxSizing: "border-box",
         }}
       >
         {steps.map((step, i) => {
           const n = i + 1;
           const isActive = n === currentStep;
-          // Past steps in the forward walk OR past the active step but
-          // ≤ the highest step the user has reached this session.
           const isDone = n < currentStep || (n !== currentStep && n <= ceiling);
           const isClickable =
             isDone && !!onStepClick && (isStepNavigable ? isStepNavigable(n) : true);
           const isHover = hovered === n && isClickable;
 
           return (
-            <div key={step} style={{ display: "flex", alignItems: "flex-start" }}>
+            <Fragment key={step}>
               <button
                 type="button"
+                className="step-btn"
                 onClick={isClickable ? () => onStepClick!(n) : undefined}
                 onMouseEnter={() => setHovered(n)}
                 onMouseLeave={() => setHovered(null)}
@@ -82,107 +176,68 @@ export function StepIndicator({
                 aria-current={isActive ? "step" : undefined}
                 style={{
                   display: "flex",
-                  flexDirection: "column",
                   alignItems: "center",
-                  gap: 12,
-                  width: 88,
-                  padding: 0,
-                  background: "transparent",
+                  justifyContent: "center",
+                  gap: 8,
+                  flex: "1 1 0%",
+                  height: 38,
+                  padding: "0 16px",
+                  background: isActive
+                    ? `linear-gradient(135deg, ${T.accent} 0%, ${T.accentLight} 100%)`
+                    : isHover
+                      ? "rgba(59, 79, 138, 0.04)"
+                      : "transparent",
                   border: "none",
+                  borderRadius: 999,
+                  color: isActive
+                    ? "#FFFFFF"
+                    : isDone
+                      ? T.accent
+                      : T.textFaint,
+                  fontFamily: `"Inter", "Outfit", system-ui, -apple-system, sans-serif`,
+                  fontSize: 12,
+                  fontWeight: isActive ? 700 : 600,
+                  letterSpacing: "0.03em",
+                  textTransform: "uppercase",
                   cursor: isClickable ? "pointer" : "default",
-                  // Browser default focus ring is intentional — keyboard users
-                  // need a visible focus cue when tabbing through completed
-                  // checkpoints. The hover halo above only covers mouse hover.
-                  fontFamily: "inherit",
+                  transition: "background-color 0.15s ease, color 0.15s ease, box-shadow 0.25s ease",
+                  animation: isActive ? "stepGlow 2s ease-in-out infinite" : undefined,
+                  boxShadow: isActive ? `0 0 0 3px ${T.accentSoft}, 0 4px 10px ${T.accentGlow}` : "none",
+                  whiteSpace: "nowrap",
                 }}
               >
-                <div
-                  style={{
-                    position: "relative",
-                    width: 40,
-                    height: 40,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {/* Hover halo on clickable (completed) steps. */}
-                  {isHover && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: -5,
-                        borderRadius: "50%",
-                        background: T.accentSoft,
-                        transition: "opacity 0.2s",
-                      }}
-                    />
-                  )}
-                  <div
+                {isDone && (
+                  <Icon.Check
+                    size={12}
+                    color={isActive ? "#FFFFFF" : T.green}
                     style={{
-                      position: "relative",
-                      width: 36,
-                      height: 36,
-                      borderRadius: "50%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      background: isActive ? T.accent : T.bgCard,
-                      border: `2px solid ${isActive || isDone ? T.accent : T.border}`,
-                      color: isActive ? "#FFFFFF" : isDone ? T.accent : T.textFaint,
-                      fontFamily: T.mono,
-                      fontSize: T.fontSize.sm,
-                      fontWeight: 600,
-                      lineHeight: 1,
-                      transition: "transform 0.2s, background 0.25s, border-color 0.25s, box-shadow 0.25s",
-                      transform: isHover ? "scale(1.06)" : "scale(1)",
-                      boxShadow: isActive
-                        ? `0 0 0 4px ${T.accentSoft}, 0 6px 14px ${T.accentGlow}`
-                        : undefined,
+                      strokeWidth: 3.5,
+                      flexShrink: 0,
+                      animation: "fadeUp 0.3s ease-out",
                     }}
-                  >
-                    {isDone ? <Icon.Check size={16} color={T.accent} /> : n}
-                  </div>
-                </div>
-                <span
-                  style={{
-                    fontSize: T.fontSize.xs,
-                    fontFamily: T.mono,
-                    fontWeight: isActive ? 700 : 500,
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    color: isActive ? T.accent : isDone ? T.textSoft : T.textFaint,
-                    textAlign: "center",
-                    whiteSpace: "nowrap",
-                    transition: "color 0.25s, font-weight 0.25s",
-                  }}
-                >
-                  {step}
-                </span>
+                  />
+                )}
+                <span className="step-text-full">{step}</span>
+                <span className="step-text-short">{getShortStep(step)}</span>
               </button>
               {i < steps.length - 1 && (
-                // Connector is "filled" when the user has crossed it —
-                // i.e. the step on its RIGHT side has been reached.
-                // Without ceiling this collapses to isDone (left side
-                // is past), but with ceiling the connector lights up
-                // even when the teacher steps back through a completed
-                // chain (3 → 5 → 3 keeps both connectors lit).
-                <div
-                  style={{
-                    flexShrink: 0,
-                    width: 48,
-                    height: 2,
-                    background: n + 1 <= ceiling ? T.accent : T.border,
-                    marginTop: 19,
-                    borderRadius: 1,
-                    transition: "background 0.4s",
-                  }}
-                />
+                <span className="step-chevron">
+                  <Icon.ChevronRight
+                    size={12}
+                    color={T.textFaint}
+                    style={{
+                      opacity: 0.45,
+                      flexShrink: 0,
+                      margin: "0 2px",
+                    }}
+                  />
+                </span>
               )}
-            </div>
+            </Fragment>
           );
         })}
       </div>
     </div>
   );
 }
+

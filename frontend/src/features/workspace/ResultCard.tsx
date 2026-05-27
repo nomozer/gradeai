@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { T } from "../../theme/tokens";
 import { Icon } from "../../components/ui/Icon";
+import { ActionBar, PrimaryButton, SecondaryButton, GhostButton } from "../../components/ui/ActionBar";
 import { parseCauHeader } from "../../lib/grade";
 import { PhieuChamPrint } from "./PhieuChamPrint";
 import { MOCK_QUESTIONS } from "./__mocks__/resultCard.mock";
@@ -433,6 +434,7 @@ export function ResultCard({
               feel cluttered. Grid template adapts so the centre block
               naturally re-flows when the right column collapses. */}
           <div
+            className="result-card-hero"
             style={{
               display: "grid",
               gridTemplateColumns: anyEdited ? "auto 1fr auto" : "auto 1fr",
@@ -454,6 +456,7 @@ export function ResultCard({
                 fontVariantNumeric: "tabular-nums",
                 opacity: isFinalizing ? 0.5 : 1,
                 transition: "opacity 0.15s",
+                animation: "scoreEntrance 0.5s ease-out",
               }}
             >
               {displayOverall === "" || displayOverall == null
@@ -580,10 +583,19 @@ export function ResultCard({
                       i === rows.length - 1
                         ? "none"
                         : `1px solid ${T.borderLight}`,
+                    borderLeft: `3px solid ${
+                      r.maxPoints > 0
+                        ? r.teacherScore >= r.maxPoints * 0.8
+                          ? T.questionCorrect
+                          : r.teacherScore >= r.maxPoints * 0.5
+                            ? T.questionPartial
+                            : T.questionError
+                        : T.border
+                    }`,
                   }}
                 >
                   <div
-                    className={hasBody ? "rc-row-button" : undefined}
+                    className={`rc-row-grid${hasBody ? " rc-row-button" : ""}`}
                     role={hasBody ? "button" : undefined}
                     aria-expanded={hasBody ? expanded : undefined}
                     tabIndex={hasBody ? 0 : undefined}
@@ -669,6 +681,7 @@ export function ResultCard({
                         avoid duplicating the body content shown below. */}
                     <div style={{ minWidth: 0 }}>
                       <span
+                        className="rc-prompt"
                         style={{
                           display: "block",
                           fontSize: 14,
@@ -684,6 +697,7 @@ export function ResultCard({
                       </span>
                       {!expanded && summary && (
                         <span
+                          className="rc-prompt-summary"
                           style={{
                             display: "block",
                             marginTop: 2,
@@ -794,162 +808,61 @@ export function ResultCard({
         )}
 
         {/* ── BOTTOM ACTION BAR (outside card) ──────────────────────── */}
-        <div
-          className="rc-no-print"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <button
-            type="button"
+        <ActionBar>
+          <GhostButton
             onClick={onEdit}
-            disabled={!onEdit || isFinalizing}
-            style={{
-              padding: "10px 18px",
-              fontSize: 14,
-              color: T.textSoft,
-              background: T.bgCard,
-              border: `1px solid ${T.border}`,
-              borderRadius: 10,
-              cursor: !onEdit || isFinalizing ? "not-allowed" : "pointer",
-              fontWeight: 500,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              opacity: !onEdit || isFinalizing ? 0.5 : 1,
-              transition: "color 0.15s, border-color 0.15s",
-            }}
-            onMouseEnter={(e) => {
-              if (!onEdit || isFinalizing) return;
-              e.currentTarget.style.color = T.text;
-              e.currentTarget.style.borderColor = T.textMute;
-            }}
-            onMouseLeave={(e) => {
-              if (!onEdit || isFinalizing) return;
-              e.currentTarget.style.color = T.textSoft;
-              e.currentTarget.style.borderColor = T.border;
-            }}
+            disabled={isFinalizing}
           >
-            ← Sửa lại
-          </button>
+            <Icon.ArrowLeft size={14} />
+            Sửa lại
+          </GhostButton>
 
-          <div style={{ display: "inline-flex", gap: 10 }}>
-            <button
-              type="button"
-              onClick={handlePrint}
+          <SecondaryButton
+            onClick={handlePrint}
+            title="In phiếu chấm — xuất bản giấy với chữ ký và điểm bằng chữ."
+          >
+            <Icon.Printer size={14} />
+            In phiếu chấm
+          </SecondaryButton>
+
+          {locked ? (
+            <span
               style={{
-                padding: "10px 18px",
+                padding: "12px 26px",
                 fontSize: 14,
-                color: T.textSoft,
-                background: T.bgCard,
-                border: `1px solid ${T.border}`,
+                color: T.green,
+                background: T.greenSoft,
+                border: `1.5px solid ${T.green}`,
                 borderRadius: 10,
-                cursor: "pointer",
-                fontWeight: 500,
+                fontWeight: 600,
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 6,
-                transition: "color 0.15s, border-color 0.15s",
+                gap: 7,
+                fontFamily: T.font,
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = T.text;
-                e.currentTarget.style.borderColor = T.textMute;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = T.textSoft;
-                e.currentTarget.style.borderColor = T.border;
-              }}
-              title="In phiếu chấm — xuất bản giấy với chữ ký và điểm bằng chữ."
             >
-              <svg
-                width={14}
-                height={14}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M6 9V4h12v5" />
-                <rect x={6} y={14} width={12} height={7} />
-                <path d="M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2" />
-              </svg>
-              In phiếu chấm
-            </button>
-
-            {locked ? (
-              <span
-                style={{
-                  padding: "10px 22px",
-                  fontSize: 14,
-                  color: T.green,
-                  background: T.greenSoft,
-                  border: `1px solid ${T.green}`,
-                  borderRadius: 10,
-                  fontWeight: 600,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <Icon.Check size={14} color={T.green} />
-                Đã lưu
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={handleFinalize}
-                disabled={isFinalizing}
-                style={{
-                  padding: "12px 22px",
-                  fontSize: 14,
-                  color: "#fff",
-                  background: isFinalizing ? T.bgElevated : T.red,
-                  border: "none",
-                  borderRadius: 10,
-                  cursor: isFinalizing ? "not-allowed" : "pointer",
-                  fontWeight: 600,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  boxShadow: isFinalizing ? "none" : T.shadowSoft,
-                  whiteSpace: "nowrap",
-                  transition: "all 0.2s",
-                }}
-              >
-                {isFinalizing ? (
-                  <>
-                    <Icon.RefreshCw size={14} color={T.textFaint} />
-                    {String(t.finalizeSaving ?? "Đang lưu…")}
-                  </>
-                ) : (
-                  <>
-                    Lưu &amp; sang bài kế
-                    <svg
-                      width={14}
-                      height={14}
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M9 6l6 6-6 6" />
-                    </svg>
-                  </>
-                )}
-              </button>
-            )}
-          </div>
-        </div>
+              <Icon.Check size={14} color={T.green} />
+              Đã lưu
+            </span>
+          ) : (
+            <PrimaryButton
+              onClick={handleFinalize}
+              disabled={isFinalizing}
+            >
+              {isFinalizing ? (
+                <>
+                  <Icon.RefreshCw size={14} color="#fff" />
+                  {String(t.finalizeSaving ?? "Đang lưu…")}
+                </>
+              ) : (
+                <>
+                  Lưu &amp; sang bài kế
+                  <Icon.ChevronRight size={14} color="#fff" />
+                </>
+              )}
+            </PrimaryButton>
+          )}
+        </ActionBar>
       </div>
     </>
   );

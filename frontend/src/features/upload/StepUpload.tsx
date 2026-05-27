@@ -4,6 +4,7 @@ import { Icon } from "../../components/ui/Icon";
 import { SubjectChip } from "../../components/ui/SubjectChip";
 import { readFileAsDataUrl, readOptimizedUploadDataUrl } from "../../lib/file";
 import { validateTaskFile, validateEssayFile } from "./StepUpload.logic";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import type { BackendSubject, EssayFile, I18nStrings, TaskFile } from "../../types";
 import type { DetectConfidence } from "../../api";
 
@@ -27,6 +28,7 @@ interface StepUploadProps {
   subjectDetectError: string | null;
   manualSubject: boolean;
   onSubjectChange: (code: BackendSubject) => void;
+  onBatchEssayUpload?: (files: File[]) => void;
 }
 
 export function StepUpload({
@@ -44,12 +46,17 @@ export function StepUpload({
   subjectDetectError,
   manualSubject,
   onSubjectChange,
+  onBatchEssayUpload,
 }: StepUploadProps) {
   const taskInputRef = useRef<HTMLInputElement | null>(null);
   const essayInputRef = useRef<HTMLInputElement | null>(null);
   const [dragOverTask, setDragOverTask] = useState(false);
   const [dragOverEssay, setDragOverEssay] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  
+  const isMobile = useIsMobile();
+  const [hoveredZone, setHoveredZone] = useState<"task" | "essay" | null>(null);
+  const [hoveredSubmit, setHoveredSubmit] = useState(false);
 
   const handleTaskFile = useCallback(
     async (file: File | null | undefined) => {
@@ -100,85 +107,571 @@ export function StepUpload({
       style={{
         maxWidth: T.width.form,
         margin: "0 auto",
+        padding: "0 16px 24px",
+        boxSizing: "border-box",
       }}
     >
-      {/* ── Task PDF Upload ── */}
-      <div style={{ marginBottom: T.space[6] }}>
-        <label
+      {/* ── Title & Intro Header ── */}
+      <div style={{ textAlign: "center", marginBottom: 32, marginTop: 12 }}>
+        <h2
           style={{
-            display: "block",
             fontFamily: T.display,
-            fontSize: T.fontSize.lg,
-            fontWeight: 600,
+            fontSize: 28,
+            fontWeight: 800,
             color: T.text,
-            marginBottom: T.space[2],
-            letterSpacing: "-0.01em",
+            letterSpacing: "-0.02em",
+            margin: "0 0 10px 0",
           }}
         >
-          {String(t.promptLabel ?? "")}
-        </label>
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOverTask(true);
-          }}
-          onDragLeave={() => setDragOverTask(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOverTask(false);
-            handleTaskFile(e.dataTransfer.files?.[0]);
-          }}
-          onClick={() => {
-            if (taskInputRef.current) {
-              taskInputRef.current.value = "";
-              taskInputRef.current.click();
-            }
-          }}
+          {String(t.step1Title ?? "Tải Bài Lên")}
+        </h2>
+        <p
           style={{
-            border: `2px dashed ${dragOverTask ? T.accent : T.border}`,
-            borderRadius: 12,
-            padding: taskPdf ? 16 : 40,
-            textAlign: "center",
-            cursor: "pointer",
-            transition: "all 0.2s",
-            background: dragOverTask ? T.accentSoft : T.bgCard,
+            fontFamily: T.font,
+            fontSize: 15,
+            color: T.textSoft,
+            margin: 0,
+            opacity: 0.8,
+            lineHeight: 1.5,
           }}
         >
-          <input
-            ref={taskInputRef}
-            type="file"
-            accept=".pdf,application/pdf"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              handleTaskFile(e.target.files?.[0]);
-              e.target.value = "";
-            }}
-          />
-          {taskPdf ? (
-            <div>
+          {String(t.step1Desc ?? "Nhập đề bài và ảnh bài làm của học sinh để bắt đầu chấm điểm")}
+        </p>
+      </div>
+
+      <div
+        style={{
+          display: isMobile ? "flex" : "grid",
+          flexDirection: isMobile ? "column" : undefined,
+          gridTemplateColumns: isMobile ? undefined : "1fr 1fr",
+          gap: 24,
+          marginBottom: 36,
+        }}
+      >
+        {/* ── Card 1: Task PDF Upload Card ── */}
+        <div
+          onMouseEnter={() => setHoveredZone("task")}
+          onMouseLeave={() => setHoveredZone(null)}
+          style={{
+            background: T.bgCard,
+            border: `1px solid ${hoveredZone === "task" ? T.accent : T.border}`,
+            borderRadius: 20,
+            padding: 24,
+            display: "flex",
+            flexDirection: "column",
+            gap: 20,
+            boxShadow: T.shadowSoft,
+            transition: "border-color 0.15s ease",
+            boxSizing: "border-box",
+            position: "relative",
+          }}
+        >
+          {/* Badge Header Row */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: "rgba(59, 79, 138, 0.06)",
+                color: T.accent,
+                padding: "4px 10px",
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.accent, display: "inline-block" }} />
+              {String(t.promptLabel ?? "Đề Bài")}
+            </div>
+            {taskPdf && (
+              <button
+                type="button"
+                onClick={() => setTaskPdf(null)}
+                style={{
+                  background: "rgba(184, 66, 58, 0.08)",
+                  border: "none",
+                  borderRadius: 999,
+                  width: 24,
+                  height: 24,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  color: T.red,
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(184, 66, 58, 0.15)";
+                  e.currentTarget.style.transform = "scale(1.1)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(184, 66, 58, 0.08)";
+                  e.currentTarget.style.transform = "scale(1)";
+                }}
+                title="Xóa tệp"
+              >
+                <Icon.X size={12} color={T.red} />
+              </button>
+            )}
+          </div>
+          
+          {/* Drag & Drop Area */}
+          {!taskPdf ? (
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOverTask(true);
+              }}
+              onDragLeave={() => setDragOverTask(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverTask(false);
+                handleTaskFile(e.dataTransfer.files?.[0]);
+              }}
+              onClick={() => {
+                if (taskInputRef.current) {
+                  taskInputRef.current.value = "";
+                  taskInputRef.current.click();
+                }
+              }}
+              style={{
+                border: dragOverTask ? `2px solid ${T.accent}` : `2px dashed ${T.border}`,
+                borderRadius: 12,
+                padding: "36px 16px",
+                textAlign: "center",
+                cursor: "pointer",
+                transition: "all 0.25s ease",
+                background: dragOverTask
+                  ? "linear-gradient(135deg, rgba(59,79,138,0.04), rgba(59,79,138,0.10))"
+                  : hoveredZone === "task"
+                    ? "rgba(59, 79, 138, 0.01)"
+                    : "rgba(44, 46, 58, 0.01)",
+                boxShadow: dragOverTask ? `0 0 0 3px ${T.accentSoft}, 0 4px 16px ${T.accentSoft}` : "none",
+              }}
+            >
+              <input
+                ref={taskInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  handleTaskFile(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
               <div
                 style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: "50%",
+                  background: dragOverTask ? "rgba(59, 79, 138, 0.12)" : "rgba(59, 79, 138, 0.05)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: 12,
+                  color: T.accent,
+                  transition: "background-color 0.15s ease",
+                  margin: "0 auto",
+                }}
+              >
+                <Icon.FileText size={22} color={T.accent} />
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: T.textSoft,
+                  fontWeight: 600,
+                  lineHeight: 1.4,
+                  marginBottom: 12,
+                }}
+              >
+                {dragOverTask ? "Thả file để tải lên!" : String(t.promptDrop ?? "Thả file PDF đề bài vào đây")}
+              </div>
+              <span
+                style={{
+                  display: "inline-block",
+                  padding: "6px 16px",
+                  borderRadius: 999,
+                  background: hoveredZone === "task" ? T.accent : "transparent",
+                  border: `1px solid ${hoveredZone === "task" ? T.accent : T.border}`,
+                  color: hoveredZone === "task" ? "#FFFFFF" : T.textSoft,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.03em",
+                  textTransform: "uppercase",
+                  transition: "all 0.2s",
+                }}
+              >
+                Chọn tệp
+              </span>
+            </div>
+          ) : (
+            <div
+              style={{
+                borderRadius: 12,
+                background: "linear-gradient(135deg, #FFFDF8 0%, #FAF8F2 100%)",
+                border: `1px solid ${T.borderLight}`,
+                padding: "20px 16px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "inset 0 1px 2px rgba(0,0,0,0.02)",
+              }}
+            >
+              <div
+                style={{
+                  width: 52,
+                  height: 64,
+                  borderRadius: 8,
+                  background: `linear-gradient(135deg, ${T.red} 0%, #9B3530 100%)`,
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
-                  gap: 10,
-                  padding: "16px 0",
+                  justifyContent: "center",
+                  color: "white",
+                  boxShadow: `0 6px 16px rgba(184, 66, 58, 0.2)`,
+                  position: "relative",
+                  overflow: "hidden",
+                  marginBottom: 12,
                 }}
               >
                 <div
                   style={{
-                    width: 64,
-                    height: 80,
-                    borderRadius: 10,
-                    background: `linear-gradient(135deg, ${T.accent}, ${T.accentLight})`,
+                    position: "absolute",
+                    top: 0,
+                    right: 0,
+                    width: 16,
+                    height: 16,
+                    background: "rgba(255,255,255,0.2)",
+                    clipPath: "polygon(0 0, 100% 100%, 0 100%)",
+                  }}
+                />
+                <Icon.FileText size={22} color="white" />
+                <div
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 800,
+                    marginTop: 4,
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  PDF
+                </div>
+              </div>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: T.text,
+                  textAlign: "center",
+                  maxWidth: "100%",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  padding: "0 8px",
+                  marginBottom: 12,
+                }}
+                title={taskPdf.name}
+              >
+                {taskPdf.name}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (taskInputRef.current) {
+                    taskInputRef.current.value = "";
+                    taskInputRef.current.click();
+                  }
+                }}
+                style={{
+                  background: "transparent",
+                  border: `1px solid ${T.accent}`,
+                  color: T.accent,
+                  borderRadius: 999,
+                  padding: "4px 12px",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.03em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = T.accentSoft;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                {String(t.promptChange ?? "Thay đổi tệp")}
+              </button>
+              <input
+                ref={taskInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  handleTaskFile(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+          )}
+
+          {/* Integrated Autodetect Subject Area */}
+          <div
+            style={{
+              borderTop: `1px dashed ${T.border}`,
+              paddingTop: 16,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: T.textMute,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+              }}
+            >
+              Phát Hiện Môn Học
+            </div>
+            <div>
+              <SubjectChip
+                subject={subject}
+                detected={detectedSubject}
+                confidence={subjectConfidence}
+                loading={subjectDetecting}
+                idle={!taskPdf}
+                manualOverride={manualSubject}
+                onChange={onSubjectChange}
+              />
+              {subjectDetectError && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 12,
+                    color: T.red,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {subjectDetectError}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Card 2: Essay Image/PDF Upload Card ── */}
+        <div
+          onMouseEnter={() => setHoveredZone("essay")}
+          onMouseLeave={() => setHoveredZone(null)}
+          style={{
+            background: T.bgCard,
+            border: `1px solid ${hoveredZone === "essay" ? T.green : T.border}`,
+            borderRadius: 20,
+            padding: 24,
+            display: "flex",
+            flexDirection: "column",
+            gap: 20,
+            boxShadow: T.shadowSoft,
+            transition: "border-color 0.15s ease",
+            boxSizing: "border-box",
+            position: "relative",
+          }}
+        >
+          {/* Badge Header Row */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: "rgba(46, 125, 91, 0.06)",
+                color: T.green,
+                padding: "4px 10px",
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.green, display: "inline-block" }} />
+              {String(t.imageLabel ?? "Bài Làm Học Sinh")}
+            </div>
+            {essayImage && (
+              <button
+                type="button"
+                onClick={() => setEssayImage(null)}
+                style={{
+                  background: "rgba(184, 66, 58, 0.08)",
+                  border: "none",
+                  borderRadius: 999,
+                  width: 24,
+                  height: 24,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  color: T.red,
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(184, 66, 58, 0.15)";
+                  e.currentTarget.style.transform = "scale(1.1)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(184, 66, 58, 0.08)";
+                  e.currentTarget.style.transform = "scale(1)";
+                }}
+                title="Xóa tệp"
+              >
+                <Icon.X size={12} color={T.red} />
+              </button>
+            )}
+          </div>
+          
+          {/* Drag & Drop Area */}
+          {!essayImage ? (
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOverEssay(true);
+              }}
+              onDragLeave={() => setDragOverEssay(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverEssay(false);
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 1) {
+                  const filesArr = Array.from(e.dataTransfer.files);
+                  handleEssayFile(filesArr[0]);
+                  onBatchEssayUpload?.(filesArr.slice(1));
+                } else {
+                  handleEssayFile(e.dataTransfer.files?.[0]);
+                }
+              }}
+              onClick={() => {
+                if (essayInputRef.current) {
+                  essayInputRef.current.value = "";
+                  essayInputRef.current.click();
+                }
+              }}
+              style={{
+                border: dragOverEssay ? `2px solid ${T.green}` : `2px dashed ${T.border}`,
+                borderRadius: 12,
+                padding: "36px 16px",
+                textAlign: "center",
+                cursor: "pointer",
+                transition: "all 0.25s ease",
+                background: dragOverEssay
+                  ? "linear-gradient(135deg, rgba(46,125,91,0.04), rgba(46,125,91,0.10))"
+                  : hoveredZone === "essay"
+                    ? "rgba(46, 125, 91, 0.01)"
+                    : "rgba(44, 46, 58, 0.01)",
+                boxShadow: dragOverEssay ? `0 0 0 3px ${T.greenSoft}, 0 4px 16px ${T.greenSoft}` : "none",
+              }}
+            >
+              <input
+                ref={essayInputRef}
+                type="file"
+                accept="image/*,.pdf,application/pdf"
+                multiple
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 1) {
+                    const filesArr = Array.from(e.target.files);
+                    handleEssayFile(filesArr[0]);
+                    onBatchEssayUpload?.(filesArr.slice(1));
+                  } else {
+                    handleEssayFile(e.target.files?.[0]);
+                  }
+                  e.target.value = "";
+                }}
+              />
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: "50%",
+                  background: dragOverEssay ? "rgba(46, 125, 91, 0.12)" : "rgba(46, 125, 91, 0.05)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: 12,
+                  color: T.green,
+                  transition: "background-color 0.15s ease",
+                  margin: "0 auto",
+                }}
+              >
+                <Icon.Upload size={22} color={T.green} />
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: T.textSoft,
+                  fontWeight: 600,
+                  lineHeight: 1.4,
+                  marginBottom: 12,
+                }}
+              >
+                {dragOverEssay ? "Thả file để tải lên!" : String(t.imageDrop ?? "Thả ảnh hoặc PDF bài làm vào đây")}
+              </div>
+              <span
+                style={{
+                  display: "inline-block",
+                  padding: "6px 16px",
+                  borderRadius: 999,
+                  background: hoveredZone === "essay" ? T.green : "transparent",
+                  border: `1px solid ${hoveredZone === "essay" ? T.green : T.border}`,
+                  color: hoveredZone === "essay" ? "#FFFFFF" : T.textSoft,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.03em",
+                  textTransform: "uppercase",
+                  transition: "all 0.2s",
+                }}
+              >
+                Chọn tệp
+              </span>
+            </div>
+          ) : (
+            <div
+              style={{
+                borderRadius: 12,
+                background: "linear-gradient(135deg, #FFFDF8 0%, #FAF8F2 100%)",
+                border: `1px solid ${T.borderLight}`,
+                padding: "16px 16px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "inset 0 1px 2px rgba(0,0,0,0.02)",
+              }}
+            >
+              {essayImage.isPdf ? (
+                <div
+                  style={{
+                    width: 52,
+                    height: 64,
+                    borderRadius: 8,
+                    background: `linear-gradient(135deg, ${T.red} 0%, #9B3530 100%)`,
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
                     justifyContent: "center",
                     color: "white",
-                    boxShadow: `0 6px 20px ${T.accentGlow}`,
+                    boxShadow: `0 6px 16px rgba(184, 66, 58, 0.2)`,
                     position: "relative",
                     overflow: "hidden",
+                    marginBottom: 12,
                   }}
                 >
                   <div
@@ -186,282 +679,214 @@ export function StepUpload({
                       position: "absolute",
                       top: 0,
                       right: 0,
-                      width: 20,
-                      height: 20,
+                      width: 16,
+                      height: 16,
                       background: "rgba(255,255,255,0.2)",
                       clipPath: "polygon(0 0, 100% 100%, 0 100%)",
                     }}
                   />
-                  <Icon.FileText size={28} color="white" />
+                  <Icon.FileText size={22} color="white" />
                   <div
                     style={{
-                      fontSize: 11,
+                      fontSize: 9,
                       fontWeight: 800,
-                      marginTop: 6,
+                      marginTop: 4,
                       letterSpacing: "0.1em",
                     }}
                   >
                     PDF
                   </div>
                 </div>
-                <div style={{ fontSize: T.fontSize.base, color: T.textSoft, fontWeight: 500 }}>
-                  {String(t.promptUploaded ?? "")}
-                </div>
-              </div>
-              <div
-                style={{
-                  marginTop: T.space[2],
-                  fontSize: T.fontSize.sm,
-                  color: T.textMute,
-                  textAlign: "center",
-                }}
-              >
-                {taskPdf.name} ·{" "}
-                <span style={{ color: T.accent, cursor: "pointer" }}>
-                  {String(t.promptChange ?? "")}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <div style={{ marginBottom: T.space[3], opacity: 0.4 }}>
-                <Icon.FileText size={36} color={T.textMute} />
-              </div>
-              <div style={{ fontSize: T.fontSize.base, color: T.textSoft, fontWeight: 500 }}>
-                {String(t.promptDrop ?? "")}
-              </div>
-              <div style={{ fontSize: T.fontSize.sm, color: T.textFaint, marginTop: T.space[2] }}>
-                PDF
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Subject auto-detection chip — replaces the old left-Sidebar
-            subject picker. Stays in "idle" until the teacher uploads a
-            PDF, then shows the backend's verdict. High confidence
-            auto-applies silently; low / none verdicts require an explicit
-            click on the chip before the submit button enables.
-            Lives beneath the PDF box so it visually attaches to the file
-            it describes — moving it elsewhere broke the cause/effect
-            chain ("which PDF did this detect?"). */}
-        <div
-          style={{
-            marginTop: T.space[3],
-            display: "flex",
-            alignItems: "center",
-            gap: T.space[3],
-            flexWrap: "wrap",
-          }}
-        >
-          <SubjectChip
-            subject={subject}
-            detected={detectedSubject}
-            confidence={subjectConfidence}
-            loading={subjectDetecting}
-            idle={!taskPdf}
-            manualOverride={manualSubject}
-            onChange={onSubjectChange}
-          />
-          {subjectDetectError && (
-            <span
-              style={{
-                fontSize: T.fontSize.sm,
-                color: T.red,
-                lineHeight: 1.4,
-              }}
-            >
-              {subjectDetectError}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* ── Essay Image/PDF Upload ── */}
-      <div style={{ marginBottom: T.space[8] }}>
-        <label
-          style={{
-            display: "block",
-            fontFamily: T.display,
-            fontSize: T.fontSize.lg,
-            fontWeight: 600,
-            color: T.text,
-            marginBottom: T.space[2],
-            letterSpacing: "-0.01em",
-          }}
-        >
-          {String(t.imageLabel ?? "")}
-        </label>
-
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOverEssay(true);
-          }}
-          onDragLeave={() => setDragOverEssay(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragOverEssay(false);
-            handleEssayFile(e.dataTransfer.files?.[0]);
-          }}
-          onClick={() => {
-            if (essayInputRef.current) {
-              essayInputRef.current.value = "";
-              essayInputRef.current.click();
-            }
-          }}
-          style={{
-            border: `2px dashed ${dragOverEssay ? T.accent : T.border}`,
-            borderRadius: 12,
-            padding: essayImage ? 16 : 48,
-            textAlign: "center",
-            cursor: "pointer",
-            transition: "all 0.2s",
-            background: dragOverEssay ? T.accentSoft : T.bgCard,
-          }}
-        >
-          <input
-            ref={essayInputRef}
-            type="file"
-            accept="image/*,.pdf,application/pdf"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              handleEssayFile(e.target.files?.[0]);
-              e.target.value = "";
-            }}
-          />
-          {essayImage ? (
-            <div>
-              {essayImage.isPdf ? (
+              ) : (
                 <div
                   style={{
+                    position: "relative",
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    boxShadow: "0 6px 16px rgba(44, 46, 58, 0.08)",
+                    border: `1px solid ${T.border}`,
+                    marginBottom: 12,
+                    maxWidth: "100%",
+                    height: 80,
                     display: "flex",
-                    flexDirection: "column",
                     alignItems: "center",
-                    gap: 12,
-                    padding: "24px 0",
+                    justifyContent: "center",
+                    background: T.bg,
                   }}
                 >
-                  <div
+                  <img
+                    src={essayImage.dataUrl}
+                    alt={essayImage.name}
                     style={{
-                      width: 80,
-                      height: 100,
-                      borderRadius: 12,
-                      background: `linear-gradient(135deg, ${T.red}, #9B3530)`,
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "white",
-                      boxShadow: `0 8px 24px rgba(184, 66, 58, 0.25)`,
-                      position: "relative",
-                      overflow: "hidden",
+                      maxHeight: "100%",
+                      maxWidth: "100%",
+                      objectFit: "contain",
+                      display: "block",
                     }}
-                  >
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: 0,
-                        right: 0,
-                        width: 24,
-                        height: 24,
-                        background: "rgba(255,255,255,0.2)",
-                        clipPath: "polygon(0 0, 100% 100%, 0 100%)",
-                      }}
-                    />
-                    <Icon.FileText size={32} color="white" />
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 800,
-                        marginTop: 8,
-                        letterSpacing: "0.1em",
-                      }}
-                    >
-                      PDF
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: T.fontSize.base,
-                      color: T.textSoft,
-                      fontWeight: 500,
-                    }}
-                  >
-                    {String(t.pdfUploaded ?? "")}
-                  </div>
+                  />
                 </div>
-              ) : (
-                <img
-                  src={essayImage.dataUrl}
-                  alt={essayImage.name}
-                  style={{
-                    maxWidth: "100%",
-                    maxHeight: 260,
-                    borderRadius: 8,
-                    display: "block",
-                    margin: "0 auto",
-                    boxShadow: `0 4px 24px rgba(0,0,0,0.3)`,
-                  }}
-                />
               )}
               <div
                 style={{
-                  marginTop: T.space[3],
-                  fontSize: T.fontSize.sm,
-                  color: T.textMute,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: T.text,
                   textAlign: "center",
+                  maxWidth: "100%",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  padding: "0 8px",
+                  marginBottom: 12,
+                }}
+                title={essayImage.name}
+              >
+                {essayImage.name}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (essayInputRef.current) {
+                    essayInputRef.current.value = "";
+                    essayInputRef.current.click();
+                  }
+                }}
+                style={{
+                  background: "transparent",
+                  border: `1px solid ${T.green}`,
+                  color: T.green,
+                  borderRadius: 999,
+                  padding: "4px 12px",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.03em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = T.greenSoft;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
                 }}
               >
-                {essayImage.name} ·{" "}
-                <span style={{ color: T.accent, cursor: "pointer" }}>
-                  {String(t.imageChange ?? "")}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <div style={{ marginBottom: T.space[3], opacity: 0.45 }}>
-                <Icon.Upload size={44} color={T.textMute} />
-              </div>
-              <div style={{ fontSize: T.fontSize.base, color: T.textSoft, fontWeight: 500 }}>
-                {String(t.imageDrop ?? "")}
-              </div>
-              <div style={{ fontSize: T.fontSize.sm, color: T.textFaint, marginTop: T.space[2] }}>
-                JPG, PNG, PDF
-              </div>
+                {String(t.imageChange ?? "Thay đổi tệp")}
+              </button>
+              <input
+                ref={essayInputRef}
+                type="file"
+                accept="image/*,.pdf,application/pdf"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  handleEssayFile(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
             </div>
           )}
-        </div>
-        {uploadError && (
-          <div style={{ marginTop: T.space[2], fontSize: T.fontSize.sm, color: T.red, lineHeight: 1.5 }}>
-            {uploadError}
+
+          {/* Integrated Status / Support Tip Area */}
+          <div
+            style={{
+              borderTop: `1px dashed ${T.border}`,
+              paddingTop: 16,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: T.textMute,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+              }}
+            >
+              Trạng Thái Tệp
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 12,
+                color: essayImage ? T.green : T.textSoft,
+                fontStyle: "italic",
+                padding: "4px 0",
+              }}
+            >
+              {essayImage ? (
+                <>
+                  <Icon.Check size={12} color={T.green} />
+                  <span>Đã tải lên tệp thành công.</span>
+                </>
+              ) : (
+                <>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.textFaint, display: "inline-block" }} />
+                  <span>Hỗ trợ file PDF hoặc ảnh (PNG, JPG).</span>
+                </>
+              )}
+            </div>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Submit — disabled state intentionally uses bgMuted (not bgCard) so it
-          stays visible against the surrounding card surface. With bgCard the
-          button border + fill matched the page background and the control
-          effectively disappeared until the teacher uploaded both files. */}
+      {uploadError && (
+        <div
+          style={{
+            fontSize: 14,
+            color: T.red,
+            background: "rgba(184, 66, 58, 0.06)",
+            border: `1px solid ${T.red}`,
+            borderRadius: 8,
+            padding: "10px 14px",
+            lineHeight: 1.4,
+            marginBottom: 24,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <Icon.AlertTriangle size={14} color={T.red} />
+          <span>{uploadError}</span>
+        </div>
+      )}
+
+      {/* Submit Button */}
       <button
         onClick={onSubmit}
         disabled={!canSubmit}
+        onMouseEnter={() => setHoveredSubmit(true)}
+        onMouseLeave={() => setHoveredSubmit(false)}
         style={{
           width: "100%",
-          padding: `${T.space[4]}px ${T.space[6]}px`,
-          fontSize: T.fontSize.base,
-          fontWeight: 600,
-          color: canSubmit ? T.bgCard : T.textMute,
-          background: canSubmit ? T.accent : T.bgMuted,
-          border: `1px solid ${canSubmit ? T.accent : T.border}`,
-          borderRadius: 6,
+          padding: "16px 24px",
+          fontSize: 16,
+          fontWeight: 700,
+          color: "#FFFFFF",
+          background: canSubmit
+            ? hoveredSubmit
+              ? `linear-gradient(135deg, ${T.accentLight} 0%, ${T.accent} 100%)`
+              : `linear-gradient(135deg, ${T.accent} 0%, ${T.accentLight} 100%)`
+            : "rgba(44, 46, 58, 0.04)",
+          border: `1px solid ${canSubmit ? "transparent" : T.border}`,
+          borderRadius: 12,
           cursor: canSubmit ? "pointer" : "not-allowed",
-          opacity: canSubmit ? 1 : 0.85,
-          transition: "all 0.2s",
+          boxShadow: "none",
+          transition: "background-color 0.15s ease, opacity 0.15s ease",
+          fontFamily: `"Inter", "Outfit", system-ui, -apple-system, sans-serif`,
+          opacity: canSubmit ? 1 : 0.6,
         }}
       >
-        {String(t.startGrading ?? "")}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <Icon.Bot size={18} color={canSubmit ? "#FFFFFF" : T.textFaint} />
+          <span style={{ color: canSubmit ? "#FFFFFF" : T.textMute }}>
+            {String(t.startGrading ?? "Bắt Đầu Chấm")}
+          </span>
+        </div>
       </button>
     </div>
   );
