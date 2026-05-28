@@ -112,12 +112,17 @@ async def generate(req: GenerateRequest):
     """
     _, _, orchestrator = _require_deps()
     try:
+        answer_key = None
+        if req.answer_key_pdf_b64:
+            answer_key = await extract_pdf_text(req.answer_key_pdf_b64, max_pages=30)
+
         result = await orchestrator.run_pipeline(
             req.task,
             feedback=req.feedback,
             wrong_code=req.wrong_code,
             image_b64=req.image_b64,
             task_pdf_b64=req.task_pdf_b64,
+            answer_key=answer_key,
             subject=req.subject,
         )
         return GenerateResponse(
@@ -174,12 +179,17 @@ async def regrade(req: RegradeRequest):
     # 2 — Build feedback text and re-run pipeline
     feedback_text = f"Teacher action: {action}\nTeacher note: {comment}"
     try:
+        answer_key = None
+        if req.answer_key_pdf_b64:
+            answer_key = await extract_pdf_text(req.answer_key_pdf_b64, max_pages=30)
+
         result = await orchestrator.run_pipeline(
             req.task,
             feedback=feedback_text,
             wrong_code=req.wrong_code,
             image_b64=req.image_b64,
             task_pdf_b64=req.task_pdf_b64,
+            answer_key=answer_key,
             parent_run_id=req.run_id,
             subject=req.subject,
         )

@@ -13,6 +13,8 @@ interface StepUploadProps {
   setTaskPdf: (value: TaskFile | null) => void;
   essayImage: EssayFile | null;
   setEssayImage: (value: EssayFile | null) => void;
+  answerKeyPdf: TaskFile | null;
+  setAnswerKeyPdf: (value: TaskFile | null) => void;
   onSubmit: () => void;
   canSubmit: boolean;
   t: I18nStrings;
@@ -36,6 +38,8 @@ export function StepUpload({
   setTaskPdf,
   essayImage,
   setEssayImage,
+  answerKeyPdf,
+  setAnswerKeyPdf,
   onSubmit,
   canSubmit,
   t,
@@ -50,12 +54,14 @@ export function StepUpload({
 }: StepUploadProps) {
   const taskInputRef = useRef<HTMLInputElement | null>(null);
   const essayInputRef = useRef<HTMLInputElement | null>(null);
+  const answerKeyInputRef = useRef<HTMLInputElement | null>(null);
   const [dragOverTask, setDragOverTask] = useState(false);
   const [dragOverEssay, setDragOverEssay] = useState(false);
+  const [dragOverAnswerKey, setDragOverAnswerKey] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   
   const isMobile = useIsMobile();
-  const [hoveredZone, setHoveredZone] = useState<"task" | "essay" | null>(null);
+  const [hoveredZone, setHoveredZone] = useState<"task" | "essay" | "answerKey" | null>(null);
   const [hoveredSubmit, setHoveredSubmit] = useState(false);
 
   const handleTaskFile = useCallback(
@@ -102,6 +108,26 @@ export function StepUpload({
     [setEssayImage, t],
   );
 
+  const handleAnswerKeyFile = useCallback(
+    async (file: unknown) => {
+      const f = file as File;
+      if (!f) return;
+      const isPdf = f.type === "application/pdf" || f.name.endsWith(".pdf");
+      if (!isPdf) {
+        setUploadError(String(t.uploadInvalidType ?? "Chỉ hỗ trợ file PDF cho đáp án."));
+        return;
+      }
+      try {
+        const dataUrl = await readFileAsDataUrl(f);
+        setUploadError(null);
+        setAnswerKeyPdf({ dataUrl, name: f.name });
+      } catch {
+        setUploadError(String(t.uploadReadError ?? ""));
+      }
+    },
+    [setAnswerKeyPdf, t],
+  );
+
   return (
     <div
       style={{
@@ -145,7 +171,7 @@ export function StepUpload({
           flexDirection: isMobile ? "column" : undefined,
           gridTemplateColumns: isMobile ? undefined : "1fr 1fr",
           gap: 24,
-          marginBottom: 36,
+          marginBottom: 24,
         }}
       >
         {/* ── Card 1: Task PDF Upload Card ── */}
@@ -274,7 +300,8 @@ export function StepUpload({
                   marginBottom: 12,
                   color: T.accent,
                   transition: "background-color 0.15s ease",
-                  margin: "0 auto",
+                  marginLeft: "auto",
+                  marginRight: "auto",
                 }}
               >
                 <Icon.FileText size={22} color={T.accent} />
@@ -608,7 +635,8 @@ export function StepUpload({
                   marginBottom: 12,
                   color: T.green,
                   transition: "background-color 0.15s ease",
-                  margin: "0 auto",
+                  marginLeft: "auto",
+                  marginRight: "auto",
                 }}
               >
                 <Icon.Upload size={22} color={T.green} />
@@ -832,6 +860,263 @@ export function StepUpload({
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── Card 3: Redesigned Answer Key / Bareme Section (Horizontal) ── */}
+      <div
+        onMouseEnter={() => setHoveredZone("answerKey")}
+        onMouseLeave={() => setHoveredZone(null)}
+        style={{
+          background: T.bgCard,
+          border: `1px solid ${answerKeyPdf ? T.amber : hoveredZone === "answerKey" ? T.amber : T.border}`,
+          borderRadius: 16,
+          padding: "16px 20px",
+          marginBottom: 32,
+          boxShadow: T.shadowSoft,
+          transition: "all 0.2s ease",
+          boxSizing: "border-box",
+          position: "relative",
+          display: "flex",
+          flexDirection: isMobile ? "column" : "row",
+          alignItems: isMobile ? "stretch" : "center",
+          justifyContent: "space-between",
+          gap: 16,
+        }}
+      >
+        {!answerKeyPdf ? (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  background: "rgba(192, 139, 48, 0.08)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <Icon.FileText size={20} color={T.amber} />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span
+                    style={{
+                      fontFamily: T.display,
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: T.text,
+                    }}
+                  >
+                    {String(t.answerKeyLabel ?? "Đáp Án & Hướng Dẫn Chấm")}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: T.textMute,
+                      background: T.bgMuted,
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.03em",
+                    }}
+                  >
+                    {String(t.optionalLabel ?? "Tùy chọn")}
+                  </span>
+                </div>
+                <p
+                  style={{
+                    fontFamily: T.font,
+                    fontSize: 12,
+                    color: T.textSoft,
+                    margin: 0,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {String(t.answerKeyDesc ?? "Tải file PDF đáp án chính thức (bareme) để AI chấm điểm chính xác và sát với yêu cầu của giáo viên.")}
+                </p>
+              </div>
+            </div>
+
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOverAnswerKey(true);
+              }}
+              onDragLeave={() => setDragOverAnswerKey(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverAnswerKey(false);
+                const file = e.dataTransfer?.files?.[0];
+                if (file) handleAnswerKeyFile(file);
+              }}
+              onClick={() => answerKeyInputRef.current?.click()}
+              style={{
+                border: `2px dashed ${dragOverAnswerKey ? T.amber : T.border}`,
+                borderRadius: 10,
+                padding: "8px 16px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                cursor: "pointer",
+                background: dragOverAnswerKey
+                  ? "rgba(192, 139, 48, 0.04)"
+                  : hoveredZone === "answerKey"
+                    ? "rgba(192, 139, 48, 0.01)"
+                    : "transparent",
+                transition: "all 0.15s ease",
+                minWidth: isMobile ? undefined : 150,
+                boxSizing: "border-box",
+              }}
+            >
+              <input
+                ref={answerKeyInputRef}
+                type="file"
+                accept=".pdf"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleAnswerKeyFile(file);
+                  e.target.value = "";
+                }}
+              />
+              <Icon.Upload size={14} color={T.amber} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: T.textSoft }}>
+                {String(t.uploadFileBtn ?? "Tải PDF lên")}
+              </span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  background: "rgba(192, 139, 48, 0.08)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <Icon.Check size={20} color={T.amber} />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span
+                    style={{
+                      fontFamily: T.display,
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: T.text,
+                    }}
+                  >
+                    {String(t.answerKeyUploadedTitle ?? "Đã tích hợp Đáp án")}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: "#FFFFFF",
+                      background: T.amber,
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.03em",
+                    }}
+                  >
+                    {String(t.activeLabel ?? "Đang dùng")}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    fontFamily: T.font,
+                    fontSize: 12,
+                    color: T.textSoft,
+                    fontWeight: 600,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    maxWidth: isMobile ? "100%" : "380px",
+                  }}
+                  title={answerKeyPdf.name}
+                >
+                  {answerKeyPdf.name}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={() => answerKeyInputRef.current?.click()}
+                style={{
+                  fontFamily: T.font,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: T.textSoft,
+                  background: "transparent",
+                  border: `1px solid ${T.border}`,
+                  borderRadius: 8,
+                  padding: "8px 16px",
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = T.bgHover;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                {String(t.answerKeyChange ?? "Đổi đáp án")}
+              </button>
+              <input
+                ref={answerKeyInputRef}
+                type="file"
+                accept=".pdf"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleAnswerKeyFile(file);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setAnswerKeyPdf(null)}
+                style={{
+                  background: "rgba(184, 66, 58, 0.08)",
+                  border: "none",
+                  borderRadius: 8,
+                  width: 32,
+                  height: 32,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  color: T.red,
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(184, 66, 58, 0.15)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(184, 66, 58, 0.08)";
+                }}
+                title="Xóa đáp án"
+              >
+                <Icon.X size={14} color={T.red} />
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {uploadError && (

@@ -178,24 +178,39 @@ export function SubjectChip({
           fontSize: T.fontSize.sm,
           cursor: disabled ? "default" : "pointer",
           transition: "background 0.15s, border-color 0.15s",
+          maxWidth: "100%",
+          boxSizing: "border-box",
         }}
       >
         {leadingIcon}
-        <span style={{ fontWeight: 600 }}>{primaryLabel}</span>
-        {secondaryLabel && (
-          <span
-            style={{
-              color,
-              opacity: 0.75,
-              fontWeight: 400,
-              fontStyle: "italic",
-            }}
-          >
-            · {secondaryLabel}
-          </span>
-        )}
+        <span
+          style={{
+            fontWeight: 600,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            display: "inline-block",
+            flex: 1,
+            textAlign: "left",
+          }}
+        >
+          {primaryLabel}
+          {secondaryLabel && (
+            <span
+              style={{
+                color,
+                opacity: 0.75,
+                fontWeight: 400,
+                fontStyle: "italic",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {" "}· {secondaryLabel}
+            </span>
+          )}
+        </span>
         {!disabled && (
-          <span style={{ display: "inline-flex", marginLeft: 2, color }}>
+          <span style={{ display: "inline-flex", marginLeft: 2, color, flexShrink: 0 }}>
             <Icon.ArrowDown size={10} />
           </span>
         )}

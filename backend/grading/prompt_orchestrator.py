@@ -107,6 +107,7 @@ class PromptOrchestrator:
         feedback: Optional[str] = None,
         wrong_code: Optional[str] = None,
         subject: Optional[str] = None,
+        answer_key: Optional[str] = None,
     ) -> PromptBundle:
         """Assemble the Grader PromptBundle for this essay.
 
@@ -121,6 +122,10 @@ class PromptOrchestrator:
             subject:    Optional explicit subject hint ("math" / "cs").
                         When absent, ``detect_subject`` keyword-matches the
                         task text; falls back to DEFAULT_SUBJECT.
+            answer_key: Optional plain-text answer key / bareme extracted
+                        from a teacher-uploaded PDF. Injected verbatim into
+                        the dynamic prompt so the Grader can score against
+                        the official rubric.
         """
         task = _sanitize(task, 4000)
         feedback = _sanitize(feedback or "", 2000)
@@ -149,8 +154,24 @@ class PromptOrchestrator:
         )
         memory_block = self._format_lessons(lessons)
 
-        # 2. Dynamic component (Topic / Previous grade / Teacher feedback)
-        dynamic_parts: list[str] = [f"### ĐỀ BÀI TỰ LUẬN\n{task}"]
+        # 2. Dynamic component (Answer key / Topic / Previous grade / Feedback)
+        dynamic_parts: list[str] = []
+
+        # Answer key goes FIRST so the Grader reads the official rubric
+        # before seeing the essay topic — mirrors how a teacher approaches
+        # grading: read the answer key, then read the student's work.
+        answer_key_text = _sanitize(answer_key or "", 8000)
+        if answer_key_text:
+            dynamic_parts.append(
+                "### ĐÁP ÁN & BAREME CHẤM ĐIỂM CHÍNH THỨC "
+                "(Tuân thủ tuyệt đối)\n"
+                "Dưới đây là đáp án và hướng dẫn chấm do giáo viên cung cấp. "
+                "BẮT BUỘC chấm theo đúng đáp án này. Nếu bài làm học sinh "
+                "khác với đáp án, trừ điểm theo biểu điểm.\n\n"
+                f"{answer_key_text}"
+            )
+
+        dynamic_parts.append(f"### ĐỀ BÀI TỰ LUẬN\n{task}")
         if wrong_code:
             dynamic_parts.append(
                 f"### BẢN CHẤM TRƯỚC (giáo viên đã TỪ CHỐI — tham khảo để sửa)\n"

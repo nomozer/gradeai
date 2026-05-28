@@ -91,6 +91,7 @@ export function EssayWorkspace({
 
   const [taskPdf, setTaskPdf] = useState<TaskFile | null>(null);
   const [essayImage, setEssayImage] = useState<EssayFile | null>(null);
+  const [answerKeyPdf, setAnswerKeyPdf] = useState<TaskFile | null>(null);
 
   // Per-tab subject state. Replaces the old App-level `selectedSubject`
   // (which was the same value across all tabs — a latent bug when the
@@ -106,6 +107,11 @@ export function EssayWorkspace({
   const [subjectDetecting, setSubjectDetecting] = useState(false);
   const [subjectDetectError, setSubjectDetectError] = useState<string | null>(null);
   const [manualSubject, setManualSubject] = useState(false);
+  const onMetaRef = useRef(onMeta);
+
+  useEffect(() => {
+    onMetaRef.current = onMeta;
+  }, [onMeta]);
 
   const [grade, setGrade] = useState<Grade | null>(null);
   const [step, setStep] = useState<number>(1);
@@ -128,6 +134,9 @@ export function EssayWorkspace({
     if (tab.initialTaskFile) {
       setTaskPdf(tab.initialTaskFile);
     }
+    if (tab.initialAnswerKeyFile) {
+      setAnswerKeyPdf(tab.initialAnswerKeyFile);
+    }
     if (tab.initialSubject) {
       setSubject(tab.initialSubject);
       setDetectedSubject(tab.initialSubject);
@@ -135,14 +144,15 @@ export function EssayWorkspace({
     }
 
     // Clear initial files after consuming them to avoid re-runs
-    if (tab.initialEssayFile || tab.initialTaskFile || tab.initialSubject) {
+    if (tab.initialEssayFile || tab.initialTaskFile || tab.initialSubject || tab.initialAnswerKeyFile) {
       onMeta({
         initialEssayFile: null,
         initialTaskFile: null,
+        initialAnswerKeyFile: null,
         initialSubject: null,
       });
     }
-  }, [tab.initialEssayFile, tab.initialTaskFile, tab.initialSubject, onMeta]);
+  }, [tab.initialEssayFile, tab.initialTaskFile, tab.initialAnswerKeyFile, tab.initialSubject, onMeta]);
 
   // Batch Essay Upload handler
   const handleBatchEssayUpload = useCallback(
@@ -159,7 +169,9 @@ export function EssayWorkspace({
                 isPdf: file.type === "application/pdf" || file.name.endsWith(".pdf"),
               },
               initialTaskFile: taskPdf,
+              initialAnswerKeyFile: answerKeyPdf,
               initialSubject: subject,
+              canRun: !!taskPdf && !!subject,
             });
           }
         } catch (err) {
@@ -167,7 +179,7 @@ export function EssayWorkspace({
         }
       });
     },
-    [onAddTab, taskPdf, subject],
+    [onAddTab, taskPdf, answerKeyPdf, subject],
   );
   // Teacher per-câu score overrides — lifted up here so step 5 ResultCard
   // can read the numbers the teacher set in step 4 (without it, step 4's
@@ -230,8 +242,10 @@ export function EssayWorkspace({
         // amber "Xác nhận hoặc đổi" state until the teacher picks.
         if (res.confidence === "high") {
           setSubject(res.detected);
+          onMetaRef.current({ initialSubject: res.detected });
         } else {
           setSubject(null);
+          onMetaRef.current({ initialSubject: null });
         }
       })
       .catch((err) => {
@@ -391,8 +405,9 @@ export function EssayWorkspace({
       essayImage?.dataUrl || null,
       taskPdf?.dataUrl || null,
       subject,
+      answerKeyPdf?.dataUrl || null,
     );
-  }, [task, lang, essayImage, taskPdf, pipeline, feedbackHook, subject]);
+  }, [task, lang, essayImage, taskPdf, answerKeyPdf, pipeline, feedbackHook, subject]);
 
   // Auto-run grading when the workspace is mounted/updated and in the "generating" phase
   useEffect(() => {
@@ -409,9 +424,16 @@ export function EssayWorkspace({
       hasGrade: step === 5,
       canRun,
       questions: tabQuestions,
+      // Propagate pipeline error to tab meta so TabBar can render a
+      // failure indicator instead of letting a failed tab silently
+      // revert to the same "idle" icon as never-started tabs. Cleared
+      // (null) on every fresh run via the same effect — handleRun
+      // resets pipeline.error before kicking off, so the next render
+      // syncs error: null down to the tab.
+      error: pipeline.error || null,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [label, pipeline.phase, step, canRun, tabQuestions]);
+  }, [label, pipeline.phase, step, canRun, tabQuestions, pipeline.error]);
 
   const handleApprove = useCallback(() => setStep(5), []);
 
@@ -588,9 +610,17 @@ export function EssayWorkspace({
         <ErrorBoundary label="Upload step failed">
           <StepUpload
             taskPdf={taskPdf}
-            setTaskPdf={setTaskPdf}
+            setTaskPdf={(file) => {
+              setTaskPdf(file);
+              onMeta({ initialTaskFile: file });
+            }}
             essayImage={essayImage}
             setEssayImage={setEssayImage}
+            answerKeyPdf={answerKeyPdf}
+            setAnswerKeyPdf={(file) => {
+              setAnswerKeyPdf(file);
+              onMeta({ initialAnswerKeyFile: file });
+            }}
             onSubmit={handleRun}
             canSubmit={canRun}
             t={t}
@@ -600,7 +630,10 @@ export function EssayWorkspace({
             subjectDetecting={subjectDetecting}
             subjectDetectError={subjectDetectError}
             manualSubject={manualSubject}
-            onSubjectChange={handleSubjectChange}
+            onSubjectChange={(code) => {
+              handleSubjectChange(code);
+              onMeta({ initialSubject: code });
+            }}
             onBatchEssayUpload={handleBatchEssayUpload}
           />
         </ErrorBoundary>
@@ -689,6 +722,12 @@ export function EssayWorkspace({
                   deltaLessonId: resp?.delta_lesson_id ?? null,
                   deltas: resp?.deltas,
                 });
+                // Mark this tab as finalized so App.tsx can auto-advance to
+                // the next AI-graded-but-not-yet-reviewed tab and TabBar
+                // can render the "done" icon. Local ``finalizedResult``
+                // already gates the same-tab UI (Đã lưu pill, Sửa lại
+                // button); ``onMeta`` is purely about cross-tab state.
+                onMeta({ finalized: true });
               } catch (err) {
                 const e = err as Error;
                 setFinalizeError(
@@ -707,6 +746,11 @@ export function EssayWorkspace({
               // unlock the UI in place, which doesn't match its label.
               setFinalizedResult(null);
               setFinalizeError(null);
+              // Clear cross-tab finalized flag too — the next finalize
+              // call will re-set it. Without this, TabBar would keep
+              // the "done" icon and App.tsx's auto-advance would skip
+              // this tab even though the teacher wants to redo it.
+              onMeta({ finalized: false });
               setStep(4);
             }}
           />

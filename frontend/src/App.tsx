@@ -18,7 +18,7 @@
  * because it's purely display metadata (not used by any grading prompt).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { vi as t } from "./i18n/vi";
 import { T } from "./theme/tokens";
 import { GlobalStyles } from "./theme/GlobalStyles";
@@ -97,8 +97,12 @@ function WorkspacePage() {
   // Pending queue of tab IDs waiting to be graded
   const [pendingQueue, setPendingQueue] = useState<string[]>([]);
 
-  // Maximum number of parallel grading calls
-  const MAX_CONCURRENCY = 2;
+  // Maximum number of parallel grading calls. 3 is the sweet spot for
+  // batch grading a class of 30+ papers without tripping Gemini free-tier
+  // rate limits (60 req/min — 3 parallel × ~20s/grade = 9 req/min steady
+  // state, safely under the cap). Bump higher only after confirming the
+  // user is on a paid Gemini tier with higher quota.
+  const MAX_CONCURRENCY = 3;
 
   // Listen for the custom "hitl.startBatchGrading" event from TabBar
   useEffect(() => {
@@ -139,6 +143,114 @@ function WorkspacePage() {
       });
     }
   }, [tabs, pendingQueue, updateMeta]);
+
+  // Auto-advance — two triggers, both designed to keep the teacher
+  // looking at the right tab without having to open ☰ drawer manually.
+  //
+  // (1) After Step 5 finalize: when the active tab's ``finalized`` flag
+  //     flips to true (set by EssayWorkspace on a successful /api/finalize-
+  //     grade), jump to the next ``hasGrade && !finalized`` tab. This is
+  //     what makes "Lưu & sang bài kế" live up to its label.
+  //
+  // (2) When a tab finishes AI grading while the teacher is "idle"
+  //     (active tab still at step 1 upload or step 2 generating):
+  //     auto-jump to the newly-graded tab so the teacher can start
+  //     review. WITHOUT this guard, if the teacher's active tab is
+  //     mid-review at step 3-4-5, the effect does NOTHING — we don't
+  //     yank them away from work they're doing.
+  //
+  // Both triggers use the same ref-diff pattern: track the previous set
+  // of (finalized | graded) IDs, fire only on the rising edge. Without
+  // the ref, the effect would re-trigger on every parent re-render and
+  // could pull the teacher around against their will.
+  const prevFinalizedRef = useRef<Set<string>>(new Set());
+  const prevHasGradeRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    // ── Trigger 1: finalized advance ─────────────────────────────────
+    const currentFinalized = new Set(
+      tabs.filter((tab) => tab.finalized).map((tab) => tab.id),
+    );
+    const newlyFinalized = [...currentFinalized].filter(
+      (id) => !prevFinalizedRef.current.has(id),
+    );
+    prevFinalizedRef.current = currentFinalized;
+
+    // ── Trigger 2: graded-while-idle advance ─────────────────────────
+    const currentHasGrade = new Set(
+      tabs.filter((tab) => tab.hasGrade).map((tab) => tab.id),
+    );
+    const newlyGraded = [...currentHasGrade].filter(
+      (id) => !prevHasGradeRef.current.has(id),
+    );
+    prevHasGradeRef.current = currentHasGrade;
+
+    // Pick the next pending tab in declaration order — graders typically
+    // grade left-to-right, so this matches "next paper in the stack".
+    const pickNextPending = () =>
+      tabs.find(
+        (tab) => tab.id !== activeId && tab.hasGrade && !tab.finalized,
+      );
+
+    if (newlyFinalized.includes(activeId)) {
+      const next = pickNextPending();
+      if (next) setActive(next.id);
+      return;
+    }
+
+    // Only auto-jump on grading-complete if teacher isn't busy reviewing.
+    // ``step >= 3`` means the active tab is in review / regrade / done
+    // (i.e. the teacher is actively looking at AI output) — never yank
+    // them away from that. Step 1 (upload waiting) or step 2 (AI loading)
+    // means they're idle, safe to jump.
+    if (newlyGraded.length > 0) {
+      const active = tabs.find((tab) => tab.id === activeId);
+      const teacherIdle = !active || (active.step ?? 1) < 3;
+      if (teacherIdle) {
+        // Prefer one of the *newly* graded tabs over any older pending —
+        // matches the teacher's mental model "AI just finished one, take
+        // me there". Falls back to any pending tab if needed.
+        const justGraded = tabs.find(
+          (tab) =>
+            tab.id !== activeId &&
+            newlyGraded.includes(tab.id) &&
+            !tab.finalized,
+        );
+        const next = justGraded ?? pickNextPending();
+        if (next) setActive(next.id);
+      }
+    }
+  }, [tabs, activeId, setActive]);
+
+  // ── Synchronize shared fields (Task PDF, Answer Key, Subject) across all tabs ──
+  useEffect(() => {
+    const activeTab = tabs.find((t) => t.id === activeId);
+    if (!activeTab) return;
+
+    const { initialTaskFile, initialAnswerKeyFile, initialSubject } = activeTab;
+
+    tabs.forEach((t) => {
+      if (t.id === activeId) return;
+      if (t.finalized) return; // Don't modify finalized tabs
+
+      const hasNewTask = initialTaskFile && t.initialTaskFile !== initialTaskFile;
+      const hasNewAnswerKey = initialAnswerKeyFile && t.initialAnswerKeyFile !== initialAnswerKeyFile;
+      const hasNewSubject = initialSubject && t.initialSubject !== initialSubject;
+
+      if (hasNewTask || hasNewAnswerKey || hasNewSubject) {
+        const nextTask = hasNewTask ? initialTaskFile : t.initialTaskFile;
+        const nextSubject = hasNewSubject ? initialSubject : t.initialSubject;
+        // Background tabs can run if they have an essay + task + subject!
+        const canRunVal = !!nextTask && !!nextSubject && (!!t.initialEssayFile || !!t.canRun);
+
+        updateMeta(t.id, {
+          initialTaskFile: nextTask,
+          initialAnswerKeyFile: hasNewAnswerKey ? initialAnswerKeyFile : t.initialAnswerKeyFile,
+          initialSubject: nextSubject,
+          canRun: canRunVal,
+        });
+      }
+    });
+  }, [tabs, activeId, updateMeta]);
 
   useHeartbeat();
 

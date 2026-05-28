@@ -48,6 +48,11 @@ class GenerateRequest(BaseModel):
         description='Optional subject hint ("math" | "cs"). Falls back to '
         "keyword-detection from task text if omitted.",
     )
+    answer_key_pdf_b64: str | None = Field(
+        default=None,
+        description="Base64-encoded PDF of the exam answer key / bareme (data URL).",
+    )
+
 
 
 class GenerateResponse(BaseModel):
@@ -216,6 +221,8 @@ class RegradeRequest(BaseModel):
     task_pdf_b64: str | None = None
     run_id: int | None = None
     subject: str | None = None
+    answer_key_pdf_b64: str | None = None
+
 
 
 class RegradeResponse(BaseModel):

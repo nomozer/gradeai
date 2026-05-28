@@ -123,6 +123,7 @@ export interface RegradeInput {
   taskPdfB64?: string | null;
   runId?: number | null;
   subject?: BackendSubject | null;
+  answerKeyPdfB64?: string | null;
 }
 
 export interface UseAgentPipelineResult extends State {
@@ -134,6 +135,7 @@ export interface UseAgentPipelineResult extends State {
     imageB64?: string | null,
     taskPdfB64?: string | null,
     subject?: BackendSubject | null,
+    answerKeyPdfB64?: string | null,
   ) => Promise<void>;
   regrade: (input: RegradeInput) => Promise<void>;
   reset: () => void;
@@ -214,6 +216,7 @@ export function useAgentPipeline(): UseAgentPipelineResult {
       imageB64: string | null = null,
       taskPdfB64: string | null = null,
       subject: BackendSubject | null = null,
+      answerKeyPdfB64: string | null = null,
     ): Promise<void> => {
       const { requestId, controller, releaseIfCurrent } = beginRequest();
 
@@ -227,6 +230,7 @@ export function useAgentPipeline(): UseAgentPipelineResult {
             image_b64: imageB64,
             task_pdf_b64: taskPdfB64,
             subject,
+            answer_key_pdf_b64: answerKeyPdfB64,
           },
           { signal: controller.signal },
         );
@@ -255,6 +259,7 @@ export function useAgentPipeline(): UseAgentPipelineResult {
       taskPdfB64 = null,
       runId = null,
       subject = null,
+      answerKeyPdfB64 = null,
     }: RegradeInput): Promise<void> => {
       const { requestId, controller, releaseIfCurrent } = beginRequest();
 
@@ -270,6 +275,7 @@ export function useAgentPipeline(): UseAgentPipelineResult {
             task_pdf_b64: taskPdfB64,
             run_id: runId,
             subject,
+            answer_key_pdf_b64: answerKeyPdfB64,
           },
           { signal: controller.signal },
         );

@@ -140,7 +140,24 @@ export function TabBar({
             transition: "all 0.2s ease",
             outline: "none",
           }}
-          title={`Đang mở: ${activeLabel}`}
+          title={
+            tabs.length > 1
+              ? (() => {
+                  const finalizedCount = tabs.filter((tt) => tt.finalized).length;
+                  const awaitingReview = tabs.filter(
+                    (tt) => tt.hasGrade && !tt.finalized,
+                  ).length;
+                  const failedCount = tabs.filter((tt) => tt.error).length;
+                  const parts = [
+                    `Đang mở: ${activeLabel}`,
+                    `${finalizedCount}/${tabs.length} đã duyệt`,
+                    `${awaitingReview} chờ review`,
+                  ];
+                  if (failedCount > 0) parts.push(`${failedCount} lỗi`);
+                  return parts.join(" · ");
+                })()
+              : `Đang mở: ${activeLabel}`
+          }
         >
           <div
             style={{
@@ -157,16 +174,155 @@ export function TabBar({
           >
             <Icon.Menu size={16} />
           </div>
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: T.textSoft,
-              fontFamily: `"Inter", "Outfit", system-ui, -apple-system, sans-serif`,
-            }}
-          >
-            {tabs.length}
-          </span>
+          {/* Single-tab mode: just the tab count digit (current behavior).
+              Batch mode (≥2 tabs): inline mini progress glyphs so the
+              teacher sees how many bài are duyệt-xong without opening
+              the drawer. Same visual language as the drawer header pill
+              for consistency. ⊙ = AI graded, waiting teacher review. */}
+          {(() => {
+            if (tabs.length <= 1) {
+              return (
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: T.textSoft,
+                    fontFamily: `"Inter", "Outfit", system-ui, -apple-system, sans-serif`,
+                  }}
+                >
+                  {tabs.length}
+                </span>
+              );
+            }
+            const total = tabs.length;
+            const finalizedCount = tabs.filter((tt) => tt.finalized).length;
+            const awaitingReview = tabs.filter(
+              (tt) => tt.hasGrade && !tt.finalized,
+            ).length;
+            const generatingCount = tabs.filter((tt) => tt.phase === "generating").length;
+            const failedCount = tabs.filter((tt) => tt.error).length;
+
+            const isAllDone = finalizedCount === total;
+
+            return (
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  userSelect: "none",
+                  marginLeft: 4,
+                }}
+              >
+                {/* 1. Progress badge (Approved / Total) */}
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "3px 8px",
+                    background: isAllDone ? "rgba(46, 125, 91, 0.06)" : "rgba(44, 46, 58, 0.04)",
+                    border: `1px solid ${isAllDone ? "rgba(46, 125, 91, 0.15)" : T.borderLight}`,
+                    borderRadius: 999,
+                    color: isAllDone ? T.green : T.textSoft,
+                    fontSize: 11,
+                    fontFamily: T.font,
+                    fontWeight: 600,
+                  }}
+                >
+                  <Icon.Check size={10} color={isAllDone ? T.green : T.textMute} style={{ strokeWidth: 3 }} />
+                  <span>
+                    {finalizedCount}/{total} {String(t.done ?? "Xong")}
+                  </span>
+                </span>
+
+                {/* 2. Awaiting review badge */}
+                {awaitingReview > 0 && (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "3px 8px",
+                      background: "rgba(192, 139, 48, 0.06)",
+                      border: `1px solid rgba(192, 139, 48, 0.15)`,
+                      borderRadius: 999,
+                      color: T.amber,
+                      fontSize: 11,
+                      fontFamily: T.font,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 5,
+                        height: 5,
+                        borderRadius: "50%",
+                        background: T.amber,
+                      }}
+                    />
+                    <span>
+                      {awaitingReview} chờ duyệt
+                    </span>
+                  </span>
+                )}
+
+                {/* 3. Generating badge */}
+                {generatingCount > 0 && (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "3px 8px",
+                      background: "rgba(59, 79, 138, 0.06)",
+                      border: `1px solid rgba(59, 79, 138, 0.15)`,
+                      borderRadius: 999,
+                      color: T.accent,
+                      fontSize: 11,
+                      fontFamily: T.font,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <Icon.RefreshCw
+                      size={10}
+                      color={T.accent}
+                      style={{
+                        animation: "spin 1.5s linear infinite",
+                      }}
+                    />
+                    <span>
+                      {generatingCount} đang chấm
+                    </span>
+                  </span>
+                )}
+
+                {/* 4. Failed badge */}
+                {failedCount > 0 && (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "3px 8px",
+                      background: "rgba(184, 66, 58, 0.06)",
+                      border: `1px solid rgba(184, 66, 58, 0.15)`,
+                      borderRadius: 999,
+                      color: T.red,
+                      fontSize: 11,
+                      fontFamily: T.font,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <Icon.AlertTriangle size={10} color={T.red} />
+                    <span>
+                      {failedCount} lỗi
+                    </span>
+                  </span>
+                )}
+              </div>
+            );
+          })()}
         </button>
       )}
 
@@ -273,38 +429,35 @@ export function TabBar({
                 </button>
               </div>
             ) : null}
-            {/* Tabs section header — eyebrow + add. The ← back button
-                that used to live here was a duplicate of the drawer's
-                top-right × so we dropped it. */}
+            {/* Tabs section header — eyebrow + add. */}
             <div
               style={{
-                padding: "12px 12px 4px 16px",
+                padding: "12px 12px 6px 16px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: 12,
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 700,
-                    color: T.text,
-                    fontFamily: `"Outfit", "Inter", system-ui, -apple-system, sans-serif`,
-                    letterSpacing: "-0.01em",
-                  }}
-                >
-                  {String(t.documentTabs ?? "Các bài làm đang mở")}
-                </span>
-              </div>
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: T.textMute,
+                  fontFamily: `"Outfit", "Inter", system-ui, -apple-system, sans-serif`,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {String(t.documentTabs ?? "Các bài làm đang mở")}
+              </span>
 
               {/* Add tab button */}
               <button
                 type="button"
                 onClick={() => {
                   onAdd();
-                  // Optional: do not auto-close sidebar so they can add multiple tabs
                 }}
                 onMouseEnter={() => setHoveredAdd(true)}
                 onMouseLeave={() => setHoveredAdd(false)}
@@ -320,12 +473,146 @@ export function TabBar({
                   alignItems: "center",
                   justifyContent: "center",
                   transition: "all 0.15s ease",
+                  flexShrink: 0,
                 }}
                 title={String(t.newEssay ?? "Thêm bài mới")}
               >
-                <PlusIcon size={16} />
+                <PlusIcon size={14} />
               </button>
             </div>
+
+            {/* Batch progress section */}
+            {tabs.length > 1 && (() => {
+              const finalizedCount = tabs.filter((tt) => tt.finalized).length;
+              const awaitingReview = tabs.filter(
+                (tt) => tt.hasGrade && !tt.finalized,
+              ).length;
+              const generatingCount = tabs.filter((tt) => tt.phase === "generating").length;
+              const failedCount = tabs.filter((tt) => tt.error).length;
+              const total = tabs.length;
+              const isAllDone = finalizedCount === total;
+
+              return (
+                <div
+                  style={{
+                    padding: "2px 16px 8px 16px",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    gap: 6,
+                    borderBottom: `1px solid ${T.borderLight}`,
+                    marginBottom: 8,
+                  }}
+                >
+                  {/* 1. Progress badge (Approved / Total) */}
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "3px 8px",
+                      background: isAllDone ? "rgba(46, 125, 91, 0.06)" : "rgba(44, 46, 58, 0.04)",
+                      border: `1px solid ${isAllDone ? "rgba(46, 125, 91, 0.15)" : T.borderLight}`,
+                      borderRadius: 999,
+                      color: isAllDone ? T.green : T.textSoft,
+                      fontSize: 11,
+                      fontFamily: T.font,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <Icon.Check size={10} color={isAllDone ? T.green : T.textMute} style={{ strokeWidth: 3 }} />
+                    <span>
+                      {finalizedCount}/{total} {String(t.done ?? "Xong")}
+                    </span>
+                  </span>
+
+                  {/* 2. Awaiting review badge */}
+                  {awaitingReview > 0 && (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "3px 8px",
+                        background: "rgba(192, 139, 48, 0.06)",
+                        border: `1px solid rgba(192, 139, 48, 0.15)`,
+                        borderRadius: 999,
+                        color: T.amber,
+                        fontSize: 11,
+                        fontFamily: T.font,
+                        fontWeight: 600,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 5,
+                          height: 5,
+                          borderRadius: "50%",
+                          background: T.amber,
+                        }}
+                      />
+                      <span>
+                        {awaitingReview} chờ duyệt
+                      </span>
+                    </span>
+                  )}
+
+                  {/* 3. Generating badge */}
+                  {generatingCount > 0 && (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "3px 8px",
+                        background: "rgba(59, 79, 138, 0.06)",
+                        border: `1px solid rgba(59, 79, 138, 0.15)`,
+                        borderRadius: 999,
+                        color: T.accent,
+                        fontSize: 11,
+                        fontFamily: T.font,
+                        fontWeight: 600,
+                      }}
+                    >
+                      <Icon.RefreshCw
+                        size={10}
+                        color={T.accent}
+                        style={{
+                          animation: "spin 1.5s linear infinite",
+                        }}
+                      />
+                      <span>
+                        {generatingCount} đang chấm
+                      </span>
+                    </span>
+                  )}
+
+                  {/* 4. Failed badge */}
+                  {failedCount > 0 && (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "3px 8px",
+                        background: "rgba(184, 66, 58, 0.06)",
+                        border: `1px solid rgba(184, 66, 58, 0.15)`,
+                        borderRadius: 999,
+                        color: T.red,
+                        fontSize: 11,
+                        fontFamily: T.font,
+                        fontWeight: 600,
+                      }}
+                    >
+                      <Icon.AlertTriangle size={10} color={T.red} />
+                      <span>
+                        {failedCount} lỗi
+                      </span>
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* List section */}
             <div
@@ -340,46 +627,79 @@ export function TabBar({
             >
               {(() => {
                 const batchCount = tabs.filter((t) => t.canRun && t.phase === "idle").length;
-                if (batchCount === 0) return null;
+                if (tabs.length <= 1) return null;
+                const isDisabled = batchCount === 0;
+
                 return (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      window.dispatchEvent(new CustomEvent("hitl.startBatchGrading"));
-                    }}
-                    onMouseEnter={() => setHoveredBatch(true)}
-                    onMouseLeave={() => setHoveredBatch(false)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 8,
-                      width: "100%",
-                      padding: "10px 16px",
-                      background: hoveredBatch
-                        ? `linear-gradient(135deg, ${T.accentLight} 0%, ${T.accent} 100%)`
-                        : `linear-gradient(135deg, ${T.accent} 0%, ${T.accentLight} 100%)`,
-                      border: "none",
-                      borderRadius: 8,
-                      color: "#FFFDF8",
-                      fontSize: 13,
-                      fontWeight: 600,
-                      fontFamily: `"Inter", "Outfit", sans-serif`,
-                      cursor: "pointer",
-                      boxShadow: "0 4px 14px rgba(59, 79, 138, 0.25)",
-                      transition: "all 0.2s ease",
-                      marginBottom: 10,
-                    }}
-                  >
-                    <Icon.Bot size={16} color="#FFFDF8" />
-                    <span>Chấm Hàng Loạt ({batchCount} bài)</span>
-                  </button>
+                  <div style={{ marginBottom: 10 }}>
+                    <button
+                      type="button"
+                      disabled={isDisabled}
+                      onClick={() => {
+                        if (!isDisabled) {
+                          window.dispatchEvent(new CustomEvent("hitl.startBatchGrading"));
+                        }
+                      }}
+                      onMouseEnter={() => !isDisabled && setHoveredBatch(true)}
+                      onMouseLeave={() => setHoveredBatch(false)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        width: "100%",
+                        padding: "10px 16px",
+                        background: isDisabled
+                          ? "rgba(44, 46, 58, 0.04)"
+                          : hoveredBatch
+                            ? `linear-gradient(135deg, ${T.accentLight} 0%, ${T.accent} 100%)`
+                            : `linear-gradient(135deg, ${T.accent} 0%, ${T.accentLight} 100%)`,
+                        border: `1px solid ${isDisabled ? T.border : "transparent"}`,
+                        borderRadius: 8,
+                        color: isDisabled ? T.textMute : "#FFFDF8",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        fontFamily: `"Inter", "Outfit", sans-serif`,
+                        cursor: isDisabled ? "not-allowed" : "pointer",
+                        boxShadow: isDisabled ? "none" : "0 4px 14px rgba(59, 79, 138, 0.25)",
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      <Icon.Bot size={16} color={isDisabled ? T.textMute : "#FFFDF8"} />
+                      <span>Chấm Hàng Loạt ({batchCount} bài)</span>
+                    </button>
+                    {isDisabled && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: T.textMute,
+                          textAlign: "center",
+                          marginTop: 6,
+                          fontStyle: "italic",
+                          lineHeight: 1.35,
+                          padding: "0 4px",
+                        }}
+                      >
+                        Vui lòng tải lên Đề bài + Bài làm cho các tab để kích hoạt.
+                      </div>
+                    )}
+                  </div>
                 );
               })()}
               {tabs.map((tab, i) => {
                 const isActive = tab.id === activeId;
                 const isHovered = hoveredTabId === tab.id;
 
+                // Status icon — meaningful states for batch grading:
+                //   • generating    — AI is running (amber spinner)
+                //   • error         — pipeline failed (red AlertTriangle)
+                //   • finalized     — teacher finished review (solid green check)
+                //   • hasGrade only — AI done, awaiting teacher review (amber check)
+                //   • idle          — nothing yet (neutral file)
+                // Failure check sits BEFORE finalized/hasGrade because at
+                // a Gemini failure, ``hasGrade`` stays false but ``error``
+                // becomes truthy — we want the red icon to dominate over
+                // any stale "in progress" state.
                 let statusIcon;
                 if (tab.phase === "generating") {
                   statusIcon = (
@@ -392,7 +712,17 @@ export function TabBar({
                       }}
                     />
                   );
-                } else if (tab.hasGrade) {
+                } else if (tab.error) {
+                  statusIcon = (
+                    <Icon.AlertTriangle
+                      size={13}
+                      color={T.red}
+                      style={{
+                        flexShrink: 0,
+                      }}
+                    />
+                  );
+                } else if (tab.finalized) {
                   statusIcon = (
                     <Icon.Check
                       size={12}
@@ -400,6 +730,17 @@ export function TabBar({
                       style={{
                         flexShrink: 0,
                         strokeWidth: 3.5,
+                      }}
+                    />
+                  );
+                } else if (tab.hasGrade) {
+                  statusIcon = (
+                    <Icon.Check
+                      size={12}
+                      color={T.amber}
+                      style={{
+                        flexShrink: 0,
+                        strokeWidth: 2.5,
                       }}
                     />
                   );

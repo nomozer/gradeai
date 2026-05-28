@@ -120,6 +120,7 @@ class AgentOrchestrator:
         task_pdf_b64: str | None = None,
         parent_run_id: int | None = None,
         subject: str | None = None,
+        answer_key: str | None = None,
         **_ignored: Any,
     ) -> PipelineResult:
         """Execute the end-to-end VLM Grading pipeline (single Gemini call).
@@ -140,6 +141,9 @@ class AgentOrchestrator:
                            re-grade (forms a chain for research metrics).
             subject:       Optional subject hint ("math" / "cs"). Falls back
                            to keyword-detection + DEFAULT_SUBJECT.
+            answer_key:    Optional plain-text answer key / bareme extracted
+                           from a teacher-uploaded PDF. Injected into the
+                           prompt so the Grader can score against it.
         """
         # File rasterization (PDFs can take 1-3s) is independent of the
         # prompt assembly (SQLite + Chroma lookups). Run them concurrently
@@ -156,6 +160,7 @@ class AgentOrchestrator:
                 feedback=feedback,
                 wrong_code=wrong_code,
                 subject=subject,
+                answer_key=answer_key,
             ),
         )
 

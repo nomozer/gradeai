@@ -10,6 +10,7 @@ export interface GenerateRequest {
   image_b64?: string | null;
   task_pdf_b64?: string | null;
   subject?: BackendSubject | null;
+  answer_key_pdf_b64?: string | null;
 }
 
 export interface RegradeRequest {
@@ -22,6 +23,7 @@ export interface RegradeRequest {
   task_pdf_b64?: string | null;
   run_id?: number | null;
   subject?: BackendSubject | null;
+  answer_key_pdf_b64?: string | null;
 }
 
 export function generate(
