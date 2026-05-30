@@ -320,7 +320,7 @@ function AnnotatedAnswer({
   // gracefully (no verdict ⇒ treated like a pending state but doesn't
   // block step 4 finalize; the comment still stages as before).
   const analyzeAnnotation = useCallback(
-    async (id: string, cau: number, comment: string) => {
+    async (id: string, cau: number, comment: string, quote?: string) => {
       const q = questions.find((qq) => qq.num === cau);
       if (!q || !onUpdateAnnotation) return;
       // Pull the câu's first line as the question label and the rest as
@@ -337,12 +337,33 @@ function AnnotatedAnswer({
           question: questionLabel,
           student_answer: studentWork,
           teacher_comment: comment,
+          quote: quote,
         });
         if (!mountedRef.current) return;
+
+        // Auto-assign pedagogical color based on AI category response if not manually overridden by teacher
+        const currentAnn = (teacherAnnotations ?? []).find((a) => a.id === id);
+        const hasCustomColor = currentAnn && currentAnn.color;
+
+        // Map backend category strings to frontend highlight color strings
+        const categoryToColor: Record<string, "red" | "green" | "purple" | "orange" | "pink" | "mint" | "yellow" | "blue"> = {
+          error: "red",
+          good: "green",
+          reasoning: "purple",
+          expression: "orange",
+          creative: "pink",
+          interesting: "mint",
+          notice: "yellow",
+          other: "blue",
+        };
+        const mappedColor = data.category ? categoryToColor[data.category] : undefined;
+        const autoColor = (!hasCustomColor && mappedColor) ? mappedColor : undefined;
+
         onUpdateAnnotation(id, {
           verdict: (data.verdict as CommentVerdict) || "agree",
           analysis: (data.analysis || "").trim(),
           lesson: (data.lesson || "").trim(),
+          ...(autoColor ? { color: autoColor } : {}),
         });
       } catch (err) {
         console.warn("[step3] analyze-comment failed:", err);
@@ -359,7 +380,7 @@ function AnnotatedAnswer({
         }
       }
     },
-    [questions, onUpdateAnnotation],
+    [questions, onUpdateAnnotation, teacherAnnotations],
   );
 
   const handleMouseUp = useCallback(() => {
@@ -478,6 +499,25 @@ function AnnotatedAnswer({
     setActiveAnnId(id);
   };
 
+  const commitPendingHighlight = (color: "yellow" | "green" | "blue" | "red" | "purple" | "orange" | "pink" | "mint") => {
+    if (!pending || !onAddAnnotation) return;
+    const id = `ann_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    onAddAnnotation({
+      id,
+      cau: pending.cau,
+      lineIdx: pending.lineIdx,
+      endLineIdx: pending.endLineIdx,
+      quote: pending.quote,
+      comment: "",
+      color,
+    });
+    setPending(null);
+    window.getSelection()?.removeAllRanges();
+    setTimeout(() => {
+      window.getSelection()?.removeAllRanges();
+    }, 50);
+  };
+
   // Locate the active annotation across all câu for the bubble — null
   // means no bubble open.
   const activeAnn = activeAnnId
@@ -485,13 +525,10 @@ function AnnotatedAnswer({
     : null;
 
   // Outside-click dismiss for the bubble. Skips clicks on any <mark>,
-  // inside the bubble itself, AND the selection toolbar — without the
-  // toolbar skip, clicking "Bình luận" to create a 2nd annotation would
-  // race with this handler: button click bubbles up → handler sees the
-  // prior empty annotation → removes it + resets state → final activeAnnId
-  // ends up null and the new bubble never shows. If the teacher leaves
-  // an empty comment behind by clicking truly outside, the annotation is
-  // dropped — keeps the corpus free of placeholder rows.
+  // inside the bubble itself, AND the selection toolbar. If the teacher leaves
+  // an empty comment behind while actively editing it, the annotation is
+  // dropped — keeps the corpus free of placeholder rows. If they are not
+  // editing (highlight-only mode), we preserve it.
   useEffect(() => {
     if (!activeAnnId) return;
     const onDown = (e: MouseEvent) => {
@@ -500,8 +537,8 @@ function AnnotatedAnswer({
       if (target.closest("mark[data-ann-id]")) return;
       if (target.closest("#step3-annotation-bubble")) return;
       if (target.closest("#step3-selection-toolbar")) return;
-      // Discard if the bubble is hosting an unfinished new annotation.
-      if (activeAnn && !activeAnn.comment.trim()) {
+      // Discard if the bubble is hosting an unfinished new annotation that is being edited.
+      if (activeAnn && !activeAnn.comment.trim() && editingId === activeAnn.id && !activeAnn.color) {
         onRemoveAnnotation?.(activeAnn.id);
       }
       setActiveAnnId(null);
@@ -509,14 +546,14 @@ function AnnotatedAnswer({
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [activeAnnId, activeAnn, onRemoveAnnotation]);
+  }, [activeAnnId, activeAnn, editingId, onRemoveAnnotation]);
 
   // Escape closes the bubble (mirrors outside-click).
   useEffect(() => {
     if (!activeAnnId) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (activeAnn && !activeAnn.comment.trim()) {
+      if (activeAnn && !activeAnn.comment.trim() && editingId === activeAnn.id && !activeAnn.color) {
         onRemoveAnnotation?.(activeAnn.id);
       }
       setActiveAnnId(null);
@@ -524,7 +561,7 @@ function AnnotatedAnswer({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [activeAnnId, activeAnn, onRemoveAnnotation]);
+  }, [activeAnnId, activeAnn, editingId, onRemoveAnnotation]);
 
   return (
     <div
@@ -596,7 +633,14 @@ function AnnotatedAnswer({
         <SelectionToolbar
           selectionRange={pending.range}
           onComment={commitPending}
-          onDismiss={() => setPending(null)}
+          onHighlight={commitPendingHighlight}
+          onDismiss={() => {
+            setPending(null);
+            window.getSelection()?.removeAllRanges();
+            setTimeout(() => {
+              window.getSelection()?.removeAllRanges();
+            }, 50);
+          }}
         />
       )}
       {activeAnn && (
@@ -607,15 +651,15 @@ function AnnotatedAnswer({
           t={t}
           onStartEdit={() => setEditingId(activeAnn.id)}
           onCancelEdit={(currentComment) => {
-            if (!currentComment.trim()) {
+            if (!currentComment.trim() && !activeAnn.color) {
               onRemoveAnnotation?.(activeAnn.id);
               setActiveAnnId(null);
             }
             setEditingId(null);
           }}
-          onSave={(comment) => {
+          onSave={(comment, color) => {
             const trimmed = comment.trim();
-            if (!trimmed) {
+            if (!trimmed && !color) {
               onRemoveAnnotation?.(activeAnn.id);
               setActiveAnnId(null);
               setEditingId(null);
@@ -623,13 +667,16 @@ function AnnotatedAnswer({
             }
             onUpdateAnnotation?.(activeAnn.id, {
               comment: trimmed,
+              color,
               verdict: undefined,
               analysis: undefined,
               lesson: undefined,
               disputeDecision: undefined,
             });
             setEditingId(null);
-            void analyzeAnnotation(activeAnn.id, activeAnn.cau, trimmed);
+            if (trimmed) {
+              void analyzeAnnotation(activeAnn.id, activeAnn.cau, trimmed, activeAnn.quote);
+            }
           }}
           onRemove={() => {
             onRemoveAnnotation?.(activeAnn.id);
@@ -652,30 +699,76 @@ function AnnotatedAnswer({
 // muted grey because the lesson is intentionally dropped.
 function highlightColors(ann: SelectionAnnotation, active: boolean): {
   bg: string;
-  borderColor?: string;
   strike?: boolean;
 } {
-  // No verdict yet (analyzing or backend error) → default vibrant highlighter yellow.
+  // If custom color is explicitly selected (e.g. Highlight only annotations)
+  if (ann.color) {
+    if (ann.color === "green") {
+      return {
+        bg: active ? "#76EDB2" : "#C6F6D5",
+      };
+    }
+    if (ann.color === "red") {
+      return {
+        bg: active ? "#FF8A80" : "#FFCDD2",
+      };
+    }
+    if (ann.color === "yellow") {
+      return {
+        bg: active ? "#FFE082" : "#FFF59D",
+      };
+    }
+    if (ann.color === "blue") {
+      return {
+        bg: active ? "#A1C2FA" : "#C4E2FF",
+      };
+    }
+    if (ann.color === "purple") {
+      return {
+        bg: active ? "#D5B4F1" : "#E8D5F6",
+      };
+    }
+    if (ann.color === "orange") {
+      return {
+        bg: active ? "#FFCC80" : "#FFE0B2",
+      };
+    }
+    if (ann.color === "pink") {
+      return {
+        bg: active ? "#F48FB1" : "#FBCFE8",
+      };
+    }
+    if (ann.color === "mint") {
+      return {
+        bg: active ? "#80CBC4" : "#E0F2F1",
+      };
+    }
+  }
+
+  // 1. Chưa có verdict (đang tạo mới, đang nhập nhận xét, hoặc đang chờ AI phân tích) -> màu vàng
   if (!ann.verdict) {
-    return { bg: active ? "#FDE68A" : "#FFFDF0" };
+    return {
+      bg: active ? "#FFE082" : "#FFF59D",
+    };
   }
-  if (ann.verdict === "dispute" && ann.disputeDecision === "skip") {
-    return { bg: active ? "#D1D5DB" : "#F3F4F6" };
-  }
+
+  // 2. AI đồng ý -> green
   if (ann.verdict === "agree") {
-    return { bg: active ? "#A7F3D0" : "#ECFDF5" };
+    return {
+      bg: active ? "#76EDB2" : "#C6F6D5",
+    };
   }
-  if (ann.verdict === "partial") {
-    return { bg: active ? "#FDE68A" : "#FEF3C7" };
+
+  // 3. AI phản biện (chưa giải quyết) -> xanh dương/indigo
+  if (ann.verdict === "dispute" && !ann.disputeDecision) {
+    return {
+      bg: active ? "#A1C2FA" : "#C4E2FF",
+    };
   }
-  // dispute (pending or applied) — indigo, deliberately NOT red. A
-  // dispute flags that the AI disagrees with the *teacher's* comment;
-  // red on the transcript would misread as "the student got this wrong".
-  // Indigo = "contested — review this". Applied gets a border so the
-  // teacher sees their override is locked in.
+
+  // 4. Còn lại -> đỏ (đồng ý một phần, hoặc đã chọn Áp dụng/Bỏ qua phản biện)
   return {
-    bg: active ? "#C7D2FE" : "#EEF2FF",
-    borderColor: ann.disputeDecision === "apply" ? "#3730A3" : undefined,
+    bg: active ? "#FF8A80" : "#FFCDD2",
   };
 }
 
@@ -786,15 +879,12 @@ function renderLineWithHighlights(
         style={{
           background: colors.bg,
           color: T.text,
-          padding: "1px 4px",
+          padding: "1.5px 4px",
           margin: "0 1px",
           borderRadius: 3,
           cursor: "pointer",
           transition: "background 0.12s",
           textDecoration: colors.strike ? "line-through" : "none",
-          border: colors.borderColor
-            ? `1px solid ${colors.borderColor}`
-            : "1px solid transparent",
         }}
       >
         {formatLine(seg.text, `rh-${lineIdx}-m${i}`)}
@@ -845,13 +935,16 @@ function renderLineWithHighlights(
 function SelectionToolbar({
   selectionRange,
   onComment,
+  onHighlight,
   onDismiss,
 }: {
   selectionRange: Range;
   onComment: () => void;
+  onHighlight: (color: "yellow" | "green" | "blue" | "red" | "purple" | "orange" | "pink" | "mint") => void;
   onDismiss: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [showColors, setShowColors] = useState(false);
   const [pos, setPos] = useState<{ left: number; top: number }>({
     left: -9999,
     top: -9999,
@@ -909,6 +1002,7 @@ function SelectionToolbar({
         fontFamily: T.font,
       }}
     >
+      {/* 1. Bình luận */}
       <button
         type="button"
         onMouseDown={(e) => {
@@ -931,24 +1025,173 @@ function SelectionToolbar({
           fontFamily: T.font,
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.background = "#FBEEEA";
+          e.currentTarget.style.background = T.bgHover;
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.background = T.bgCard;
         }}
       >
-        <span
-          style={{
-            display: "inline-block",
-            width: 12,
-            height: 12,
-            background: "#FBEEEA",
-            border: `1px solid ${T.accent}`,
-            borderRadius: 2,
-          }}
-        />
+        <svg
+          width={12}
+          height={12}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ color: T.accent }}
+        >
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
         Bình luận
       </button>
+
+      {/* Vertical divider */}
+      <div style={{ width: 1, height: 16, background: T.border, margin: "0 2px" }} />
+
+      {/* 2. Tô sáng Dropdown Button */}
+      <div style={{ position: "relative", display: "inline-flex" }}>
+        <button
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setShowColors((prev) => !prev);
+          }}
+          title="Chọn màu tô sáng..."
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "6px 12px",
+            fontSize: 12.5,
+            fontWeight: 500,
+            color: T.text,
+            background: showColors ? T.bgHover : T.bgCard,
+            border: "none",
+            borderRadius: 6,
+            cursor: "pointer",
+            fontFamily: T.font,
+          }}
+          onMouseEnter={(e) => {
+            if (!showColors) e.currentTarget.style.background = T.bgHover;
+          }}
+          onMouseLeave={(e) => {
+            if (!showColors) e.currentTarget.style.background = T.bgCard;
+          }}
+        >
+          <svg
+            width={12}
+            height={12}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ color: "#F59E0B" }}
+          >
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+          </svg>
+          Tô sáng
+          <span style={{ fontSize: 9, opacity: 0.6, marginLeft: 2 }}>▼</span>
+        </button>
+
+        {showColors && (
+          <div
+            id="step3-selection-toolbar-palette"
+            style={{
+              position: "absolute",
+              top: "100%",
+              left: "50%",
+              transform: "translateX(-50%)",
+              marginTop: 6,
+              background: T.paper,
+              border: `1px solid ${T.border}`,
+              borderRadius: 8,
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+              display: "grid",
+              gridTemplateColumns: "repeat(5, 1fr)",
+              gap: 6,
+              padding: 8,
+              zIndex: 60,
+              animation: "fadeUp 0.12s ease-out",
+            }}
+          >
+            {/* White X block */}
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onComment(); // Default yellow comment with editing card opened
+                setShowColors(false);
+              }}
+              title="Thêm bình luận (Mặc định không màu)"
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 4,
+                background: "#FFFDF8",
+                border: "1px solid #D1D5DB",
+                cursor: "pointer",
+                padding: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 14,
+                fontWeight: 800,
+                color: "#EF4444",
+                transition: "all 0.12s ease",
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.12)"}
+              onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
+            >
+              ×
+            </button>
+
+            {/* 8 Custom Color Blocks */}
+            {[
+              { value: "yellow", color: "#FFF59D", title: "Màu vàng (Lưu ý)" },
+              { value: "green", color: "#C6F6D5", title: "Màu xanh lá (Đúng / Tốt)" },
+              { value: "blue", color: "#C4E2FF", title: "Màu xanh dương (Khác)" },
+              { value: "red", color: "#FFCDD2", title: "Màu đỏ (Lỗi sai)" },
+              { value: "purple", color: "#E8D5F6", title: "Màu tím (Lập luận)" },
+              { value: "orange", color: "#FFE0B2", title: "Màu cam (Diễn đạt)" },
+              { value: "pink", color: "#FBCFE8", title: "Màu hồng (Sáng tạo)" },
+              { value: "mint", color: "#E0F2F1", title: "Màu xanh bạc hà (Ý hay)" },
+            ].map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onHighlight(p.value as any);
+                  setShowColors(false);
+                }}
+                title={p.title}
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: 4,
+                  background: p.color,
+                  border: "1px solid #D1D5DB",
+                  cursor: "pointer",
+                  padding: 0,
+                  transition: "transform 0.12s",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.12)"}
+                onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Vertical divider */}
+      <div style={{ width: 1, height: 16, background: T.border, margin: "0 2px" }} />
+
+      {/* 3. Dismiss */}
       <button
         type="button"
         onMouseDown={(e) => {
@@ -965,11 +1208,34 @@ function SelectionToolbar({
           color: T.textFaint,
           cursor: "pointer",
           padding: 0,
-          fontSize: 14,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
           borderRadius: 4,
+          transition: "color 0.12s, background 0.12s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = T.text;
+          e.currentTarget.style.background = T.bgHover;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = T.textFaint;
+          e.currentTarget.style.background = "transparent";
         }}
       >
-        ×
+        <svg
+          width={10}
+          height={10}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={3}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
       </button>
     </div>
   );
@@ -996,7 +1262,7 @@ function AnnotationBubble({
   analyzing: boolean;
   onStartEdit: () => void;
   onCancelEdit: (currentComment: string) => void;
-  onSave: (comment: string) => void;
+  onSave: (comment: string, color?: "yellow" | "green" | "blue" | "red" | "purple" | "orange" | "pink" | "mint") => void;
   onRemove: () => void;
   onDecideDispute: (decision: "apply" | "skip") => void;
   t: I18nStrings;
@@ -1234,15 +1500,18 @@ function AnnotationCard({
   analyzing: boolean;
   onStartEdit: () => void;
   onCancelEdit: (currentComment: string) => void;
-  onSave: (comment: string) => void;
+  onSave: (comment: string, color?: "yellow" | "green" | "blue" | "red" | "purple" | "orange" | "pink" | "mint") => void;
   onRemove: () => void;
   onDecideDispute: (decision: "apply" | "skip") => void;
   t: I18nStrings;
 }) {
   const [draft, setDraft] = useState(ann.comment);
+  const [selectedColor, setSelectedColor] = useState<"yellow" | "green" | "blue" | "red" | "purple" | "orange" | "pink" | "mint" | undefined>(ann.color);
+
   useEffect(() => {
     setDraft(ann.comment);
-  }, [ann.comment, editing]);
+    setSelectedColor(ann.color);
+  }, [ann.comment, ann.color, editing]);
 
   // Explicit input-focus on each entry into edit mode. ``autoFocus`` only
   // fires on the input's first mount; without this effect, re-entering
@@ -1276,66 +1545,68 @@ function AnnotationCard({
       }}
     >
       {editing ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: T.textMute,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              fontFamily: T.display,
-            }}
-          >
-            {String(t.teacherCommentLabel ?? "Nhận xét của giáo viên")}
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", width: "100%" }}>
-            <input
-              ref={inputRef}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  onSave(draft);
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  onCancelEdit(draft);
-                }
-              }}
-              placeholder="Ghi nhận xét của bạn…"
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div
               style={{
-                flex: 1,
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: `1px solid ${T.border}`,
-                background: "#FFFDF8",
-                fontFamily: T.font,
-                fontSize: 14,
-                color: T.text,
-                outline: "none",
-                boxShadow: "inset 0 1px 2px rgba(0,0,0,0.02)",
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => onSave(draft)}
-              disabled={!draft.trim()}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 8,
-                border: "none",
-                background: draft.trim() ? T.green : "#EBE7DF",
-                color: draft.trim() ? "#fff" : T.textMute,
-                fontFamily: T.font,
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: draft.trim() ? "pointer" : "not-allowed",
-                transition: "all 0.15s ease",
+                fontSize: 11,
+                fontWeight: 700,
+                color: T.textMute,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                fontFamily: T.display,
               }}
             >
-              Lưu
-            </button>
+              {String(t.teacherCommentLabel ?? "Nhận xét của giáo viên")}
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", width: "100%" }}>
+              <input
+                ref={inputRef}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    onSave(draft, selectedColor);
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    onCancelEdit(draft);
+                  }
+                }}
+                placeholder="Ghi nhận xét của bạn..."
+                style={{
+                  flex: 1,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: `1px solid ${T.border}`,
+                  background: "#FFFDF8",
+                  fontFamily: T.font,
+                  fontSize: 14,
+                  color: T.text,
+                  outline: "none",
+                  boxShadow: "inset 0 1px 2px rgba(0,0,0,0.02)",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => onSave(draft, selectedColor)}
+                disabled={!draft.trim() && !selectedColor}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: (draft.trim() || selectedColor) ? T.green : "#EBE7DF",
+                  color: (draft.trim() || selectedColor) ? "#fff" : T.textMute,
+                  fontFamily: T.font,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: (draft.trim() || selectedColor) ? "pointer" : "not-allowed",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                Lưu
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -1348,9 +1619,79 @@ function AnnotationCard({
               letterSpacing: "0.06em",
               textTransform: "uppercase",
               fontFamily: T.display,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              width: "100%"
             }}
           >
-            {String(t.teacherCommentLabel ?? "Nhận xét của giáo viên")}
+            <span>{String(t.teacherCommentLabel ?? "Nhận xét của giáo viên")}</span>
+            {ann.color && (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color:
+                    ann.color === "green" ? "#10B981" :
+                    ann.color === "red" ? "#EF4444" :
+                    ann.color === "yellow" ? "#D97706" :
+                    ann.color === "blue" ? "#2563EB" :
+                    ann.color === "purple" ? "#7C3AED" :
+                    ann.color === "orange" ? "#EA580C" :
+                    ann.color === "pink" ? "#DB2777" :
+                    "#0D9488",
+                  background:
+                    ann.color === "green" ? "#ECFDF5" :
+                    ann.color === "red" ? "#FEE2E2" :
+                    ann.color === "yellow" ? "#FEF3C7" :
+                    ann.color === "blue" ? "#EFF6FF" :
+                    ann.color === "purple" ? "#F5F3FF" :
+                    ann.color === "orange" ? "#FFF7ED" :
+                    ann.color === "pink" ? "#FDF2F8" :
+                    "#F0FDFA",
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  border: `1px solid ${
+                    ann.color === "green" ? "#A7F3D0" :
+                    ann.color === "red" ? "#FECACA" :
+                    ann.color === "yellow" ? "#FDE68A" :
+                    ann.color === "blue" ? "#BFDBFE" :
+                    ann.color === "purple" ? "#DDD6FE" :
+                    ann.color === "orange" ? "#FFEDD5" :
+                    ann.color === "pink" ? "#FBCFE8" :
+                    "#CCFBF1"
+                  }`,
+                }}
+              >
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background:
+                      ann.color === "green" ? "#10B981" :
+                      ann.color === "red" ? "#EF4444" :
+                      ann.color === "yellow" ? "#F59E0B" :
+                      ann.color === "blue" ? "#3B82F6" :
+                      ann.color === "purple" ? "#8B5CF6" :
+                      ann.color === "orange" ? "#F97316" :
+                      ann.color === "pink" ? "#EC4899" :
+                      "#14B8A6",
+                  }}
+                />
+                {ann.color === "green" ? "Đúng / Tốt" :
+                 ann.color === "red" ? "Lỗi sai" :
+                 ann.color === "yellow" ? "Lưu ý" :
+                 ann.color === "blue" ? "Khác" :
+                 ann.color === "purple" ? "Lập luận" :
+                 ann.color === "orange" ? "Diễn đạt" :
+                 ann.color === "pink" ? "Sáng tạo" :
+                 "Ý hay"}
+              </span>
+            )}
           </div>
           <div
             style={{
@@ -1378,7 +1719,7 @@ function AnnotationCard({
             >
               {ann.comment || (
                 <span style={{ color: T.textFaint, fontStyle: "italic", fontWeight: 400 }}>
-                  Bấm để thêm nhận xét...
+                  Tô sáng đơn thuần (Bấm để viết bình luận...)
                 </span>
               )}
             </span>
@@ -1825,21 +2166,35 @@ export function StepReview({
       <ActionBar
         status="Bạn là người chấm cuối. AI chỉ đề xuất."
         scoreSlot={
-          grade ? (
-            <ScoreInline
-              grade={grade}
-              finalScores={finalScores ?? {}}
-              maxOverrides={{}}
-              finalized={!!finalized}
-              confidence={pipeline.confidence}
-            />
-          ) : undefined
+          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+            {grade && (
+              <ScoreInline
+                grade={grade}
+                finalScores={finalScores ?? {}}
+                maxOverrides={{}}
+                finalized={!!finalized}
+                confidence={pipeline.confidence}
+              />
+            )}
+            {grade && (
+              <span
+                aria-hidden
+                style={{
+                  width: 1,
+                  height: 24,
+                  background: T.border,
+                  opacity: 0.6,
+                  flex: "0 0 auto",
+                }}
+              />
+            )}
+            <GhostButton onClick={onPrev}>
+              <Icon.ArrowLeft size={14} />
+              {String(t.backToUpload ?? "Quay lại")}
+            </GhostButton>
+          </div>
         }
       >
-        <GhostButton onClick={onPrev}>
-          <Icon.ArrowLeft size={14} />
-          Tải bài khác
-        </GhostButton>
         <PrimaryButton
           onClick={onFinish}
           disabled={pipeline.phase === "generating"}

@@ -172,4 +172,6 @@ export const vi: I18nStrings = {
   uploadFileBtn: "Tải PDF lên",
   answerKeyUploadedTitle: "Đã tích hợp Đáp án",
   activeLabel: "Đang dùng",
+  backToUpload: "Quay lại",
+  editGrade: "Sửa lại",
 };

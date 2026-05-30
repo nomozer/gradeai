@@ -605,6 +605,7 @@ async def analyze_comment(req: AnalyzeCommentRequest):
             question=req.question,
             student_answer=req.student_answer,
             teacher_comment=req.teacher_comment,
+            quote=req.quote,
         )
         lesson_text = result.get("lesson", "")
         verdict = result.get("verdict", "agree")
@@ -618,6 +619,7 @@ async def analyze_comment(req: AnalyzeCommentRequest):
             analysis=result.get("analysis", ""),
             lesson=lesson_text,
             verdict=verdict,
+            category=result.get("category"),
         )
     except Exception as exc:
         logger.exception("analyze-comment failed")

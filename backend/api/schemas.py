@@ -143,6 +143,9 @@ class AnalyzeCommentRequest(BaseModel):
     teacher_comment: str = Field(
         ..., min_length=1, description="Teacher's annotation"
     )
+    quote: str | None = Field(
+        default=None, description="The highlighted text context from student answer"
+    )
 
 
 class AnalyzeCommentResponse(BaseModel):
@@ -159,6 +162,11 @@ class AnalyzeCommentResponse(BaseModel):
         '"dispute" means the AI thinks the teacher misread the student work — '
         "the frontend should require explicit confirmation before staging the "
         "lesson into HITL memory.",
+    )
+    category: str | None = Field(
+        default=None,
+        description='AI-detected pedagogical category based on the comment. '
+        'One of "error" | "good" | "reasoning" | "expression" | "creative" | "interesting" | "notice" | "other".'
     )
 
 

@@ -225,6 +225,7 @@ class AgentOrchestrator:
         question: str,
         student_answer: str,
         teacher_comment: str,
+        quote: str | None = None,
     ) -> dict[str, str]:
         """Analyze a teacher's comment and distill it into a reusable lesson.
 
@@ -248,6 +249,7 @@ class AgentOrchestrator:
         prompt = ANALYZE_COMMENT_USER_TEMPLATE.format(
             question=question,
             student_answer=student_answer,
+            quote=quote or "(Giáo viên nhận xét chung cho cả câu, không bôi đen từ khóa cụ thể)",
             teacher_comment=teacher_comment,
         )
         # Cap at 768 tokens — slightly above the 512 used for the simpler

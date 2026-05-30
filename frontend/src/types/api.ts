@@ -63,6 +63,7 @@ export interface AnalyzeCommentResponse {
    *                the lesson into HITL memory
    */
   verdict: "agree" | "partial" | "dispute";
+  category?: "error" | "good" | "reasoning" | "expression" | "creative" | "interesting" | "notice" | "other";
 }
 
 export interface FinalizeGradeResponse {

@@ -180,4 +180,6 @@ export const en: I18nStrings = {
   uploadFileBtn: "Upload PDF",
   answerKeyUploadedTitle: "Answer Key Integrated",
   activeLabel: "Active",
+  backToUpload: "Back",
+  editGrade: "Edit",
 };

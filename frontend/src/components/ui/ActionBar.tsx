@@ -10,6 +10,9 @@ const base: React.CSSProperties = {
   borderRadius: 8,
   display: "inline-flex",
   alignItems: "center",
+  justifyContent: "center",
+  height: 40,
+  boxSizing: "border-box",
   gap: 7,
   cursor: "pointer",
   transition: "all 0.2s ease",
@@ -23,7 +26,7 @@ const base: React.CSSProperties = {
 /* Primary — indigo gradient with glow shadow */
 const primaryStyle = (disabled: boolean): React.CSSProperties => ({
   ...base,
-  padding: "12px 26px",
+  padding: "0 22px",
   color: "#fff",
   background: disabled
     ? T.bgElevated
@@ -39,7 +42,7 @@ const primaryStyle = (disabled: boolean): React.CSSProperties => ({
 /* Secondary — outline accent with subtle fill on hover */
 const secondaryStyle = (disabled: boolean): React.CSSProperties => ({
   ...base,
-  padding: "10px 20px",
+  padding: "0 18px",
   color: disabled ? T.textFaint : T.accent,
   background: T.bgCard,
   border: `1.5px solid ${disabled ? T.borderLight : T.accent}40`,
@@ -50,7 +53,7 @@ const secondaryStyle = (disabled: boolean): React.CSSProperties => ({
 /* Ghost / back — minimal, text-only until hovered */
 const ghostStyle = (disabled: boolean): React.CSSProperties => ({
   ...base,
-  padding: "10px 18px",
+  padding: "0 14px",
   fontWeight: 500,
   color: disabled ? T.textFaint : T.textSoft,
   background: "transparent",

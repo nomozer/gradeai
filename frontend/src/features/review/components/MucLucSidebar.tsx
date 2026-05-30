@@ -236,17 +236,38 @@ export function MucLucSidebar({
                 e.currentTarget.style.background = "transparent";
               }}
             >
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span style={{ display: "inline-flex", alignItems: "center" }}>
                 <span>Câu {q.num}</span>
                 {noteCount > 0 && (
                   <span
                     title={`${noteCount} ghi chú đối soát`}
                     style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
                       fontSize: 11,
-                      color: active ? T.accent : T.textFaint,
+                      fontFamily: T.mono,
+                      fontWeight: 600,
+                      color: active ? T.accent : T.textMute,
+                      marginLeft: 8,
+                      cursor: "help",
                     }}
                   >
-                    · {noteCount}
+                    {/* Minimal outline message icon */}
+                    <svg
+                      width={12}
+                      height={12}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={{ opacity: 0.75 }}
+                    >
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    <span>{noteCount}</span>
                   </span>
                 )}
               </span>

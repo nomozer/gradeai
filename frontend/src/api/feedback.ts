@@ -24,6 +24,7 @@ export interface AnalyzeCommentRequest {
   question: string;
   student_answer: string;
   teacher_comment: string;
+  quote?: string;
 }
 
 export function submitFeedback(

@@ -796,26 +796,36 @@ export function ResultCard({
         {/* ── BOTTOM ACTION BAR (outside card) ──────────────────────── */}
         <ActionBar
           scoreSlot={
-            grade ? (
-              <ScoreInline
-                grade={grade}
-                finalScores={teacherFinalScores ?? {}}
-                maxOverrides={{}}
-                finalized={locked}
-                showCounter={false}
-                confidence={confidence}
-              />
-            ) : undefined
+            <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+              {grade && (
+                <ScoreInline
+                  grade={grade}
+                  finalScores={teacherFinalScores ?? {}}
+                  maxOverrides={{}}
+                  finalized={locked}
+                  showCounter={false}
+                  confidence={confidence}
+                />
+              )}
+              {grade && (
+                <span
+                  aria-hidden
+                  style={{
+                    width: 1,
+                    height: 24,
+                    background: T.border,
+                    opacity: 0.6,
+                    flex: "0 0 auto",
+                  }}
+                />
+              )}
+              <GhostButton onClick={onEdit} disabled={isFinalizing}>
+                <Icon.ArrowLeft size={14} />
+                {String(t.editGrade ?? "Sửa lại")}
+              </GhostButton>
+            </div>
           }
         >
-          <GhostButton
-            onClick={onEdit}
-            disabled={isFinalizing}
-          >
-            <Icon.ArrowLeft size={14} />
-            Sửa lại
-          </GhostButton>
-
           <SecondaryButton
             onClick={handlePrint}
             title="In phiếu chấm — xuất bản giấy với chữ ký và điểm bằng chữ."

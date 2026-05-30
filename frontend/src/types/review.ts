@@ -47,6 +47,7 @@ export interface SelectionAnnotation {
   endLineIdx?: number;
   quote: string;
   comment: string;
+  color?: "yellow" | "green" | "blue" | "red" | "purple" | "orange" | "pink" | "mint";
   /** AI's judgment of teacher's comment vs the student work. Undefined =
    *  not yet analyzed (either freshly created or still in flight). */
   verdict?: CommentVerdict;

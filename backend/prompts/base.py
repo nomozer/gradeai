@@ -211,7 +211,7 @@ def compose_grader_system(rule_8_examples: str, rule_9_crosscheck: str) -> str:
 
 ANALYZE_COMMENT_SYSTEM = (
     "Bạn là trợ lý phân tích AI (Human-in-the-loop). Nhiệm vụ: đối chiếu "
-    "Nhận xét của giáo viên VỚI Câu trả lời học sinh để sinh 3 trường.\n\n"
+    "Nhận xét của giáo viên VỚI Câu trả lời học sinh để sinh 4 trường.\n\n"
     "1. 'verdict' — đúng 1 trong 3 chuỗi:\n"
     "   • 'agree'   — giáo viên nói đúng.\n"
     "   • 'partial' — giáo viên đúng một phần / đúng có điều kiện.\n"
@@ -225,20 +225,30 @@ ANALYZE_COMMENT_SYSTEM = (
     "mệnh lệnh cho AI học lần sau — 'Khi gặp..., cần...' hoặc 'Tránh...'. "
     "PHẢI TỔNG QUÁT, độc lập với bài cụ thể, tái sử dụng được cho các "
     "bài tương tự.\n\n"
+    "4. 'category' — đúng 1 trong các chuỗi sau đại diện cho loại sư phạm của nhận xét:\n"
+    "   • 'error'       — Nhận xét chỉ lỗi sai, sửa sai của học sinh.\n"
+    "   • 'good'        — Nhận xét khen ngợi, khẳng định bài đúng / tốt.\n"
+    "   • 'reasoning'   — Nhận xét liên quan đến tư duy lập luận, chứng minh logic, tính toán.\n"
+    "   • 'expression'  — Nhận xét về cách diễn đạt, dùng từ, viết câu văn, ngữ pháp.\n"
+    "   • 'creative'    — Nhận xét khen ngợi sự sáng tạo, hướng giải quyết độc đáo.\n"
+    "   • 'interesting' — Nhận xét chỉ ra ý hay, lập luận sắc sảo, đáng chú ý.\n"
+    "   • 'notice'      — Nhận xét lưu ý học sinh cần chú ý điều gì đó khi làm bài.\n"
+    "   • 'other'       — Các trường hợp khác hoặc không phân loại được.\n\n"
     "LUẬT HITL theo verdict:\n"
     "   • agree / partial: chắt lọc ý định của giáo viên thành quy tắc — "
     "ghi rõ đây là chuẩn do giáo viên thiết lập.\n"
     "   • dispute: quy tắc PHÒNG VỆ NGƯỢC — bảo vệ AI khỏi mắc cùng lỗi "
     "với giáo viên ('Khi gặp X, KHÔNG kết luận sai chỉ vì thiếu Y'). "
     "TUYỆT ĐỐI KHÔNG chép ý sai của giáo viên thành quy tắc.\n\n"
-    "Trả JSON đúng 3 key: verdict, analysis, lesson. analysis và lesson "
-    "bằng tiếng Việt."
+    "Trả JSON đúng 4 key: verdict, analysis, lesson, category. Tất cả giá trị "
+    "bằng tiếng Việt (ngoại trừ key và giá trị của verdict/category)."
 )
 
 ANALYZE_COMMENT_USER_TEMPLATE = (
     "Đề bài / Câu hỏi:\n{question}\n\n"
     "Câu trả lời học sinh:\n{student_answer}\n\n"
+    "Đoạn văn bản giáo viên bôi đen để nhận xét:\n\"{quote}\"\n\n"
     "Nhận xét của giáo viên:\n{teacher_comment}\n\n"
     'Trả về JSON: {{"verdict": "agree|partial|dispute", '
-    '"analysis": "...", "lesson": "..."}}'
+    '"analysis": "...", "lesson": "...", "category": "error|good|reasoning|expression|creative|interesting|notice|other"}}'
 )

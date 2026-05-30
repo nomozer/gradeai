@@ -23,3 +23,20 @@ def test_analyze_teacher_comment_uses_local_fallback_on_upstream_timeout():
     assert out["verdict"] == "agree"
     assert out["analysis"]
     assert out["lesson"]
+
+def test_analyze_teacher_comment_with_quote_passes_successfully():
+    orchestrator = AgentOrchestrator.__new__(AgentOrchestrator)
+    orchestrator.gemini = TimeoutGemini()
+
+    out = asyncio.run(
+        orchestrator.analyze_teacher_comment(
+            question="Câu 1",
+            student_answer="Phương trình x^2 - 3x + 2 = 0 có nghiệm x = 1 hoặc x = 2.",
+            teacher_comment="Nghiệm đúng.",
+            quote="x = 1 hoặc x = 2",
+        )
+    )
+
+    assert out["verdict"] == "agree"
+    assert out["analysis"]
+    assert out["lesson"]

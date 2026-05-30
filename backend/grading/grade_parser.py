@@ -287,7 +287,7 @@ def _normalize_verdict(raw: str) -> str:
 
 
 def parse_comment_analysis(text: str) -> dict[str, str]:
-    """Parse the analyze-comment JSON (``{verdict, analysis, lesson}``).
+    """Parse the analyze-comment JSON (``{verdict, analysis, lesson, category}``).
 
     Field-level salvage on total failure so the UI never sees ``{`` or
     ``"`` fragments in the chat bubble. ``verdict`` defaults to ``"agree"``
@@ -300,12 +300,14 @@ def parse_comment_analysis(text: str) -> dict[str, str]:
             "verdict": _normalize_verdict(str(parsed.get("verdict", ""))),
             "analysis": str(parsed.get("analysis", "")).strip(),
             "lesson": str(parsed.get("lesson", "")).strip(),
+            "category": str(parsed.get("category", "")).strip(),
         }
     cleaned = _strip_fences(text)
     return {
         "verdict": _normalize_verdict(_extract_field(cleaned, "verdict")),
         "analysis": _extract_field(cleaned, "analysis").strip(),
         "lesson": _extract_field(cleaned, "lesson").strip(),
+        "category": _extract_field(cleaned, "category").strip(),
     }
 
 
@@ -440,7 +442,25 @@ def fallback_comment_analysis(
             "verdict": "agree",
             "analysis": ANALYZE_COMMENT_FALLBACK,
             "lesson": "",
+            "category": "notice",
         }
+
+    # Custom category detection heuristic for local fallback
+    category = "notice"
+    if _is_likely_positive_comment(comment):
+        category = "good"
+    else:
+        folded = comment.lower()
+        if any(w in folded for w in ["sai", "nhầm", "lỗi", "thiếu", "không đúng", "chưa chính xác"]):
+            category = "error"
+        elif any(w in folded for w in ["diễn đạt", "từ ngữ", "câu văn", "chữ viết", "ngữ pháp"]):
+            category = "expression"
+        elif any(w in folded for w in ["lập luận", "chứng minh", "logic", "suy luận", "biến đổi"]):
+            category = "reasoning"
+        elif any(w in folded for w in ["sáng tạo", "độc đáo", "thông minh", "mới lạ"]):
+            category = "creative"
+        elif any(w in folded for w in ["ý hay", "sắc sảo", "thú vị", "sâu sắc"]):
+            category = "interesting"
 
     if _is_likely_positive_comment(comment):
         analysis = (
@@ -454,6 +474,7 @@ def fallback_comment_analysis(
             "verdict": "agree",
             "analysis": _truncate_words(analysis, 30),
             "lesson": _truncate_words(lesson, 50),
+            "category": category,
         }
 
     generalized = _generalize_teacher_comment(comment)
@@ -467,4 +488,5 @@ def fallback_comment_analysis(
         "verdict": "agree",
         "analysis": analysis,
         "lesson": _truncate_words(lesson, 50),
+        "category": category,
     }

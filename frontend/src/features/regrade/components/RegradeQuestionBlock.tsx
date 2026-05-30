@@ -68,14 +68,45 @@ function renderLineWithTeacherHighlights(
     const tooltip = ann.comment
       ? `Nhận xét: ${ann.comment}`
       : `"${ann.quote}" (chưa có nhận xét)`;
+
+    let bg = "#FFF59D"; // Beautiful Google Docs warm yellow
+
+    if (ann.color) {
+      if (ann.color === "green") {
+        bg = "#C6F6D5";
+      } else if (ann.color === "red") {
+        bg = "#FFCDD2";
+      } else if (ann.color === "yellow") {
+        bg = "#FFF59D";
+      } else if (ann.color === "blue") {
+        bg = "#C4E2FF";
+      } else if (ann.color === "purple") {
+        bg = "#E8D5F6";
+      } else if (ann.color === "orange") {
+        bg = "#FFE0B2";
+      } else if (ann.color === "pink") {
+        bg = "#FBCFE8";
+      } else if (ann.color === "mint") {
+        bg = "#E0F2F1";
+      }
+    } else if (ann.verdict) {
+      if (ann.verdict === "agree") {
+        bg = "#C6F6D5";
+      } else if (ann.verdict === "dispute" && !ann.disputeDecision) {
+        bg = "#C4E2FF";
+      } else {
+        bg = "#FFCDD2";
+      }
+    }
+
     return (
       <mark
         key={i}
         title={tooltip}
         style={{
-          background: "#FFF9DB",
+          background: bg,
           color: T.text,
-          padding: "1px 4px",
+          padding: "1.5px 4px",
           margin: "0 1px",
           borderRadius: 3,
         }}

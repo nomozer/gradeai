@@ -29,11 +29,11 @@ export function HistoryRow({
     <div
       role="button"
       tabIndex={0}
-      onClick={() => onLoad(5)}
+      onClick={() => onLoad(4)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onLoad(5);
+          onLoad(4);
         }
       }}
       onMouseEnter={() => setHovered(true)}
@@ -100,35 +100,6 @@ export function HistoryRow({
         )}
         <span>·</span>
         <span>{relativeTime(entry.ts)}</span>
-      </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          marginTop: 6,
-        }}
-      >
-        {/* Secondary jumps. ``stopPropagation`` prevents the parent row
-            click handler from firing — without it, clicking these would
-            also open step 5 (the row default) in succession. */}
-        <SecondaryJump
-          label="Xem xét"
-          hint="Mở ở bước Xem xét (đọc lại nhận xét của AI)"
-          onClick={(e) => {
-            e.stopPropagation();
-            onLoad(3);
-          }}
-        />
-        <span style={{ color: T.textFaint, fontSize: 11 }}>·</span>
-        <SecondaryJump
-          label="Chấm lại"
-          hint="Mở thẳng ở bước Chấm lại (bỏ qua Xem xét)"
-          onClick={(e) => {
-            e.stopPropagation();
-            onLoad(4);
-          }}
-        />
       </div>
     </div>
   );
