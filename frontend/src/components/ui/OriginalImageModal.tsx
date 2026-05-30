@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { T } from "../../theme/tokens";
 import type { EssayFile, I18nStrings } from "../../types";
 
@@ -33,16 +33,38 @@ export function OriginalImageModal({
   t,
 }: OriginalImageModalProps) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const sourceUrl = essayImage?.dataUrl || "";
+  const sourceMime = useMemo(() => {
+    const match = /^data:([^;]+);/i.exec(sourceUrl);
+    return match?.[1]?.toLowerCase() || "";
+  }, [sourceUrl]);
+  const needsBlobUrl = /^data:[^;]+;base64,/i.test(sourceUrl);
+  const isPdf = Boolean(
+    essayImage?.isPdf ||
+      sourceMime.includes("pdf") ||
+      essayImage?.name?.toLowerCase().endsWith(".pdf")
+  );
+  const closeLabel = String(t.close);
+  const originalImageLabel = String(t.originalImage);
+  const openingLabel = String(t.originalImageOpening);
+  const inlineErrorMessage = String(t.originalImageInlineError);
+  const openNewTabLabel = String(t.originalImageOpenNewTab);
 
   useEffect(() => {
-    const src = essayImage?.dataUrl;
-    if (!src) {
+    if (!open || !sourceUrl) {
       setBlobUrl(null);
+      setError(null);
       return undefined;
     }
-    const match = /^data:([^;]+);base64,(.+)$/.exec(src);
+
+    setBlobUrl(null);
+    setError(null);
+
+    const match = /^data:([^;]+);base64,(.+)$/i.exec(sourceUrl);
     if (!match) {
-      setBlobUrl(src);
+      setBlobUrl(sourceUrl);
       return undefined;
     }
     let url: string | null = null;
@@ -53,15 +75,16 @@ export function OriginalImageModal({
       url = URL.createObjectURL(new Blob([bytes], { type: match[1] }));
       setBlobUrl(url);
     } catch {
-      setBlobUrl(src);
+      setError(inlineErrorMessage);
+      setBlobUrl(sourceUrl);
     }
     return () => {
       if (url) URL.revokeObjectURL(url);
     };
-  }, [essayImage?.dataUrl]);
+  }, [inlineErrorMessage, open, sourceUrl]);
 
-  if (!open || !blobUrl) return null;
-  const isPdf = !!essayImage?.isPdf;
+  if (!open || !essayImage) return null;
+  const viewerUrl = blobUrl || (needsBlobUrl ? "" : sourceUrl);
 
   return (
     <div
@@ -111,38 +134,59 @@ export function OriginalImageModal({
             justifyContent: "center",
             zIndex: 1,
           }}
-          title={String(t.close ?? "Đóng")}
+          title={closeLabel}
         >
           ×
         </button>
-        {isPdf ? (
-          <object
-            data={blobUrl}
-            type="application/pdf"
+        {error && (
+          <div
+            style={{
+              position: "absolute",
+              left: 12,
+              right: 56,
+              top: 12,
+              zIndex: 1,
+              padding: "8px 10px",
+              borderRadius: 8,
+              background: "#fff7ed",
+              color: "#9a3412",
+              fontSize: 13,
+            }}
+          >
+            {error}
+          </div>
+        )}
+        {!viewerUrl ? (
+          <div
+            style={{
+              minWidth: 320,
+              minHeight: 180,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 24,
+              color: T.textMute,
+            }}
+          >
+            {openingLabel}
+          </div>
+        ) : isPdf ? (
+          <iframe
+            src={viewerUrl}
+            title={originalImageLabel}
+            loading="eager"
             style={{
               display: "block",
               width: "100%",
               height: "100%",
+              border: "none",
               background: "#fff",
             }}
-          >
-            <iframe
-              src={blobUrl}
-              title={String(t.originalImage ?? "Bài làm gốc của học sinh")}
-              loading="eager"
-              style={{
-                display: "block",
-                width: "100%",
-                height: "100%",
-                border: "none",
-                background: "#fff",
-              }}
-            />
-          </object>
+          />
         ) : (
           <img
-            src={blobUrl}
-            alt={String(t.originalImage ?? "Bài làm gốc của học sinh")}
+            src={viewerUrl}
+            alt={originalImageLabel}
             decoding="async"
             loading="eager"
             style={{
@@ -152,6 +196,27 @@ export function OriginalImageModal({
               objectFit: "contain",
             }}
           />
+        )}
+        {viewerUrl && (
+          <a
+            href={viewerUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              position: "absolute",
+              right: 52,
+              bottom: 12,
+              zIndex: 1,
+              borderRadius: 999,
+              background: "rgba(0,0,0,0.58)",
+              color: "#fff",
+              padding: "7px 12px",
+              fontSize: 13,
+              textDecoration: "none",
+            }}
+          >
+            {openNewTabLabel}
+          </a>
         )}
       </div>
     </div>

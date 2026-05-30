@@ -236,13 +236,13 @@ export function MucLucSidebar({
                 e.currentTarget.style.background = "transparent";
               }}
             >
-              <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <span>Câu {q.num}</span>
                 {noteCount > 0 && (
                   <span
+                    title={`${noteCount} ghi chú đối soát`}
                     style={{
                       fontSize: 11,
-                      fontFamily: T.mono,
                       color: active ? T.accent : T.textFaint,
                     }}
                   >

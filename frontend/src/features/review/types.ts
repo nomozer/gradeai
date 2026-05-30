@@ -51,7 +51,7 @@ export interface MockReferencedLesson {
 
 /**
  * The full payload that drives step-3 review (ReviewMockup, PaperContainer,
- * MucLucSidebar, BanChamAiModal, …).
+ * MucLucSidebar, …).
  *
  * Shape is the same as MOCK_REVIEW. Built from a live grade via
  * deriveStepReviewData() in StepReview.tsx; falls back to MOCK_REVIEW for

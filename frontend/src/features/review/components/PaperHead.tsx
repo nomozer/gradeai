@@ -7,7 +7,7 @@ import type { ReviewPayload } from "../types";
 // Flush white with the page body (no tinted strip) so the paper reads
 // as one continuous Word-style sheet. The action pills live in
 // Step3Toolbar above the grid; this just carries the student identity
-// plus a TL;DR chip row (structure-ok / error count / AI score) so the
+// plus a TL;DR chip row (error count / good count / AI score) so the
 // teacher can decide "skim or deep-dive" before reading further.
 export function PaperHead({ review }: { review: ReviewPayload }) {
   // The paper identity has no data source yet — show a neutral placeholder
@@ -27,12 +27,6 @@ export function PaperHead({ review }: { review: ReviewPayload }) {
     (sum, q) => sum + q.annotations.filter((a) => a.kind === "good").length,
     0,
   );
-  // "Structure ok" is heuristic: at least one câu parsed and no câu has
-  // zero earned points (which would suggest a malformed answer). Mirrors
-  // the teacher's manual sanity-check.
-  const structureOk =
-    review.questions.length > 0 &&
-    review.questions.every((q) => q.max > 0);
   const scoreText = formatScore(review.overallScore, review.overallMax);
 
   return (
@@ -85,13 +79,6 @@ export function PaperHead({ review }: { review: ReviewPayload }) {
             flexWrap: "wrap",
           }}
         >
-          {structureOk && (
-            <Chip
-              tone="green"
-              icon={<Icon.Check size={13} />}
-              label="Đúng cấu trúc"
-            />
-          )}
           {totalErrors > 0 && (
             <Chip
               tone="amber"

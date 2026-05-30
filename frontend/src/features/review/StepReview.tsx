@@ -16,7 +16,6 @@ import {
   parseIntoQuestions,
 } from "./utils";
 import { MucLucSidebar, MucLucChips } from "./components/MucLucSidebar";
-import { BanChamAiModal } from "./components/BanChamAiModal";
 import { Step3Toolbar } from "./components/Step3Toolbar";
 import { PaperHead } from "./components/PaperHead";
 import { QuestionBox } from "./components/QuestionBox";
@@ -71,9 +70,9 @@ function ReviewMockup({
   onAddAnnotation,
   onUpdateAnnotation,
   onRemoveAnnotation,
-  onFinish,
   finalScores,
   setFinalScores,
+  t,
 }: {
   isMobile: boolean;
   review?: ReviewPayload;
@@ -83,15 +82,14 @@ function ReviewMockup({
   onAddAnnotation?: (a: SelectionAnnotation) => void;
   onUpdateAnnotation?: (id: string, patch: Partial<SelectionAnnotation>) => void;
   onRemoveAnnotation?: (id: string) => void;
-  onFinish?: () => void;
   finalScores?: Record<number, number>;
   setFinalScores?: React.Dispatch<React.SetStateAction<Record<number, number>>>;
+  t: I18nStrings;
 }) {
   const [activeQ, setActiveQ] = useState<number>(review.initialActiveQuestionNum);
   // Rail can be collapsed to a pull-tab so the teacher can reclaim full
   // page width on long transcripts. Mobile starts collapsed (paper first).
   const [tocOpen, setTocOpen] = useState(!isMobile);
-  const [aiPeekOpen, setAiPeekOpen] = useState(false);
   // ``flashCau`` drives a brief indigo pulse on the câu in the document
   // body — set when the teacher clicks a mục lục entry, auto-cleared
   // after ~1.2s. The sidebar's own active state (activeQ) is sticky;
@@ -136,7 +134,6 @@ function ReviewMockup({
       <Step3Toolbar
         onViewOriginal={onViewOriginal}
         essayAvailable={essayAvailable}
-        onPeekAi={() => setAiPeekOpen(true)}
         tocOpen={tocOpen}
         onToggleToc={() => setTocOpen((v) => !v)}
       />
@@ -181,14 +178,9 @@ function ReviewMockup({
           onAddAnnotation={onAddAnnotation}
           onUpdateAnnotation={onUpdateAnnotation}
           onRemoveAnnotation={onRemoveAnnotation}
+          t={t}
         />
       </div>
-      <BanChamAiModal
-        open={aiPeekOpen}
-        onClose={() => setAiPeekOpen(false)}
-        review={review}
-        onGoToRegrade={onFinish}
-      />
     </div>
   );
 }
@@ -209,6 +201,7 @@ function PaperContainer({
   onAddAnnotation,
   onUpdateAnnotation,
   onRemoveAnnotation,
+  t,
 }: {
   review: ReviewPayload;
   /** Câu number to briefly pulse — set when the teacher jumps from the
@@ -219,6 +212,7 @@ function PaperContainer({
   onAddAnnotation?: (a: SelectionAnnotation) => void;
   onUpdateAnnotation?: (id: string, patch: Partial<SelectionAnnotation>) => void;
   onRemoveAnnotation?: (id: string) => void;
+  t: I18nStrings;
 }) {
   return (
     <div
@@ -245,6 +239,7 @@ function PaperContainer({
           onAddAnnotation={onAddAnnotation}
           onUpdateAnnotation={onUpdateAnnotation}
           onRemoveAnnotation={onRemoveAnnotation}
+          t={t}
         />
       </div>
     </div>
@@ -260,8 +255,7 @@ function PaperContainer({
 // line text (first occurrence wins — adequate for the prototype).
 //
 // AI scores / annotations are intentionally hidden here; the teacher
-// reads blind and only reveals AI's verdict at step 4 or via the
-// "Bản chấm AI" peek modal in the toolbar.
+// reads blind and only reveals AI's verdict at step 4.
 function AnnotatedAnswer({
   questions,
   flashCau,
@@ -269,6 +263,7 @@ function AnnotatedAnswer({
   onAddAnnotation,
   onUpdateAnnotation,
   onRemoveAnnotation,
+  t,
 }: {
   questions: MockQuestion[];
   /** Câu number to briefly pulse with an indigo background. Set by the
@@ -278,22 +273,21 @@ function AnnotatedAnswer({
   onAddAnnotation?: (a: SelectionAnnotation) => void;
   onUpdateAnnotation?: (id: string, patch: Partial<SelectionAnnotation>) => void;
   onRemoveAnnotation?: (id: string) => void;
+  t: I18nStrings;
 }) {
   // Floating mini-toolbar state. ``pending`` captures the selection
   // snapshot at the moment of mouseup so it survives the click on the
+  // Floating mini-toolbar state. ``pending`` captures the selection
+  // snapshot at the moment of mouseup so it survives the click on the
   // "Bình luận" button (browsers collapse the native selection as soon
-  // as focus leaves the text). ``x``/``y`` are viewport coords.
-  const [pending, setPending] = useState<
-    | {
-        cau: number;
-        lineIdx: number;
-        endLineIdx: number;
-        quote: string;
-        x: number;
-        y: number;
-      }
-    | null
-  >(null);
+  // as focus leaves the text). ``range`` allows dynamic repositioning on scroll.
+  const [pending, setPending] = useState<{
+    cau: number;
+    lineIdx: number;
+    endLineIdx: number;
+    quote: string;
+    range: Range;
+  } | null>(null);
   // When a fresh annotation is created we auto-open its comment input.
   // null = nothing being edited; string = annotation id whose bubble is
   // in edit mode.
@@ -386,12 +380,20 @@ function AnnotatedAnswer({
       return;
     }
     const range = sel.getRangeAt(0);
-    const startLine = (range.startContainer.parentElement?.closest(
-      "[data-cau][data-line]",
-    ) as HTMLElement) || null;
-    const endLine = (range.endContainer.parentElement?.closest(
-      "[data-cau][data-line]",
-    ) as HTMLElement) || null;
+    // Resolve a node to its enclosing line div. range.startContainer /
+    // endContainer can be a TEXT node (use its parent) or an ELEMENT node
+    // (use it directly) — the latter happens when the selection ends at a
+    // line boundary, which is exactly the multi-line case.
+    const lineElOf = (node: Node | null): HTMLElement | null => {
+      if (!node) return null;
+      const el =
+        node.nodeType === Node.TEXT_NODE
+          ? node.parentElement
+          : (node as HTMLElement);
+      return (el?.closest("[data-cau][data-line]") as HTMLElement) ?? null;
+    };
+    const startLine = lineElOf(range.startContainer);
+    const endLine = lineElOf(range.endContainer);
     if (!startLine) {
       setPending(null);
       return;
@@ -399,8 +401,7 @@ function AnnotatedAnswer({
     // Allow selections that span multiple lines within the same câu
     // (teacher often highlights a 2–3 line block when commenting on a
     // multi-step proof). Cross-câu selections are still rejected — those
-    // would need to stage two separate lessons. The annotation is anchored
-    // to the START line; the highlight renders best-effort per line.
+    // would need to stage two separate lessons.
     if (endLine && endLine !== startLine) {
       if (startLine.dataset.cau !== endLine.dataset.cau) {
         setPending(null);
@@ -408,31 +409,39 @@ function AnnotatedAnswer({
       }
     }
     const cau = Number(startLine.dataset.cau);
-    const lineIdx = Number(startLine.dataset.line);
-    if (Number.isNaN(cau) || Number.isNaN(lineIdx)) {
+    const startIdx = Number(startLine.dataset.line);
+    if (Number.isNaN(cau) || Number.isNaN(startIdx)) {
       setPending(null);
       return;
     }
-    const endLineRaw = endLine
-      ? Number(endLine.dataset.line)
-      : lineIdx;
-    const endLineIdx = Number.isNaN(endLineRaw) ? lineIdx : endLineRaw;
+    // Determine the FULL span of lines the selection covers. endLine alone
+    // is unreliable: when the drag ends at a line boundary the browser sets
+    // range.endContainer to an element node, so the old closest() lookup
+    // missed the last line and collapsed multi-line selections to one line
+    // (only the first line got highlighted). range.intersectsNode over the
+    // câu's line divs is authoritative regardless of container node type.
+    const touchedIdxs = Array.from(
+      containerRef.current?.querySelectorAll<HTMLElement>(
+        `[data-cau="${cau}"][data-line]`,
+      ) ?? [],
+    )
+      .filter((el) => range.intersectsNode(el))
+      .map((el) => Number(el.dataset.line))
+      .filter((n) => !Number.isNaN(n));
+    const lineIdx = touchedIdxs.length ? Math.min(...touchedIdxs) : startIdx;
+    const endLineIdx = touchedIdxs.length ? Math.max(...touchedIdxs) : startIdx;
     // Anchor the toolbar to the FIRST visual line of the selection, not
     // the whole bounding box. For multi-line selections, getBoundingClientRect
     // returns a rect spanning every line — its .bottom is the bottom of the
     // last line, which would push the toolbar far away from the highlight.
     // getClientRects()[0] is the first line's rect, so the toolbar sits
     // right under where the teacher started selecting.
-    const rects = range.getClientRects();
-    const anchorRect =
-      rects.length > 0 ? rects[0] : range.getBoundingClientRect();
     setPending({
       cau,
       lineIdx,
       endLineIdx,
       quote: trimmed,
-      x: anchorRect.left + anchorRect.width / 2,
-      y: anchorRect.bottom,
+      range,
     });
   }, [onAddAnnotation]);
 
@@ -585,8 +594,7 @@ function AnnotatedAnswer({
       })}
       {pending && (
         <SelectionToolbar
-          x={pending.x}
-          y={pending.y}
+          selectionRange={pending.range}
           onComment={commitPending}
           onDismiss={() => setPending(null)}
         />
@@ -596,6 +604,7 @@ function AnnotatedAnswer({
           ann={activeAnn}
           editing={editingId === activeAnn.id}
           analyzing={analyzingIds.has(activeAnn.id)}
+          t={t}
           onStartEdit={() => setEditingId(activeAnn.id)}
           onCancelEdit={(currentComment) => {
             if (!currentComment.trim()) {
@@ -714,10 +723,23 @@ function renderLineWithHighlights(
     if (!isMultiline) {
       needleSource = ann.quote;
     } else if (lineIdx === ann.lineIdx) {
-      needleSource = ann.quote.split("\n")[0] ?? ann.quote;
+      // First line: highlight from the quote's first segment to end of
+      // line. Fall back to the whole line when that segment doesn't map
+      // cleanly — sel.toString() line separators vary across browsers, so
+      // the split may not align with this line. The fallback guarantees
+      // the line is still highlighted instead of silently dropped.
+      const first = ann.quote.split("\n")[0] ?? "";
+      needleSource =
+        first && normalizeForMatch(line).includes(normalizeForMatch(first))
+          ? first
+          : line;
     } else if (lineIdx === endIdx) {
       const parts = ann.quote.split("\n");
-      needleSource = parts[parts.length - 1] ?? ann.quote;
+      const last = parts[parts.length - 1] ?? "";
+      needleSource =
+        last && normalizeForMatch(line).includes(normalizeForMatch(last))
+          ? last
+          : line;
     } else {
       // Middle line — highlight the entire line. Using the line itself
       // as the needle guarantees indexOf hits at offset 0.
@@ -821,35 +843,59 @@ function renderLineWithHighlights(
 // rect. Uses ``onMouseDown`` (not onClick) so the action fires before the
 // browser collapses the selection.
 function SelectionToolbar({
-  x,
-  y,
+  selectionRange,
   onComment,
   onDismiss,
 }: {
-  x: number;
-  y: number;
+  selectionRange: Range;
   onComment: () => void;
   onDismiss: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [clamped, setClamped] = useState({ left: x, top: y + 8 });
-  useLayoutEffect(() => {
+  const [pos, setPos] = useState<{ left: number; top: number }>({
+    left: -9999,
+    top: -9999,
+  });
+
+  const reposition = useCallback(() => {
     const el = ref.current;
     if (!el) return;
+    const rects = selectionRange.getClientRects();
+    const anchorRect =
+      rects.length > 0 ? rects[0] : selectionRange.getBoundingClientRect();
+    
+    const x = anchorRect.left + anchorRect.width / 2;
+    const y = anchorRect.bottom;
+    
     const w = el.offsetWidth;
     const vw = window.innerWidth;
     const half = w / 2;
     const left = Math.max(half + 6, Math.min(vw - half - 6, x));
-    setClamped({ left, top: y + 8 });
-  }, [x, y]);
+    
+    setPos({ left, top: y + 8 });
+  }, [selectionRange]);
+
+  useLayoutEffect(() => {
+    reposition();
+  }, [reposition]);
+
+  useEffect(() => {
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [reposition]);
+
   return (
     <div
       id="step3-selection-toolbar"
       ref={ref}
       style={{
         position: "fixed",
-        left: clamped.left,
-        top: clamped.top,
+        left: pos.left,
+        top: pos.top,
         transform: "translateX(-50%)",
         background: T.paper,
         border: `1px solid ${T.border}`,
@@ -930,11 +976,10 @@ function SelectionToolbar({
 }
 
 // AnnotationBubble — floating popover anchored to the highlighted
-// `<mark>` whose id matches ``ann.id``. Positions itself below the mark
-// (preferring below; flips above when there isn't enough space), clamped
-// to the viewport. Repositions on scroll/resize. The bubble owns ONE
-// annotation at a time — clicking a different mark switches the bubble
-// via the parent's ``activeAnnId`` state, not via remounting.
+// `<mark>` whose id matches ``ann.id``. Positions itself to the right/left
+// (preferring side-alignment when space is available to keep the document
+// readable), and falls back to bottom/top when space is limited.
+// Repositions on scroll/resize.
 function AnnotationBubble({
   ann,
   editing,
@@ -944,6 +989,7 @@ function AnnotationBubble({
   onSave,
   onRemove,
   onDecideDispute,
+  t,
 }: {
   ann: SelectionAnnotation;
   editing: boolean;
@@ -953,6 +999,7 @@ function AnnotationBubble({
   onSave: (comment: string) => void;
   onRemove: () => void;
   onDecideDispute: (decision: "apply" | "skip") => void;
+  t: I18nStrings;
 }) {
   const bubbleRef = useRef<HTMLDivElement>(null);
   // Start off-screen so the bubble is rendered + interactive + focusable
@@ -964,6 +1011,13 @@ function AnnotationBubble({
   const [pos, setPos] = useState<{ left: number; top: number }>({
     left: -9999,
     top: -9999,
+  });
+  const [arrowPos, setArrowPos] = useState<{
+    leftOrTop: number;
+    placement: "top" | "bottom" | "left" | "right";
+  }>({
+    leftOrTop: 20,
+    placement: "top",
   });
 
   // Try to position. Returns true on success (mark found + measured),
@@ -984,23 +1038,65 @@ function AnnotationBubble({
         left: Math.max(8, (vw - bubbleRect.width) / 2),
         top: Math.max(8, (vh - bubbleRect.height) / 2),
       });
+      setArrowPos({ leftOrTop: 0, placement: "top" });
       return true;
     }
     const markRect = mark.getBoundingClientRect();
-    let left = markRect.left + markRect.width / 2 - bubbleRect.width / 2;
-    left = Math.max(8, Math.min(vw - bubbleRect.width - 8, left));
-    let top = markRect.bottom + 6;
-    if (top + bubbleRect.height > vh - 8) {
-      const above = markRect.top - bubbleRect.height - 6;
-      if (above >= 8) {
-        top = above;
-      } else {
-        // Neither below nor above fits cleanly — clamp to viewport so
-        // the bubble stays visible instead of hanging off the bottom.
-        top = Math.max(8, vh - bubbleRect.height - 8);
-      }
+    const bubbleWidth = bubbleRect.width;
+    const bubbleHeight = bubbleRect.height;
+    
+    let left = -9999;
+    let top = -9999;
+    let placement: "top" | "bottom" | "left" | "right" = "top";
+    let leftOrTop = 0;
+
+    // 1. Try RIGHT placement: Card on the right of highlighted mark (arrow on the left of bubble pointing left)
+    if (markRect.right + 8 + bubbleWidth < vw - 12) {
+      left = markRect.right + 8;
+      top = markRect.top + markRect.height / 2 - bubbleHeight / 2;
+      top = Math.max(8, Math.min(vh - bubbleHeight - 8, top));
+      placement = "left"; // Arrow on the left edge of the bubble
+
+      const markCenterY = markRect.top + markRect.height / 2;
+      const arrowTop = markCenterY - top;
+      leftOrTop = Math.max(16, Math.min(bubbleHeight - 16, arrowTop));
     }
+    // 2. Try LEFT placement: Card on the left of highlighted mark (arrow on the right of bubble pointing right)
+    else if (markRect.left - 8 - bubbleWidth > 12) {
+      left = markRect.left - 8 - bubbleWidth;
+      top = markRect.top + markRect.height / 2 - bubbleHeight / 2;
+      top = Math.max(8, Math.min(vh - bubbleHeight - 8, top));
+      placement = "right"; // Arrow on the right edge of the bubble
+
+      const markCenterY = markRect.top + markRect.height / 2;
+      const arrowTop = markCenterY - top;
+      leftOrTop = Math.max(16, Math.min(bubbleHeight - 16, arrowTop));
+    }
+    // 3. Fallback to BOTTOM / TOP placement (classic tooltip style under/above)
+    else {
+      left = markRect.left + markRect.width / 2 - bubbleWidth / 2;
+      left = Math.max(8, Math.min(vw - bubbleWidth - 8, left));
+      top = markRect.bottom + 8;
+      placement = "top"; // Arrow on the top edge of the bubble
+      
+      if (top + bubbleHeight > vh - 8) {
+        const above = markRect.top - bubbleHeight - 8;
+        if (above >= 8) {
+          top = above;
+          placement = "bottom"; // Arrow on the bottom edge of the bubble
+        } else {
+          top = Math.max(8, vh - bubbleHeight - 8);
+          placement = "top";
+        }
+      }
+      
+      const markCenterX = markRect.left + markRect.width / 2;
+      const arrowLeft = markCenterX - left;
+      leftOrTop = Math.max(16, Math.min(bubbleWidth - 16, arrowLeft));
+    }
+
     setPos({ left, top });
+    setArrowPos({ leftOrTop, placement });
     return true;
   }, [ann.id]);
 
@@ -1036,18 +1132,84 @@ function AnnotationBubble({
         top: pos.top,
         width: "min(420px, calc(100vw - 32px))",
         zIndex: 100,
+        display: "flex",
+        flexDirection:
+          arrowPos.placement === "left"
+            ? "row"
+            : arrowPos.placement === "right"
+              ? "row-reverse"
+              : arrowPos.placement === "top"
+                ? "column"
+                : "column-reverse",
+        alignItems:
+          arrowPos.placement === "left" || arrowPos.placement === "right"
+            ? "flex-start"
+            : "stretch",
       }}
     >
-      <AnnotationCard
-        ann={ann}
-        editing={editing}
-        analyzing={analyzing}
-        onStartEdit={onStartEdit}
-        onCancelEdit={onCancelEdit}
-        onSave={onSave}
-        onRemove={onRemove}
-        onDecideDispute={onDecideDispute}
-      />
+      {arrowPos.leftOrTop > 0 && (
+        <div
+          style={{
+            position: "relative",
+            left:
+              arrowPos.placement === "top" || arrowPos.placement === "bottom"
+                ? arrowPos.leftOrTop
+                : undefined,
+            top:
+              arrowPos.placement === "left" || arrowPos.placement === "right"
+                ? arrowPos.leftOrTop
+                : undefined,
+            transform:
+              arrowPos.placement === "top" || arrowPos.placement === "bottom"
+                ? "translateX(-50%)"
+                : "translateY(-50%)",
+            zIndex: 101,
+            // Negative margins overlap border smoothly
+            marginTop: arrowPos.placement === "top" ? 0 : arrowPos.placement === "bottom" ? -1 : undefined,
+            marginBottom: arrowPos.placement === "bottom" ? 0 : arrowPos.placement === "top" ? -1 : undefined,
+            marginLeft: arrowPos.placement === "left" ? 0 : arrowPos.placement === "right" ? -1 : undefined,
+            marginRight: arrowPos.placement === "right" ? 0 : arrowPos.placement === "left" ? -1 : undefined,
+          }}
+        >
+          {arrowPos.placement === "top" && (
+            <svg width="16" height="8" viewBox="0 0 16 8" style={{ display: "block" }}>
+              <path d="M0 8 L8 0 L16 8 Z" fill="#FAF7ED" stroke="#E6DEC9" strokeWidth="1" />
+              <line x1="1.2" y1="8" x2="14.8" y2="8" stroke="#FAF7ED" strokeWidth="2" />
+            </svg>
+          )}
+          {arrowPos.placement === "bottom" && (
+            <svg width="16" height="8" viewBox="0 0 16 8" style={{ display: "block" }}>
+              <path d="M0 0 L8 8 L16 0 Z" fill="#FAF7ED" stroke="#E6DEC9" strokeWidth="1" />
+              <line x1="1.2" y1="0" x2="14.8" y2="0" stroke="#FAF7ED" strokeWidth="2" />
+            </svg>
+          )}
+          {arrowPos.placement === "left" && (
+            <svg width="8" height="16" viewBox="0 0 8 16" style={{ display: "block" }}>
+              <path d="M8 0 L0 8 L8 16 Z" fill="#FAF7ED" stroke="#E6DEC9" strokeWidth="1" />
+              <line x1="8" y1="1.2" x2="8" y2="14.8" stroke="#FAF7ED" strokeWidth="2" />
+            </svg>
+          )}
+          {arrowPos.placement === "right" && (
+            <svg width="8" height="16" viewBox="0 0 8 16" style={{ display: "block" }}>
+              <path d="M0 0 L8 8 L0 16 Z" fill="#FAF7ED" stroke="#E6DEC9" strokeWidth="1" />
+              <line x1="0" y1="1.2" x2="0" y2="14.8" stroke="#FAF7ED" strokeWidth="2" />
+            </svg>
+          )}
+        </div>
+      )}
+      <div style={{ flex: 1, minWidth: 0, width: "100%" }}>
+        <AnnotationCard
+          ann={ann}
+          editing={editing}
+          analyzing={analyzing}
+          onStartEdit={onStartEdit}
+          onCancelEdit={onCancelEdit}
+          onSave={onSave}
+          onRemove={onRemove}
+          onDecideDispute={onDecideDispute}
+          t={t}
+        />
+      </div>
     </div>
   );
 }
@@ -1065,6 +1227,7 @@ function AnnotationCard({
   onSave,
   onRemove,
   onDecideDispute,
+  t,
 }: {
   ann: SelectionAnnotation;
   editing: boolean;
@@ -1074,6 +1237,7 @@ function AnnotationCard({
   onSave: (comment: string) => void;
   onRemove: () => void;
   onDecideDispute: (decision: "apply" | "skip") => void;
+  t: I18nStrings;
 }) {
   const [draft, setDraft] = useState(ann.comment);
   useEffect(() => {
@@ -1103,109 +1267,152 @@ function AnnotationCard({
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 6,
-        padding: "10px 12px",
-        background: T.paper,
-        border: `1px solid ${T.border}`,
-        borderLeft: `3px solid ${T.accent}`,
-        borderRadius: 2,
-        boxShadow: "0 4px 14px rgba(0,0,0,0.10)",
+        gap: 12,
+        padding: "16px 20px",
+        background: "#FAF7ED",
+        border: "1px solid #E6DEC9",
+        borderRadius: 12,
+        boxShadow: T.shadowStrong,
       }}
     >
       {editing ? (
-        <div style={{ display: "flex", gap: 6 }}>
-          <input
-            ref={inputRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                onSave(draft);
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                onCancelEdit(draft);
-              }
-            }}
-            placeholder="Ghi nhận xét của bạn…"
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+          <div
             style={{
-              flex: 1,
-              padding: "6px 10px",
-              borderRadius: 2,
-              border: `1px solid ${T.border}`,
-              background: T.paper,
-              fontFamily: T.font,
-              fontSize: T.fontSize.caption,
-              color: T.text,
-              outline: "none",
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => onSave(draft)}
-            disabled={!draft.trim()}
-            style={{
-              padding: "6px 12px",
-              borderRadius: 2,
-              border: "none",
-              background: draft.trim() ? T.accent : T.borderLight,
-              color: draft.trim() ? "#fff" : T.textFaint,
-              fontFamily: T.font,
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: draft.trim() ? "pointer" : "not-allowed",
+              fontSize: 11,
+              fontWeight: 700,
+              color: T.textMute,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              fontFamily: T.display,
             }}
           >
-            Lưu
-          </button>
+            {String(t.teacherCommentLabel ?? "Nhận xét của giáo viên")}
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", width: "100%" }}>
+            <input
+              ref={inputRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onSave(draft);
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  onCancelEdit(draft);
+                }
+              }}
+              placeholder="Ghi nhận xét của bạn…"
+              style={{
+                flex: 1,
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: `1px solid ${T.border}`,
+                background: "#FFFDF8",
+                fontFamily: T.font,
+                fontSize: 14,
+                color: T.text,
+                outline: "none",
+                boxShadow: "inset 0 1px 2px rgba(0,0,0,0.02)",
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => onSave(draft)}
+              disabled={!draft.trim()}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: "none",
+                background: draft.trim() ? T.green : "#EBE7DF",
+                color: draft.trim() ? "#fff" : T.textMute,
+                fontFamily: T.font,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: draft.trim() ? "pointer" : "not-allowed",
+                transition: "all 0.15s ease",
+              }}
+            >
+              Lưu
+            </button>
+          </div>
         </div>
       ) : (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 8,
-          }}
-        >
-          <span
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
+          <div
             style={{
-              flex: 1,
-              whiteSpace: "pre-wrap",
-              minWidth: 0,
-              color: T.text,
-              lineHeight: 1.5,
-              cursor: "text",
-            }}
-            onClick={onStartEdit}
-            role="button"
-            tabIndex={0}
-          >
-            {ann.comment || (
-              <span style={{ color: T.textFaint, fontStyle: "italic" }}>
-                Bấm để thêm nhận xét
-              </span>
-            )}
-          </span>
-          <button
-            type="button"
-            onClick={onRemove}
-            title="Xoá"
-            style={{
-              flexShrink: 0,
-              width: 22,
-              height: 22,
-              borderRadius: "50%",
-              border: "none",
-              background: "transparent",
-              color: T.textFaint,
-              cursor: "pointer",
-              fontSize: 16,
-              lineHeight: 1,
-              padding: 0,
+              fontSize: 11,
+              fontWeight: 700,
+              color: T.textMute,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              fontFamily: T.display,
             }}
           >
-            ×
-          </button>
+            {String(t.teacherCommentLabel ?? "Nhận xét của giáo viên")}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: 12,
+              width: "100%",
+            }}
+          >
+            <span
+              style={{
+                flex: 1,
+                whiteSpace: "pre-wrap",
+                minWidth: 0,
+                color: T.text,
+                fontSize: 15,
+                fontWeight: 600,
+                lineHeight: 1.5,
+                cursor: "text",
+              }}
+              onClick={onStartEdit}
+              role="button"
+              tabIndex={0}
+            >
+              {ann.comment || (
+                <span style={{ color: T.textFaint, fontStyle: "italic", fontWeight: 400 }}>
+                  Bấm để thêm nhận xét...
+                </span>
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={onRemove}
+              title="Xoá"
+              style={{
+                flexShrink: 0,
+                width: 22,
+                height: 22,
+                borderRadius: "50%",
+                border: "none",
+                background: "transparent",
+                color: T.textFaint,
+                cursor: "pointer",
+                fontSize: 16,
+                lineHeight: 1,
+                padding: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "color 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = T.red;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = T.textFaint;
+              }}
+            >
+              ×
+            </button>
+          </div>
         </div>
       )}
       {/* Verdict block — always rendered inside the bubble. The pill
@@ -1218,6 +1425,7 @@ function AnnotationCard({
           analysis={ann.analysis}
           disputeDecision={ann.disputeDecision}
           onDecideDispute={onDecideDispute}
+          t={t}
         />
       )}
     </div>
@@ -1229,8 +1437,6 @@ function AnnotationCard({
 // Step3Toolbar + ToolbarButton + PrinterIcon live in components/Step3Toolbar.tsx.
 
 // MucLucSidebar lives in components/MucLucSidebar.tsx.
-
-// BanChamAiModal lives in components/BanChamAiModal.tsx.
 
 
 
@@ -1560,10 +1766,10 @@ export function StepReview({
         review={reviewData}
         essayAvailable={!!essayImage?.dataUrl}
         onViewOriginal={() => setShowOriginal(true)}
-        onFinish={onFinish}
         finalScores={finalScores}
         setFinalScores={setFinalScores}
         teacherAnnotations={teacherAnnotations}
+        t={t}
         onAddAnnotation={(a) => {
           setTeacherAnnotations((prev) => [...prev, a]);
         }}

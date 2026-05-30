@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { T } from "../../../theme/tokens";
 import { Icon } from "../../../components/ui/Icon";
-import type { CommentVerdict } from "../../../types";
+import type { CommentVerdict, I18nStrings } from "../../../types";
 
 // Verdict colour map. Three distinct hues aligned with the rest of the
 // app: green = AI concurs, amber = nuance, indigo = AI disagrees.
@@ -28,12 +28,14 @@ export function VerdictRow({
   analysis,
   disputeDecision,
   onDecideDispute,
+  t,
 }: {
   analyzing: boolean;
   verdict: CommentVerdict | undefined;
   analysis: string | undefined;
   disputeDecision: "apply" | "skip" | undefined;
   onDecideDispute: (decision: "apply" | "skip") => void;
+  t: I18nStrings;
 }) {
   const needsDecision = verdict === "dispute" && disputeDecision === undefined;
   const [expanded, setExpanded] = useState(false);
@@ -116,12 +118,12 @@ export function VerdictRow({
         )}
         {verdict === "dispute" && disputeDecision === "apply" && (
           <span style={{ fontWeight: 400, color: tone.color }}>
-            · bạn vẫn lưu
+            · {String(t.appliedLabel ?? "đã áp dụng")}
           </span>
         )}
         {verdict === "dispute" && disputeDecision === "skip" && (
           <span style={{ fontWeight: 400, color: tone.color }}>
-            · đã bỏ qua
+            · {String(t.skippedLabel ?? "đã bỏ qua")}
           </span>
         )}
         {/* Chevron — rotates when expanded. Hidden during a pending
@@ -156,53 +158,62 @@ export function VerdictRow({
       {bodyOpen && analysis && (
         <div
           style={{
-            fontSize: T.fontSize.caption,
+            fontSize: 13,
             color: T.textSoft,
-            lineHeight: 1.5,
-            background: T.bgMuted,
-            border: `1px solid ${T.borderLight}`,
-            borderRadius: 2,
-            padding: "6px 10px",
+            lineHeight: 1.55,
+            background: "rgba(192, 139, 48, 0.05)",
+            border: "1px solid #FAF0D9",
+            borderRadius: 8,
+            padding: "10px 14px",
+            fontStyle: "italic",
+            marginTop: 6,
+            fontFamily: T.font,
           }}
         >
-          {analysis}
+          "{analysis}"
         </div>
       )}
       {bodyOpen && needsDecision && (
-        <div style={{ display: "inline-flex", gap: 6, marginTop: 2 }}>
+        <div style={{ display: "inline-flex", gap: 8, marginTop: 8 }}>
           <button
             type="button"
             onClick={() => onDecideDispute("apply")}
             style={{
-              padding: "5px 12px",
-              fontSize: 12,
+              padding: "8px 16px",
+              fontSize: 13,
               fontWeight: 600,
               color: "#fff",
-              background: T.accent,
+              background: T.green,
               border: "none",
-              borderRadius: 2,
+              borderRadius: 8,
               cursor: "pointer",
               fontFamily: T.font,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              boxShadow: "0 2px 6px rgba(46, 125, 91, 0.15)",
+              transition: "opacity 0.15s ease",
             }}
           >
-            Vẫn lưu nhận xét này
+            <span>✓</span> {String(t.verdictDisputeApply ?? "Áp dụng góp ý")}
           </button>
           <button
             type="button"
             onClick={() => onDecideDispute("skip")}
             style={{
-              padding: "5px 12px",
-              fontSize: 12,
-              fontWeight: 500,
+              padding: "8px 16px",
+              fontSize: 13,
+              fontWeight: 600,
               color: T.textSoft,
-              background: T.bgCard,
-              border: `1px solid ${T.border}`,
-              borderRadius: 2,
+              background: "#EBE7DF",
+              border: "none",
+              borderRadius: 8,
               cursor: "pointer",
               fontFamily: T.font,
+              transition: "background-color 0.15s ease",
             }}
           >
-            Bỏ qua
+            {String(t.verdictDisputeSkipShort ?? "Bỏ qua")}
           </button>
         </div>
       )}

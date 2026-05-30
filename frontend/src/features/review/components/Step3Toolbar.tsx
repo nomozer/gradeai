@@ -9,18 +9,15 @@ import { useBreakpoint } from "../../../hooks/useBreakpoint";
 // on the right. Student identity is NOT shown here — it lives once in
 // PaperHead as the document's heading; rendering it in both places
 // duplicated the identity strip. Centralises affordances that used to
-// be in the paper-head MetaPills + adds "Bản chấm AI" peek so the
-// teacher can reveal AI's verdict without committing to step 4 yet.
+// be in the paper-head MetaPills.
 export function Step3Toolbar({
   onViewOriginal,
   essayAvailable,
-  onPeekAi,
   tocOpen,
   onToggleToc,
 }: {
   onViewOriginal?: () => void;
   essayAvailable?: boolean;
-  onPeekAi: () => void;
   tocOpen?: boolean;
   onToggleToc?: () => void;
 }) {
@@ -117,21 +114,6 @@ export function Step3Toolbar({
           }
         >
           Xem PDF gốc
-        </ToolbarButton>
-        <ToolbarButton
-          icon={<Icon.Lightbulb size={12} color={T.amber} />}
-          onClick={onPeekAi}
-          variant="accent"
-          title="Xem điểm + nhận xét AI đã chấm"
-        >
-          Bản chấm AI
-        </ToolbarButton>
-        <ToolbarButton
-          icon={<PrinterIcon size={12} />}
-          onClick={() => window.print()}
-          title="In bài chấm"
-        >
-          In
         </ToolbarButton>
       </div>
     </div>
@@ -234,25 +216,5 @@ function ToolbarButton({
       {icon}
       {children}
     </button>
-  );
-}
-
-function PrinterIcon({ size = 12 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <polyline points="6 9 6 2 18 2 18 9" />
-      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-      <rect x="6" y="14" width="12" height="8" />
-    </svg>
   );
 }
