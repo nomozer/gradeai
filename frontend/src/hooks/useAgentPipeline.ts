@@ -8,6 +8,7 @@ import type {
   BackendSubject,
   FeedbackAction,
   GenerateResponse,
+  GradeConfidence,
   GradeHistoryEntry,
   Lesson,
   PipelinePhase,
@@ -46,6 +47,10 @@ interface State {
   error: string | null;
   historyFinalScores: Record<number, number> | null;
   historyMaxOverrides: Record<number, number> | null;
+  /** Server-inferred grade confidence ("high" | "medium" | "low"). Null
+   *  until the first successful response — the UI hides the chip while
+   *  null so it doesn't flash a misleading default. */
+  confidence: GradeConfidence | null;
 }
 
 const initialState: State = {
@@ -61,6 +66,7 @@ const initialState: State = {
   error: null,
   historyFinalScores: null,
   historyMaxOverrides: null,
+  confidence: null,
 };
 
 function reducer(state: State, action: Action): State {
@@ -80,6 +86,7 @@ function reducer(state: State, action: Action): State {
         previousLessonIds: state.lessonsUsed.map((l) => l.id),
         historyFinalScores: null,
         historyMaxOverrides: null,
+        confidence: null,
       };
 
     case ACTIONS.PIPELINE_SUCCESS: {
@@ -97,6 +104,7 @@ function reducer(state: State, action: Action): State {
         error: null,
         historyFinalScores: action.historyEntry?.finalScores ?? null,
         historyMaxOverrides: action.historyEntry?.maxOverrides ?? null,
+        confidence: action.payload.confidence ?? null,
       };
     }
 
@@ -124,6 +132,10 @@ export interface RegradeInput {
   runId?: number | null;
   subject?: BackendSubject | null;
   answerKeyPdfB64?: string | null;
+  /** Per-câu max-points scheme inherited from the first paper graded in
+   *  this batch. Keys are câu numbers (number, not string — converted at
+   *  the API boundary). */
+  maxPointsTemplate?: Record<number, number> | null;
 }
 
 export interface UseAgentPipelineResult extends State {
@@ -136,6 +148,7 @@ export interface UseAgentPipelineResult extends State {
     taskPdfB64?: string | null,
     subject?: BackendSubject | null,
     answerKeyPdfB64?: string | null,
+    maxPointsTemplate?: Record<number, number> | null,
   ) => Promise<void>;
   regrade: (input: RegradeInput) => Promise<void>;
   reset: () => void;
@@ -144,6 +157,23 @@ export interface UseAgentPipelineResult extends State {
    * "Bài đã chấm" header dropdown.
    */
   loadHistoryEntry: (entry: GradeHistoryEntry) => boolean;
+}
+
+// Convert Record<number, number> (frontend ergonomic form) → Record<string,
+// number> (JSON dict over the wire). Drops entries with non-finite values
+// so an in-progress edit (NaN while teacher is typing) doesn't pollute the
+// payload. Returns null for empty maps so the request body stays sparse.
+function serializeMaxPointsTemplate(
+  template: Record<number, number> | null | undefined,
+): Record<string, number> | null {
+  if (!template) return null;
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(template)) {
+    if (typeof v === "number" && Number.isFinite(v)) {
+      out[String(k)] = v;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 /**
@@ -217,6 +247,7 @@ export function useAgentPipeline(): UseAgentPipelineResult {
       taskPdfB64: string | null = null,
       subject: BackendSubject | null = null,
       answerKeyPdfB64: string | null = null,
+      maxPointsTemplate: Record<number, number> | null = null,
     ): Promise<void> => {
       const { requestId, controller, releaseIfCurrent } = beginRequest();
 
@@ -231,6 +262,7 @@ export function useAgentPipeline(): UseAgentPipelineResult {
             task_pdf_b64: taskPdfB64,
             subject,
             answer_key_pdf_b64: answerKeyPdfB64,
+            max_points_template: serializeMaxPointsTemplate(maxPointsTemplate),
           },
           { signal: controller.signal },
         );
@@ -260,6 +292,7 @@ export function useAgentPipeline(): UseAgentPipelineResult {
       runId = null,
       subject = null,
       answerKeyPdfB64 = null,
+      maxPointsTemplate = null,
     }: RegradeInput): Promise<void> => {
       const { requestId, controller, releaseIfCurrent } = beginRequest();
 
@@ -276,6 +309,7 @@ export function useAgentPipeline(): UseAgentPipelineResult {
             run_id: runId,
             subject,
             answer_key_pdf_b64: answerKeyPdfB64,
+            max_points_template: serializeMaxPointsTemplate(maxPointsTemplate),
           },
           { signal: controller.signal },
         );

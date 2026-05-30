@@ -180,6 +180,11 @@ async def process_input_file(image_b64: str | None) -> list[dict[str, Any]]:
     if "pdf" in mime.lower():
         try:
             return await asyncio.to_thread(_render_pdf_pages, raw)
+        except ValueError:
+            # Validation failures such as "too many pages" must stay visible
+            # to the API layer. Falling back to the raw PDF would turn a
+            # rejected oversize upload into an expensive Gemini request.
+            raise
         except Exception as exc:
             logger.warning(
                 "[HITL] PDF decomposition failed, falling back to raw PDF: %s", exc,

@@ -1,12 +1,22 @@
 import type { Subject } from "./domain";
 
-/** A 4-dimension rubric score. Values may be empty strings while the
- *  teacher is editing (controlled <input type="number">). */
-export interface RubricScores {
-  content: number | string;
-  argument: number | string;
-  expression: number | string;
-  creativity: number | string;
+/** A sub-criterion within a câu (Pattern B per-câu rubric).
+ *
+ *  Emitted by the backend when the resolved subject's rubric template
+ *  (``backend/prompts/rubric_templates.py``) is injected into the grader
+ *  prompt — current default for every subject. ``label`` is the
+ *  Vietnamese label from the template (e.g. "Đặt vấn đề" for math, "Cân
+ *  bằng phương trình" for chem); ``max`` is the per-câu max-points
+ *  allocation; ``points`` is the AI's score for that criterion.
+ *
+ *  Optional at the type level so older grade JSONs (no criteria) parse
+ *  cleanly via ``parseGrade``.
+ */
+export interface Criterion {
+  label: string;
+  points: number;
+  max: number;
+  errors?: string;
 }
 
 export interface PerQuestionFeedback {
@@ -21,12 +31,23 @@ export interface PerQuestionFeedback {
   score?: number;
   good_points?: string;
   errors?: string;
+  /** Per-câu sub-rubric breakdown (Pattern B). Each entry maps a step in
+   *  the câu (Setup / Solve / Answer for math; Equation / Stoich / Calc /
+   *  Units for chem; etc.) to its own points + max + errors. Sum of
+   *  ``max`` over the array equals the câu's ``max_points``; sum of
+   *  ``points`` equals the câu's ``score``. */
+  criteria?: Criterion[];
 }
 
 /** Normalized grade payload returned by `parseGrade` — always the same
- *  shape even when the backend produced a salvage-mode output. */
+ *  shape even when the backend produced a salvage-mode output.
+ *
+ *  Pattern B (Phase 3): the legacy 4-trục global rubric (content /
+ *  argument / expression / creativity) is gone. ``overall`` is the only
+ *  top-level score; per-câu rubric breakdown lives in
+ *  ``per_question_feedback[i].criteria``.
+ */
 export interface Grade {
-  scores: RubricScores;
   overall: number | string;
   strengths: string[];
   weaknesses: string[];
@@ -49,7 +70,6 @@ export interface EssayFile {
 }
 
 export interface FinalizedResult {
-  scores: RubricScores;
   overall: number | string;
   finalizedAt: string;
   /** Number of step 3 annotations saved as HITL lessons via the prior
@@ -65,7 +85,7 @@ export interface FinalizedResult {
    *  from AI by ≥ threshold. Null = no significant delta (AI already
    *  matched). Drives the "AI đã học cách bạn chấm điểm" indicator. */
   deltaLessonId?: number | null;
-  /** Raw delta map from backend — keys: rubric names + ``cau:N`` +
+  /** Raw delta map from backend — keys: ``cau:N``, ``step:N:label``,
    *  ``overall``. Used to count per-câu adjustments in the banner. */
   deltas?: Record<string, number>;
 }

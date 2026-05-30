@@ -32,6 +32,11 @@ export interface MockQuestion {
    *  so indented continuation lines line up under their parent expression. */
   lines: string[];
   annotations: MockAnnotation[];
+  /** Pattern B per-câu sub-criteria. Pulled from grade.per_question_feedback[i].criteria
+   *  when present. MucLucSidebar uses this to render per-criterion teacher
+   *  overrides under the câu's total score; the câu total stays the sum of
+   *  the criterion points so the two surfaces stay coherent. */
+  criteria?: import("../../types").Criterion[];
 }
 
 /** A HITL memory lesson surfaced in the right-rail "Bài học đã tham chiếu". */

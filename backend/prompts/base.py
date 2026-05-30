@@ -2,9 +2,8 @@
 prompts/base.py — Shared prompt content across all subjects.
 
 Holds:
-    - Persona + rubric header (shared)
-    - Rules 1–7, 9b, 10 (subject-independent)
-    - RUBRIC_LABELS (4-rubric STEM set used by all current subjects)
+    - Persona (shared)
+    - Rules 1–7, 9b (subject-independent)
     - ANALYZE_COMMENT_* (HITL comment analysis — not subject-specific)
     - compose_grader_system() — helper that assembles the final system
       prompt by plugging subject-specific Rule 8 + Rule 9 between the
@@ -13,42 +12,28 @@ Holds:
 Subject-specific files (math.py, cs.py, …) provide their own Rule 8
 (calibration examples) + Rule 9 (logic crosscheck) and call
 ``compose_grader_system(rule_8, rule_9)`` to build the final prompt.
+
+Phase 3 (Pattern B): the legacy 4-trục rubric (content / argument /
+expression / creativity) is GONE. Per-câu sub-criteria
+(``prompts/rubric_templates``) are the only rubric axis the grader
+emits, and they're injected at request time by ``prompt_orchestrator``.
 """
 
 from __future__ import annotations
 
 
 # ---------------------------------------------------------------------------
-# Rubric labels — STEM 4-rubric set shared by math + cs (+ future phys/chem).
-# ---------------------------------------------------------------------------
-
-RUBRIC_LABELS: dict = {
-    "content":    ("Tính chính xác", "đáp án đúng, kết quả cuối cùng"),
-    "argument":   ("Phương pháp",    "cách giải, lựa chọn công thức/thuật toán"),
-    "expression": ("Trình bày",      "các bước rõ ràng, ký hiệu chuẩn"),
-    "creativity": ("Hiểu bản chất",  "giải thích vì sao, cách làm hay/gọn"),
-}
-
-
-# ---------------------------------------------------------------------------
-# Persona + rubric header
+# Persona
 # ---------------------------------------------------------------------------
 
 _PERSONA = (
-    "Bạn là giáo viên chấm bài STEM (Toán / Tin học / Vật lý) giàu kinh "
-    "nghiệm, sử dụng VLM để đọc bài làm (đánh máy hoặc viết tay). Chấm trên "
-    "thang 0–10 theo BỐN TIÊU CHÍ STEM — tính đúng đắn quan trọng hơn văn "
-    "phong. Đáp án đúng với trình bày lộn xộn vẫn cao điểm hơn cách viết "
-    "hoa mỹ nhưng sai. KHÔNG trừ điểm vì 'thiếu chất văn'."
-)
-
-_RUBRIC_HEADER = (
-    "BỐN TIÊU CHÍ CHẤM (dùng đúng các JSON key này):\n"
-    + "\n".join(
-        f'  - "{k}" → {RUBRIC_LABELS[k][0]}: {RUBRIC_LABELS[k][1]}'
-        for k in ("content", "argument", "expression", "creativity")
-    )
-    + "\n\nRàng buộc ưu tiên từ giáo viên (HITL) cao hơn quy tắc chung."
+    "Bạn là giáo viên chấm bài STEM (Toán / Tin học / Vật lý / Hoá / Sinh) "
+    "giàu kinh nghiệm, sử dụng VLM để đọc bài làm (đánh máy hoặc viết tay). "
+    "Chấm trên thang 0–10 — tính đúng đắn quan trọng hơn văn phong. Đáp án "
+    "đúng với trình bày lộn xộn vẫn cao điểm hơn cách viết hoa mỹ nhưng "
+    "sai. KHÔNG trừ điểm vì 'thiếu chất văn'. Mỗi câu được phân chia thành "
+    "các tiêu chí phụ theo template môn (xem block 'TIÊU CHÍ CHẤM TỪNG "
+    "CÂU' trong USER) — đây là nguồn chấm điểm duy nhất."
 )
 
 
@@ -148,46 +133,48 @@ _RULE_7_OUTPUT = (
     "7. ĐỊNH DẠNG ĐẦU RA: Chỉ trả về 1 khối JSON, không markdown / lời dẫn. "
     "Phát đúng theo thứ tự key dưới đây (sống còn khi sát giới hạn token):\n"
     "{\n"
-    '  "scores": {"content": 7.5, "argument": 7.5, "expression": 7.5, "creativity": 7.5},\n'
     '  "overall": 7.5,\n'
     '  "per_question_feedback": [\n'
     '    {"question": "Câu 1: [chủ đề]", "max_points": 3.0, "score": 3.0, '
-    '"good_points": "...", "errors": "..."}\n'
+    '"good_points": "...", "errors": "...", '
+    '"criteria": [{"label": "<tiêu chí từ template>", "points": 1.0, "max": 1.0, "errors": ""}]}\n'
     '  ],\n'
     '  "comment": "Câu 1: ...",\n'
     '  "transcript": "Câu 1: ..."\n'
     "}\n"
     "\nRàng buộc:\n"
-    "• scores: 4 key, thang 10, bội 0.5.\n"
-    "• overall: mean(scores) làm tròn 0.5, là số (không null).\n"
+    "• overall: sum(per_question_feedback[i].score) làm tròn 0.5, là số "
+    "(không null). Đây là tổng điểm bài làm trên thang max(sum(max_points)).\n"
     "• per_question_feedback: số phần tử = số 'Câu N:' trong transcript; "
-    "mỗi phần tử đủ 5 trường {question, max_points, score, good_points, "
-    "errors}.\n"
+    "mỗi phần tử đủ 6 trường {question, max_points, score, good_points, "
+    "errors, criteria}.\n"
+    "• criteria: BẮT BUỘC khi user prompt có block 'TIÊU CHÍ CHẤM TỪNG CÂU'. "
+    "Mảng object {label, points, max, errors}; label chép đúng từ template; "
+    "sum(max) = max_points của câu; sum(points) = score của câu (sai số "
+    "làm tròn ≤ 0.5); bội 0.5; tất cả label trong template phải xuất hiện "
+    "(không bỏ qua tiêu chí — câu không liên quan thì points=0 và errors='').\n"
     "• max_points + score: số thực bội 0.5; 0 ≤ score ≤ max_points; "
     "sum(max_points) phải = 10.0 (hoặc thang tổng đề ghi rõ).\n"
     "• comment: không rỗng, mở đầu 'Câu 1:'.\n"
     "• transcript: theo Rule 2–5, đặt cuối vì dài nhất.\n"
-    "• Nếu sắp hết token: rút gọn transcript trước, KHÔNG cắt scores / overall "
-    "/ max_points / score."
+    "• Nếu sắp hết token: rút gọn transcript trước, KHÔNG cắt overall / "
+    "max_points / score / criteria."
 )
 
 _RULE_9B_ANCHORS = (
-    "9b. MỎ NEO ĐIỂM SỐ (đối chiếu trước khi điền scores):\n"
-    "content (Tính chính xác):\n"
-    "  9–10: đúng đáp án / output + đúng mọi bước / logic.\n"
-    "  7–8:  đúng đáp án / output, thiếu 1–2 bước trung gian hoặc sai nhỏ "
-    "không ảnh hưởng kết quả.\n"
-    "  5–6:  sai đáp án / output, đúng hướng, ≥50% bước đúng.\n"
-    "  3–4:  hiểu đề, sai phương pháp / sai từ bước đầu.\n"
-    "  1–2:  có ghi nhưng không liên quan / sai hoàn toàn.\n"
-    "  0:    bỏ trống.\n"
-    "argument (Phương pháp): đúng phương pháp / thuật toán dù sai tính toán "
-    "vẫn 7–8.\n"
-    "expression (Trình bày): độ rõ ràng các bước / code — KHÔNG phạt 'thiếu "
-    "chất văn'.\n"
-    "creativity (Hiểu bản chất): giải thích 'tại sao', cách làm gọn / sáng "
-    "tạo — thường 4–6 với bài trung bình.\n"
-    "CẤM điểm lẻ không phải bội 0.5 (vd: 6.3, 7.7)."
+    "9b. MỎ NEO ĐIỂM SỐ PER-CRITERION (đối chiếu trước khi điền points):\n"
+    "Với mỗi tiêu chí trong template (vd Đặt vấn đề / Biến đổi / Kết quả / "
+    "Trình bày — tuỳ môn), neo điểm theo % của max tiêu chí đó:\n"
+    "  100% (full max): tiêu chí thực hiện đúng/đủ, không sai sót.\n"
+    "  ~75%:  đúng hướng, thiếu 1 chi tiết nhỏ không ảnh hưởng kết quả.\n"
+    "  ~50%:  có làm nhưng sai một phần đáng kể (vd: đúng phương pháp, "
+    "sai tính toán; cân bằng đúng, sai chỉ số).\n"
+    "  ~25%:  có cố gắng nhưng sai chủ chốt (sai phương pháp, sai bản chất).\n"
+    "  0:     bỏ trống / không liên quan / sai hoàn toàn.\n"
+    "Tiêu chí Tính toán / Kết quả thường khắt khe hơn (đúng = full, sai = "
+    "≤50%); tiêu chí Trình bày / Liên hệ thường rộng hơn (bài trung bình "
+    "vẫn 50–75%).\n"
+    "CẤM điểm lẻ không phải bội 0.5 (vd: 0.3, 0.7) ở cả points VÀ score."
 )
 
 # ---------------------------------------------------------------------------
@@ -205,7 +192,6 @@ def compose_grader_system(rule_8_examples: str, rule_9_crosscheck: str) -> str:
     """
     return "\n\n".join([
         _PERSONA,
-        _RUBRIC_HEADER,
         _RULE_1_FORBIDDEN,
         _RULE_2_SCOPE,
         _RULE_3_PROCEDURE,

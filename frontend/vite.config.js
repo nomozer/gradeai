@@ -15,8 +15,8 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
-        timeout: 300000,         // Wait 5 minutes for the AI to respond
-        proxyTimeout: 300000,    // Wait 5 minutes for the proxy itself
+        timeout: 600000,         // Match the frontend's 10-minute pipeline timeout
+        proxyTimeout: 600000,    // Avoid proxy aborting while the client still waits
         configure: (proxy, options) => {
           // Backend `--reload` window is ~1–2s. Without retry, any request
           // (especially the 10s heartbeat poll) hitting that window fails

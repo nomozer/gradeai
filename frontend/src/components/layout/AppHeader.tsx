@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
 import { Icon } from "../ui/Icon";
 import { T } from "../../theme/tokens";
+import type { Tab } from "../../types";
 
 interface AppHeaderProps {
   brand: string;
@@ -11,6 +12,28 @@ interface AppHeaderProps {
   onToggleHistory: (anchorRect: DOMRect | null) => void;
   historyActive: boolean;
   onOpenSidebar?: () => void;
+  // Optional student navigator — when provided, renders the active-tab
+  // chip + prev/next controls in the centre of the header. Drives the
+  // "teacher language" UX upgrade where the always-visible focal point
+  // is "đang chấm bài 2/12" rather than the TabBar metaphor above.
+  tabs?: Tab[];
+  activeId?: string;
+  onSelectTab?: (id: string) => void;
+}
+
+// Two-letter initials from a label — used by the avatar circle. Falls
+// back to "BL" (bài làm) for unnamed tabs so the chip never renders
+// empty.
+function initialsOf(label: string): string {
+  const cleaned = label.trim();
+  if (!cleaned) return "BL";
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "BL";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  // Last two name words — VN names: "Trần Phương Linh" → "PL".
+  const last = parts[parts.length - 1];
+  const second = parts[parts.length - 2];
+  return (second[0] + last[0]).toUpperCase();
 }
 
 // Two nav idioms — keeps the top bar legible at all widths and follows
@@ -60,10 +83,32 @@ export function AppHeader({
   onToggleHistory,
   historyActive,
   onOpenSidebar,
+  tabs,
+  activeId,
+  onSelectTab,
 }: AppHeaderProps) {
   const bp = useBreakpoint();
   const [hamburgerHovered, setHamburgerHovered] = useState(false);
   const historyBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  // Student navigator — derived state. Only renders when the parent
+  // wires up tabs + activeId + onSelectTab (single source of truth: the
+  // workspace owns tab state). Hidden on mobile where header width is
+  // too tight; mobile users navigate via the TabBar drawer instead.
+  const showNav = !!(tabs && tabs.length > 0 && activeId && onSelectTab);
+  const activeIndex = showNav
+    ? tabs!.findIndex((tab) => tab.id === activeId)
+    : -1;
+  const activeTab = activeIndex >= 0 ? tabs![activeIndex] : null;
+  const total = tabs?.length ?? 0;
+  const goPrev = () => {
+    if (!showNav || activeIndex <= 0) return;
+    onSelectTab!(tabs![activeIndex - 1].id);
+  };
+  const goNext = () => {
+    if (!showNav || activeIndex < 0 || activeIndex >= total - 1) return;
+    onSelectTab!(tabs![activeIndex + 1].id);
+  };
 
   const navItems = useMemo<NavItem[]>(
     () => [
@@ -160,6 +205,17 @@ export function AppHeader({
       >
         {brand}
       </span>
+
+      {showNav && activeTab && bp !== "mobile" && (
+        <StudentNavigator
+          tab={activeTab}
+          index={activeIndex}
+          total={total}
+          onPrev={goPrev}
+          onNext={goNext}
+          compact={bp === "tablet" || bp === "laptop"}
+        />
+      )}
 
       <nav
         className="header-nav"
@@ -261,3 +317,189 @@ function NavIconButton({ item }: { item: NavItem }) {
   );
 }
 
+// Student navigator — single-chip focal point that replaces "TabBar
+// metaphor" with "teacher language" mental model:
+//
+//   [ PL ]  Trần Phương Linh   2/12   ◀  ▶
+//   └ avatar └ label ──────────└ counter └ prev/next
+//
+// Status dot on the avatar: green when finalized, amber when graded but
+// awaiting review, red on error, neutral otherwise. The chip is purely
+// derived from props — no state lives here.
+function StudentNavigator({
+  tab,
+  index,
+  total,
+  onPrev,
+  onNext,
+  compact,
+}: {
+  tab: Tab;
+  index: number;
+  total: number;
+  onPrev: () => void;
+  onNext: () => void;
+  compact: boolean;
+}) {
+  const canPrev = index > 0;
+  const canNext = index < total - 1;
+  const initials = initialsOf(tab.label);
+
+  // Status colour priority: error > finalized > awaiting > idle.
+  // Matches TabBar's icon palette so the two stay in sync without an
+  // explicit shared enum.
+  const statusColor = tab.error
+    ? T.red
+    : tab.finalized
+      ? T.green
+      : tab.hasGrade
+        ? T.amber
+        : T.textFaint;
+
+  return (
+    <div
+      className="header-student-nav"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        flex: "1 1 auto",
+        minWidth: 0,
+        justifyContent: "center",
+        // Cap the chip width so it doesn't push the nav to wrap. The
+        // label truncates with ellipsis well before that limit.
+        maxWidth: compact ? 320 : 520,
+        margin: "0 auto",
+      }}
+    >
+      <NavArrow onClick={onPrev} disabled={!canPrev} dir="prev" />
+      <div
+        title={`Đang chấm: ${tab.label} (${index + 1}/${total})`}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "4px 12px 4px 4px",
+          borderRadius: 999,
+          background: T.bgCard,
+          border: `1px solid ${T.border}`,
+          minWidth: 0,
+          maxWidth: "100%",
+          height: 36,
+          boxShadow: "0 1px 2px rgba(44, 46, 58, 0.04)",
+        }}
+      >
+        <span
+          style={{
+            position: "relative",
+            width: 28,
+            height: 28,
+            borderRadius: "50%",
+            background: T.accentSoft,
+            color: T.accentDark,
+            fontSize: T.fontSize.xs,
+            fontWeight: 700,
+            fontFamily: T.font,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flex: "0 0 auto",
+            letterSpacing: 0.2,
+          }}
+        >
+          {initials}
+          <span
+            aria-hidden
+            style={{
+              position: "absolute",
+              right: -1,
+              bottom: -1,
+              width: 9,
+              height: 9,
+              borderRadius: "50%",
+              background: statusColor,
+              border: `2px solid ${T.bgCard}`,
+            }}
+          />
+        </span>
+        <span
+          style={{
+            fontSize: T.fontSize.sm,
+            fontFamily: T.font,
+            fontWeight: 600,
+            color: T.text,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            minWidth: 0,
+            maxWidth: compact ? 160 : 280,
+          }}
+        >
+          {tab.label || "Bài chưa đặt tên"}
+        </span>
+        <span
+          aria-label={`Bài ${index + 1} trên ${total}`}
+          style={{
+            fontSize: T.fontSize.xs,
+            fontFamily: T.mono,
+            fontWeight: 500,
+            color: T.textMute,
+            padding: "2px 8px",
+            background: T.bgElevated,
+            borderRadius: 999,
+            flex: "0 0 auto",
+            letterSpacing: 0.3,
+          }}
+        >
+          {index + 1}/{total}
+        </span>
+      </div>
+      <NavArrow onClick={onNext} disabled={!canNext} dir="next" />
+    </div>
+  );
+}
+
+function NavArrow({
+  onClick,
+  disabled,
+  dir,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+  dir: "prev" | "next";
+}) {
+  const [hovered, setHovered] = useState(false);
+  const label = dir === "prev" ? "Bài trước" : "Bài sau";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      aria-label={label}
+      title={label}
+      style={{
+        width: 30,
+        height: 30,
+        borderRadius: "50%",
+        border: "none",
+        background: disabled ? "transparent" : hovered ? T.bgHover : "transparent",
+        color: disabled ? T.textFaint : T.textSoft,
+        cursor: disabled ? "default" : "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: disabled ? 0.4 : 1,
+        transition: "background-color 0.15s ease, color 0.15s ease",
+        flex: "0 0 auto",
+      }}
+    >
+      {dir === "prev" ? (
+        <Icon.ChevronRight size={16} style={{ transform: "rotate(180deg)" }} />
+      ) : (
+        <Icon.ChevronRight size={16} />
+      )}
+    </button>
+  );
+}

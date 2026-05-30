@@ -30,6 +30,7 @@ import { EssayWorkspace } from "./features/workspace/EssayWorkspace";
 import { MemoryPanel } from "./features/memory/MemoryPanel";
 import { HelpModal } from "./features/help/HelpModal";
 import { GradeHistoryDropdown } from "./features/history/GradeHistoryDropdown";
+import type { GradeHistoryEntry } from "./types";
 
 const MEMORY_HASH = "#memory";
 
@@ -103,6 +104,41 @@ function WorkspacePage() {
   // state, safely under the cap). Bump higher only after confirming the
   // user is on a paid Gemini tier with higher quota.
   const MAX_CONCURRENCY = 3;
+
+  // "Bài đã chấm" header dropdown: opens history entries in a BRAND NEW
+  // tab so an accidental click never overwrites the teacher's in-progress
+  // work (e.g. a 20-paper batch sitting at Step 1). The new tab carries
+  // ``initialHistoryEntry`` + ``initialHistoryStep``; its EssayWorkspace
+  // consumes them on mount via ``pipeline.loadHistoryEntry``. ``addTab``
+  // (reducer ADD) already promotes the new tab to active.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail =
+        (e as CustomEvent<{ entry: GradeHistoryEntry; step?: 3 | 4 | 5 }>).detail;
+      const entry = detail?.entry;
+      if (!entry || typeof entry.response?.code !== "string") return;
+      const step = detail?.step ?? 3;
+      // Dedup by entry.id — clicking the same row twice switches to the
+      // existing tab instead of spawning a duplicate (same mental model
+      // as Chrome's bookmark behavior). EssayWorkspace deliberately
+      // keeps ``initialHistoryEntry`` populated after consume so this
+      // lookup keeps working for the lifetime of the tab.
+      const existing = tabs.find(
+        (t) => t.initialHistoryEntry?.id === entry.id,
+      );
+      if (existing) {
+        setActive(existing.id);
+        return;
+      }
+      // Label from the entry's task descriptor (e.g. "Toán · ĐỀ HÌNH").
+      // Falls back to "Đã chấm" if the entry has no task string so the
+      // tab never renders untitled.
+      const label = (entry.task || "Đã chấm").slice(0, 30);
+      addTab({ label, initialHistoryEntry: entry, initialHistoryStep: step });
+    };
+    window.addEventListener("hitl.openHistoryEntry", handler);
+    return () => window.removeEventListener("hitl.openHistoryEntry", handler);
+  }, [addTab, tabs, setActive]);
 
   // Listen for the custom "hitl.startBatchGrading" event from TabBar
   useEffect(() => {
@@ -221,12 +257,17 @@ function WorkspacePage() {
     }
   }, [tabs, activeId, setActive]);
 
-  // ── Synchronize shared fields (Task PDF, Answer Key, Subject) across all tabs ──
+  // ── Synchronize shared fields (Task PDF, Answer Key, Subject, Max Template) across all tabs ──
   useEffect(() => {
     const activeTab = tabs.find((t) => t.id === activeId);
     if (!activeTab) return;
 
-    const { initialTaskFile, initialAnswerKeyFile, initialSubject } = activeTab;
+    const {
+      initialTaskFile,
+      initialAnswerKeyFile,
+      initialSubject,
+      maxPointsTemplate,
+    } = activeTab;
 
     tabs.forEach((t) => {
       if (t.id === activeId) return;
@@ -235,8 +276,20 @@ function WorkspacePage() {
       const hasNewTask = initialTaskFile && t.initialTaskFile !== initialTaskFile;
       const hasNewAnswerKey = initialAnswerKeyFile && t.initialAnswerKeyFile !== initialAnswerKeyFile;
       const hasNewSubject = initialSubject && t.initialSubject !== initialSubject;
+      // Max-points template only propagates between tabs in the SAME
+      // batch — i.e. tabs that share an ``initialTaskFile`` with the
+      // active tab. Otherwise a math-paper template would leak into an
+      // unrelated chem-paper tab. Latest active-tab edit wins; teacher's
+      // mental model is "I just decided the scheme, apply to the rest".
+      const sameBatch =
+        !!activeTab.initialTaskFile &&
+        t.initialTaskFile === activeTab.initialTaskFile;
+      const hasNewMaxTemplate =
+        sameBatch &&
+        maxPointsTemplate &&
+        t.maxPointsTemplate !== maxPointsTemplate;
 
-      if (hasNewTask || hasNewAnswerKey || hasNewSubject) {
+      if (hasNewTask || hasNewAnswerKey || hasNewSubject || hasNewMaxTemplate) {
         const nextTask = hasNewTask ? initialTaskFile : t.initialTaskFile;
         const nextSubject = hasNewSubject ? initialSubject : t.initialSubject;
         // Background tabs can run if they have an essay + task + subject!
@@ -246,6 +299,9 @@ function WorkspacePage() {
           initialTaskFile: nextTask,
           initialAnswerKeyFile: hasNewAnswerKey ? initialAnswerKeyFile : t.initialAnswerKeyFile,
           initialSubject: nextSubject,
+          maxPointsTemplate: hasNewMaxTemplate
+            ? maxPointsTemplate
+            : t.maxPointsTemplate,
           canRun: canRunVal,
         });
       }
@@ -274,6 +330,9 @@ function WorkspacePage() {
         onToggleHistory={toggleHistory}
         historyActive={historyOpen}
         onOpenSidebar={() => window.dispatchEvent(new CustomEvent("hitl.openSidebar"))}
+        tabs={tabs}
+        activeId={activeId}
+        onSelectTab={setActive}
       />
 
       <TabBar

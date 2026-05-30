@@ -1,16 +1,15 @@
 import { T } from "../../../theme/tokens";
 import { Icon } from "../../../components/ui/Icon";
 
-// LearningBanner — post-finalize confirmation that the HITL feedback
-// loop landed. Shows the teacher the two signals AI just absorbed:
-//   • Comment annotations from step 3 → lessons at score 3.5.
-//   • Score-delta lesson from this finalize → score 4.0 (only when the
-//     teacher's adjustments crossed the per-câu/rubric threshold).
+// Post-finalize confirmation banner. Closes the HITL feedback loop
+// visually so the teacher sees AI absorbed their work.
 //
-// Counts of per-câu / rubric / overall deltas come from the backend's
-// ``deltas`` map — keys "cau:N" (per-câu), "content"/"argument"/...
-// (rubric), and "overall". We split them so the message reflects the
-// dimension the teacher actually edited.
+// Phrasing is teacher-facing, not log-facing — no DB row ids
+// ("delta lesson #8"), no internal score tiers ("điểm tham chiếu 4.0"),
+// no jargon like "nhiễu bộ nhớ". Each line ends with what the teacher
+// gets back next time, not what got written where. Specific câu numbers
+// + delta amounts replace the prior "1 câu" abstraction so the message
+// matches the rows the teacher actually edited.
 export function LearningBanner({
   commentsSaved,
   commentsSkipped,
@@ -22,10 +21,17 @@ export function LearningBanner({
   deltaLessonId: number | null;
   deltas: Record<string, number>;
 }) {
-  const cauKeys = Object.keys(deltas).filter((k) => k.startsWith("cau:"));
-  const rubricKeys = Object.keys(deltas).filter(
-    (k) => !k.startsWith("cau:") && k !== "overall",
-  );
+  // Per-câu deltas in numeric câu order so the line reads
+  // "Câu 2 −0.5đ, Câu 5 +1đ" — matches what the teacher just edited.
+  const cauDeltas = Object.entries(deltas)
+    .filter(([k]) => k.startsWith("cau:"))
+    .map(([k, v]) => ({ cau: parseInt(k.slice(4), 10), delta: v }))
+    .filter((x) => Number.isFinite(x.cau))
+    .sort((a, b) => a.cau - b.cau);
+
+  const formatDelta = (d: number) =>
+    `${d > 0 ? "+" : d < 0 ? "−" : ""}${Math.abs(d)}đ`;
+
   return (
     <div
       className="rc-no-print"
@@ -55,7 +61,7 @@ export function LearningBanner({
             textTransform: "uppercase",
           }}
         >
-          AI đã học từ bài này
+          AI đã ghi nhớ từ bài này
         </span>
       </div>
       <ul
@@ -72,42 +78,28 @@ export function LearningBanner({
       >
         {commentsSaved > 0 && (
           <li>
-            <strong>{commentsSaved}</strong> nhận xét → bộ nhớ HITL{" "}
-            <span style={{ color: T.textMute, fontFamily: T.mono }}>
-              (điểm tham chiếu 3.5)
-            </span>
+            <strong>{commentsSaved}</strong> nhận xét của bạn → dùng cho
+            bài tương tự lần sau
           </li>
         )}
         {commentsSkipped > 0 && (
           <li style={{ color: T.textSoft }}>
-            <strong>{commentsSkipped}</strong> nhận xét bị AI phản biện —
-            đã bỏ qua để tránh nhiễu bộ nhớ.
+            <strong>{commentsSkipped}</strong> nhận xét chưa lưu — AI và
+            bạn chưa thống nhất.
           </li>
         )}
         {deltaLessonId != null && (
           <li>
-            Điều chỉnh điểm
-            {cauKeys.length > 0 && (
+            {cauDeltas.length > 0 ? (
               <>
-                {" "}
-                <strong>{cauKeys.length} câu</strong>
+                {cauDeltas
+                  .map((x) => `Câu ${x.cau} ${formatDelta(x.delta)}`)
+                  .join(", ")}{" "}
+                → AI sẽ chấm gần với bạn hơn lần sau
               </>
+            ) : (
+              "Điểm bạn chỉnh đã ghi nhớ — AI sẽ chấm gần với bạn hơn lần sau"
             )}
-            {rubricKeys.length > 0 && (
-              <>
-                {cauKeys.length > 0 ? " + " : " "}
-                <strong>{rubricKeys.length} tiêu chí</strong>
-              </>
-            )}{" "}
-            → delta lesson #{deltaLessonId}{" "}
-            <span style={{ color: T.textMute, fontFamily: T.mono }}>
-              (điểm tham chiếu 4.0)
-            </span>
-          </li>
-        )}
-        {deltaLessonId == null && commentsSaved > 0 && (
-          <li style={{ color: T.textSoft, fontSize: T.fontSize.caption }}>
-            Điểm bạn chốt khớp với AI — không tạo delta lesson.
           </li>
         )}
       </ul>

@@ -8,6 +8,8 @@ import type {
   StagedLesson,
 } from "../types";
 
+const ANALYZE_COMMENT_TIMEOUT_MS = 30000;
+
 export interface FeedbackRequest {
   action: FeedbackAction;
   comment: string;
@@ -41,5 +43,13 @@ export function analyzeComment(
   req: AnalyzeCommentRequest,
   options?: RequestOptions,
 ): Promise<AnalyzeCommentResponse> {
-  return apiPost<AnalyzeCommentRequest, AnalyzeCommentResponse>("/analyze-comment", req, options);
+  if (options?.signal) {
+    return apiPost<AnalyzeCommentRequest, AnalyzeCommentResponse>("/analyze-comment", req, options);
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), ANALYZE_COMMENT_TIMEOUT_MS);
+  return apiPost<AnalyzeCommentRequest, AnalyzeCommentResponse>("/analyze-comment", req, {
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeoutId));
 }

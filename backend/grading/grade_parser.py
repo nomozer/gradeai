@@ -133,7 +133,7 @@ def _parse_json_best_effort(text: str) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 
 
-_REQUIRED_GRADE_FIELDS = ("transcript", "comment", "scores", "overall",
+_REQUIRED_GRADE_FIELDS = ("transcript", "comment", "overall",
                           "per_question_feedback")
 
 
@@ -142,15 +142,16 @@ def _is_complete_grade(parsed: dict[str, Any]) -> bool:
 
     A "soft truncation" (Gemini stops mid-envelope but emits valid JSON via
     _repair_truncated_json closing braces) leaves us with a parseable dict
-    that's silently missing scores/overall/comment. Without this check the
-    UI rendered Tab 5 with empty score boxes and no per-question commentary.
+    that's silently missing overall/comment. Without this check the UI
+    rendered Tab 5 with empty score boxes and no per-question commentary.
+
+    Phase 3 (Pattern B): legacy global ``scores`` field gone — overall is
+    now ``sum(per_question_feedback[i].score)`` per the updated Rule 7,
+    and per-câu criteria carry the rubric breakdown.
     """
     for field in _REQUIRED_GRADE_FIELDS:
         if field not in parsed:
             return False
-    scores = parsed.get("scores")
-    if not isinstance(scores, dict) or not scores:
-        return False
     if parsed.get("overall") is None:
         return False
     return True
@@ -164,7 +165,7 @@ def parse_grade_json(text: str) -> dict[str, Any]:
          required fields are present.
       2. Best-effort parse but missing fields → fill defaults, flag
          ``salvaged=True`` so the UI surfaces a warning and the teacher
-         knows scores/comment are AI-shortfall, not legitimately blank.
+         knows overall/comment are AI-shortfall, not legitimately blank.
       3. Total parse failure → regex-extract transcript/comment and
          synthesize a flagged envelope so the UI doesn't crash.
     """
@@ -175,11 +176,6 @@ def parse_grade_json(text: str) -> dict[str, Any]:
         # Soft-truncation: parse OK but envelope incomplete. Fill defaults
         # and flag so the salvage banner appears in Tab 3.
         missing = [f for f in _REQUIRED_GRADE_FIELDS if f not in parsed]
-        scores = parsed.get("scores")
-        if not isinstance(scores, dict) or not scores:
-            parsed["scores"] = {
-                "content": 0, "argument": 0, "expression": 0, "creativity": 0,
-            }
         parsed.setdefault("transcript", "")
         parsed.setdefault("comment", "")
         if parsed.get("overall") is None:
@@ -188,7 +184,7 @@ def parse_grade_json(text: str) -> dict[str, Any]:
         parsed.setdefault("strengths", [])
         weak = parsed.get("weaknesses")
         note = ("Phản hồi của AI bị cắt giữa chừng — thiếu "
-                + ", ".join(missing or ["scores"]) + ". Hãy chấm lại.")
+                + ", ".join(missing or ["overall"]) + ". Hãy chấm lại.")
         if isinstance(weak, list):
             weak.append(note)
         else:
@@ -196,7 +192,7 @@ def parse_grade_json(text: str) -> dict[str, Any]:
         parsed["salvaged"] = True
         logger.warning(
             "[HITL] Grader output incomplete — flagged salvaged. Missing: %s",
-            ", ".join(missing) if missing else "none (empty scores/overall)",
+            ", ".join(missing) if missing else "none (empty overall)",
         )
         return parsed
 
@@ -209,7 +205,6 @@ def parse_grade_json(text: str) -> dict[str, Any]:
     )
     return {
         "transcript": transcript,
-        "scores": {"content": 0, "argument": 0, "expression": 0, "creativity": 0},
         "overall": 0,
         "comment": comment or cleaned[:400],
         "per_question_feedback": [],
@@ -217,6 +212,65 @@ def parse_grade_json(text: str) -> dict[str, Any]:
         "weaknesses": ["unparseable JSON salvaged from partial response"],
         "salvaged": True,
     }
+
+
+# ---------------------------------------------------------------------------
+# Confidence inference — drives the frontend "Độ tin cậy" chip
+# ---------------------------------------------------------------------------
+#
+# Pure-function heuristic over the parsed grade envelope. Surfaces "how
+# much should the teacher trust this run before skimming vs deep-diving"
+# without needing a separate AI reviewer pass — derives the signal from
+# shape only, so it's free.
+#
+#   "low"    — salvaged, empty per-câu, all-zero scores ("Đúng," failure
+#              mode), or comment text < 30 chars (model bailed early).
+#   "medium" — has per-câu but multiple câu are missing both good_points
+#              AND errors (sparse feedback), or comment text is short.
+#   "high"   — full shape: scores, per-câu with at least some feedback,
+#              comment of meaningful length.
+#
+# Conservative: defaults to "medium" when in doubt. The teacher's mental
+# model is "low = read carefully", so the threshold for "high" is strict.
+#
+# Lives next to parse_grade_json because both reason about the same
+# envelope; the API layer just calls infer_confidence(parse_grade_json(code))
+# once per response.
+def infer_confidence(parsed: dict[str, Any]) -> str:
+    """Return one of ``"high"`` | ``"medium"`` | ``"low"``."""
+    if not parsed:
+        return "low"
+    if parsed.get("salvaged"):
+        return "low"
+
+    per_q = parsed.get("per_question_feedback") or []
+    if not per_q:
+        return "low"
+
+    # All-zero scores across all câu — the "Đúng," failure mode (model
+    # returned a no-op envelope).
+    if all((q.get("score") or 0) == 0 for q in per_q):
+        # Allow legitimate all-zero ONLY if there's substantive comment
+        # text explaining the failure.
+        comment = parsed.get("comment") or ""
+        if len(comment.strip()) < 30:
+            return "low"
+
+    # Sparse feedback — how many câu have neither good_points nor errors.
+    sparse = sum(
+        1
+        for q in per_q
+        if not (q.get("good_points") or "").strip()
+        and not (q.get("errors") or "").strip()
+    )
+    if sparse >= max(1, len(per_q) // 2):
+        return "medium"
+
+    comment = (parsed.get("comment") or "").strip()
+    if len(comment) < 40:
+        return "medium"
+
+    return "high"
 
 
 _VALID_VERDICTS = ("agree", "partial", "dispute")

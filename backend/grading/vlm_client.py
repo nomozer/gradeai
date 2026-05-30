@@ -194,6 +194,8 @@ class GeminiClient:
         *,
         json_mode: bool = False,
         max_output_tokens: int = 32768,
+        timeout_secs: int | None = None,
+        max_retries: int | None = None,
     ) -> str:
         """Call Gemini with auto model-rotation on quota errors.
 
@@ -205,7 +207,8 @@ class GeminiClient:
         _ensure_configured()
 
         last_exc: Exception | None = None
-        for attempt in range(1, MAX_RETRIES + 1):
+        attempts = max(1, max_retries if max_retries is not None else MAX_RETRIES)
+        for attempt in range(1, attempts + 1):
             model = _create_model(
                 system_instruction,
                 self.current_model_name(),
@@ -219,10 +222,12 @@ class GeminiClient:
                 # Multi-page PDFs need ~45 s per page — scale timeout so
                 # a 5-page scan doesn't spuriously trip the watchdog.
                 default_timeout_secs = 60 + (45 * max(1, payload_count))
-                timeout_secs = int(
-                    os.getenv("GEMINI_TIMEOUT", str(default_timeout_secs))
+                effective_timeout_secs = (
+                    timeout_secs
+                    if timeout_secs is not None
+                    else int(os.getenv("GEMINI_TIMEOUT", str(default_timeout_secs)))
                 )
-                watchdog_timeout = timeout_secs + 15
+                watchdog_timeout = effective_timeout_secs + 15
 
                 # Order: images → PDF → prompt. Using extend/append instead
                 # of the old insert(0) loop — same result, O(n) not O(n²).
@@ -237,7 +242,7 @@ class GeminiClient:
                     asyncio.to_thread(
                         model.generate_content,
                         payload,
-                        request_options={"timeout": timeout_secs},
+                        request_options={"timeout": effective_timeout_secs},
                     ),
                     timeout=watchdog_timeout,
                 )
@@ -261,13 +266,13 @@ class GeminiClient:
                 if is_quota:
                     self.rotate_model()
 
-                if not retryable or attempt >= MAX_RETRIES:
+                if not retryable or attempt >= attempts:
                     raise
 
                 if is_daily_quota:
                     logger.warning(
                         "[HITL] Daily quota exhausted — switching to %s (attempt %d/%d)",
-                        self.current_model_name(), attempt, MAX_RETRIES,
+                        self.current_model_name(), attempt, attempts,
                     )
                     continue
 
@@ -276,7 +281,7 @@ class GeminiClient:
                 logger.warning(
                     "[HITL] %s — waiting %.0fs (attempt %d/%d, next model=%s)",
                     "Rate limited" if is_quota else "Transient error",
-                    delay, attempt, MAX_RETRIES, self.current_model_name(),
+                    delay, attempt, attempts, self.current_model_name(),
                 )
                 await asyncio.sleep(delay)
 

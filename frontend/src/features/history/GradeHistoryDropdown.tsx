@@ -114,14 +114,16 @@ export function GradeHistoryDropdown({ open, onClose, anchorRect }: GradeHistory
 
   const handleLoad = useCallback(
     (entry: GradeHistoryEntry, step: 3 | 4 | 5 = 3) => {
-      // Hand off to the active tab's EssayWorkspace via a window event. The
-      // dropdown lives in the header and has no direct ref into the tab,
-      // and the active tab listens for this exact event. Carrying ``step``
-      // lets one history grade enter at any of the three teacher-facing
-      // surfaces (Review / Regrade / Done) — Review is the default since
-      // that's where you usually want to start a re-pass.
+      // Hand off to App.tsx via a window event. App opens the entry in a
+      // BRAND NEW tab (rather than overwriting the active tab) so the
+      // teacher's in-progress work — uploaded essays in a 20-paper batch,
+      // a half-finished review, an in-flight Gemini call — is never
+      // disturbed by an accidental click. Carrying ``step`` lets the new
+      // tab land on any of the three teacher-facing surfaces (Review /
+      // Regrade / Done); Review is the default since that's where you
+      // usually want to start a re-pass.
       window.dispatchEvent(
-        new CustomEvent("hitl.loadGrade", { detail: { entry, step } }),
+        new CustomEvent("hitl.openHistoryEntry", { detail: { entry, step } }),
       );
       onClose();
     },

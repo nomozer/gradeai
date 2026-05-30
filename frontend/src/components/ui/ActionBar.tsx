@@ -159,51 +159,95 @@ interface ActionBarProps {
   children: React.ReactNode;
   /** Optional center text / status info */
   status?: React.ReactNode;
+  /** Optional left-side score panel (e.g. ScoreInline from step 3/4/5).
+   *  When provided, it sits to the LEFT of the prev/back button so the
+   *  teacher always sees the running total in the same place. Replaces
+   *  the previous standalone sticky ScoreBottomBar — one footer instead
+   *  of two stacked strips. */
+  scoreSlot?: React.ReactNode;
 }
 
 /**
- * ActionBar — bottom navigation bar shared across step 3, 4, 5.
+ * ActionBar — sticky bottom navigation shared across step 3, 4, 5.
  *
- * Layout: [left slot] — [center status] — [right slot]
- * Uses a glassmorphism-inspired frosted look with top border.
+ * Layout: [score slot] · [left button] — [center status] — [right buttons]
+ *
+ * Position is ``sticky; bottom: 0`` so the bar stays glued to the
+ * viewport edge as the teacher scrolls through long essays. Opaque
+ * background + top shadow give the lift effect over scrolled content
+ * (the previous ``position: relative`` version only showed at the end of
+ * page flow, leaving the score panel feeling disconnected when the
+ * teacher was in the middle of a long câu).
  */
-export function ActionBar({ children, status }: ActionBarProps) {
-  const childArray = React.Children.toArray(children);
-  const left = childArray[0] ?? null;
-  const right = childArray.slice(1);
-
+export function ActionBar({ children, status, scoreSlot }: ActionBarProps) {
   return (
     <div
       className="action-bar"
       style={{
+        position: "sticky",
+        bottom: 0,
+        zIndex: 40,
         marginTop: 20,
-        padding: "16px 4px",
+        marginLeft: "calc(-1 * clamp(16px, 4vw, 32px))",
+        marginRight: "calc(-1 * clamp(16px, 4vw, 32px))",
+        padding: "14px clamp(16px, 4vw, 32px)",
+        background: "rgba(255, 253, 248, 0.95)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        gap: 16,
+        gap: 20,
         flexWrap: "wrap",
-        borderTop: `1px solid ${T.borderLight}`,
+        borderTop: `1px solid ${T.border}`,
+        boxShadow: "0 -6px 20px -8px rgba(44, 46, 58, 0.08)",
       }}
     >
-      {left}
-      {status && (
+      {/* Zone 1: Scores (Left) */}
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          flex: "0 1 auto",
+          minWidth: 0,
+        }}
+      >
+        {scoreSlot}
+      </div>
+
+      {/* Zone 2: Contextual Status Message (Center) */}
+      {status ? (
         <div
           className="action-bar-status"
           style={{
+            fontFamily: T.font,
             fontSize: 13,
             color: T.textMute,
             textAlign: "center",
             flex: "1 1 200px",
             minWidth: 0,
             lineHeight: 1.5,
+            fontWeight: 500,
           }}
         >
           {status}
         </div>
+      ) : (
+        /* Flexible spacer when status is empty to push actions to the far right */
+        <div style={{ flex: "1 1 0%" }} />
       )}
-      <div className="action-bar-actions" style={{ display: "inline-flex", gap: 10, alignItems: "center" }}>
-        {right}
+
+      {/* Zone 3: Actions Cluster (Right) */}
+      <div
+        className="action-bar-actions"
+        style={{
+          display: "inline-flex",
+          gap: 12,
+          alignItems: "center",
+          flex: "0 0 auto",
+        }}
+      >
+        {children}
       </div>
     </div>
   );

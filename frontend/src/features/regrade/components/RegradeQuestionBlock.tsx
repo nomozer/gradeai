@@ -4,7 +4,7 @@ import { vi as t } from "../../../i18n/vi";
 import { formatLine, formatTranscript } from "../../../lib/mathFormat";
 import type { SelectionAnnotation } from "../../../types";
 import type { RegradeQuestion } from "../types";
-import { Chevron, HeaderScoreChip } from "./RegradeControls";
+import { Chevron } from "./RegradeControls";
 import { Icon } from "../../../components/ui/Icon";
 
 // Normalize a string for quote matching across NFC/NFD + nbsp variants.
@@ -187,15 +187,130 @@ export function RegradeQuestionBlock({
             </span>
           )}
         </div>
-        <HeaderScoreChip
-          aiScore={q.aiScore}
-          cap={cap}
-          isEdited={isEdited}
-        />
+        {/* Inline score editor — always visible regardless of expand state.
+            AI score (read-only) → arrow → teacher input + delta.
+            All interactive elements stop click propagation so typing
+            doesn't accidentally toggle the expand state. */}
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 10,
+            flexShrink: 0,
+            background: isEdited
+              ? "rgba(184, 66, 58, 0.04)"
+              : "rgba(59, 79, 138, 0.04)",
+            border: `1px solid ${isEdited ? T.red : T.border}`,
+            borderRadius: 8,
+            padding: "5px 10px",
+            transition: "background 0.2s, border-color 0.2s",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* AI score (read-only) */}
+          <div style={{ display: "inline-flex", alignItems: "baseline", gap: 3 }}>
+            <span
+              style={{
+                fontSize: 9,
+                fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
+                fontWeight: 700,
+                color: T.textFaint,
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+              }}
+            >
+              AI
+            </span>
+            <span
+              style={{
+                fontFamily: T.mono,
+                fontSize: 14,
+                fontWeight: 600,
+                color: T.textSoft,
+              }}
+            >
+              {q.aiScore.toFixed(1)}
+              {cap != null && (
+                <span style={{ color: T.textMute, fontSize: 11, fontWeight: 400 }}>
+                  /{cap.toFixed(1)}
+                </span>
+              )}
+            </span>
+          </div>
+
+          <span
+            style={{
+              color: T.textFaint,
+              fontSize: 12,
+              fontWeight: 600,
+              userSelect: "none",
+              fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
+            }}
+          >
+            →
+          </span>
+
+          {/* Teacher editable input */}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span
+              style={{
+                fontSize: 9,
+                fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
+                fontWeight: 700,
+                color: isEdited ? T.red : T.textFaint,
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+              }}
+            >
+              Bạn
+            </span>
+            <input
+              type="number"
+              step={0.25}
+              min={0}
+              max={cap}
+              value={myScore}
+              onChange={(e) => {
+                const raw = parseFloat(e.target.value || "0");
+                if (Number.isNaN(raw)) { onScoreChange(q.aiScore); return; }
+                const clamped = cap != null
+                  ? Math.max(0, Math.min(cap, raw))
+                  : Math.max(0, raw);
+                onScoreChange(clamped);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: 58,
+                fontFamily: T.mono,
+                fontSize: 14,
+                fontWeight: 700,
+                padding: "3px 8px",
+                border: `1px solid ${isEdited ? T.red : T.border}`,
+                borderRadius: 6,
+                background: T.bgCard,
+                color: isEdited ? T.red : T.text,
+                outline: "none",
+                textAlign: "center",
+              }}
+            />
+            {Math.abs(delta) > 0.001 && (
+              <span
+                style={{
+                  fontFamily: T.mono,
+                  fontSize: 11,
+                  color: delta > 0 ? T.green : T.red,
+                  fontWeight: 700,
+                }}
+              >
+                {delta > 0 ? "+" : ""}{delta.toFixed(2)}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Cap editor — separate from score row, keeps max-points
+            governance visible alongside the score for quick reference. */}
         {capEditable ? (
-          // Đề không quy định — render an inline editable input so the
-          // teacher decides this câu's cap themselves. Empty = "chưa đặt"
-          // (no cap → input below runs free, header total catches it).
           <label
             style={{
               fontSize: 11,
@@ -219,10 +334,7 @@ export function RegradeQuestionBlock({
               value={maxOverride ?? ""}
               onChange={(e) => {
                 const raw = e.target.value.trim();
-                if (raw === "") {
-                  onMaxOverrideChange(undefined);
-                  return;
-                }
+                if (raw === "") { onMaxOverrideChange(undefined); return; }
                 const v = parseFloat(raw);
                 if (Number.isNaN(v)) return;
                 onMaxOverrideChange(Math.max(0, Math.min(10, v)));
@@ -384,130 +496,9 @@ export function RegradeQuestionBlock({
             )}
           </div>
 
-          {/* Score editor row — compact horizontal: AI score → teacher
-              input → delta, all on one line so the teacher can compare
-              at a glance. Grid layout used to waste the full width on
-              two narrow values. */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
-              padding: "10px 16px",
-              background: T.bgMuted,
-              border: `1px solid ${T.borderLight}`,
-              borderRadius: 8,
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
-              <span
-                style={{
-                  fontSize: 10,
-                  fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
-                  fontWeight: 700,
-                  color: T.textFaint,
-                  letterSpacing: "0.12em",
-                  textTransform: "uppercase",
-                }}
-              >
-                AI
-              </span>
-              <span
-                style={{
-                  fontFamily: T.mono,
-                  fontSize: 16,
-                  fontWeight: 600,
-                  color: T.textSoft,
-                }}
-              >
-                {q.aiScore.toFixed(1)}
-                {cap != null && (
-                  <span
-                    style={{ color: T.textMute, fontSize: 12, fontWeight: 400 }}
-                  >
-                    /{cap.toFixed(1)}
-                  </span>
-                )}
-              </span>
-            </div>
-
-            <span
-              style={{
-                color: T.textFaint,
-                fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
-                fontSize: 14,
-                fontWeight: 600,
-                userSelect: "none",
-              }}
-            >
-              →
-            </span>
-
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  fontSize: 10,
-                  fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
-                  fontWeight: 700,
-                  color: T.textFaint,
-                  letterSpacing: "0.12em",
-                  textTransform: "uppercase",
-                }}
-              >
-                Bạn
-              </span>
-              <input
-                type="number"
-                step={0.25}
-                min={0}
-                // Per-câu cap is the effective max (đề-supplied OR teacher
-                // override). When the teacher hasn't filled in the
-                // override for a non-quy-định câu, no upper constraint
-                // applies and the exam-level cap (10đ) catches it at
-                // the header.
-                max={cap}
-                value={myScore}
-                onChange={(e) => {
-                  const raw = parseFloat(e.target.value || "0");
-                  if (Number.isNaN(raw)) {
-                    onScoreChange(q.aiScore);
-                    return;
-                  }
-                  const clamped =
-                    cap != null
-                      ? Math.max(0, Math.min(cap, raw))
-                      : Math.max(0, raw);
-                  onScoreChange(clamped);
-                }}
-                style={{
-                  width: 68,
-                  fontFamily: T.mono,
-                  fontSize: 16,
-                  fontWeight: 600,
-                  padding: "4px 10px",
-                  border: `1px solid ${isEdited ? T.red : T.border}`,
-                  borderRadius: 6,
-                  background: T.bgCard,
-                  color: T.text,
-                  outline: "none",
-                }}
-              />
-              {Math.abs(delta) > 0.001 && (
-                <span
-                  style={{
-                    fontFamily: T.mono,
-                    fontSize: 12,
-                    color: T.red,
-                    fontWeight: 600,
-                  }}
-                >
-                  {delta > 0 ? "+" : ""}
-                  {delta.toFixed(2)}
-                </span>
-              )}
-            </div>
-          </div>
+          {/* Score editor row removed — input is now always-visible
+              in the câu header so the teacher can edit scores without
+              needing to expand each câu first. */}
         </div>
       )}
     </div>

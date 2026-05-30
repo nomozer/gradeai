@@ -16,10 +16,17 @@ export interface StagedLesson {
   question_ref: string;
 }
 
+/** Inferred AI grade confidence from envelope shape. Drives the
+ *  "Độ tin cậy" chip in the unified ActionBar; teacher uses it to
+ *  decide skim-vs-deep-dive before reading. Derived server-side by
+ *  ``grading.grade_parser.infer_confidence``. */
+export type GradeConfidence = "high" | "medium" | "low";
+
 export interface GenerateResponse {
   code: string;
   lessons_used: Lesson[];
   run_id: number | null;
+  confidence?: GradeConfidence;
 }
 
 export interface GradeHistoryEntry {

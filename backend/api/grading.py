@@ -16,6 +16,7 @@ Singletons (memory / prompt_orch / orchestrator) are injected via
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException
@@ -38,10 +39,12 @@ from grading import (
     AgentOrchestrator,
     PromptOrchestrator,
     compute_per_question_deltas,
-    compute_score_deltas,
+    compute_per_step_deltas,
     extract_pdf_text,
     format_delta_lesson,
+    infer_confidence,
     looks_like_timeout,
+    parse_grade_json,
     safe_delta,
 )
 from memory import MemoryManager, log_event as log_hitl_event
@@ -124,11 +127,13 @@ async def generate(req: GenerateRequest):
             task_pdf_b64=req.task_pdf_b64,
             answer_key=answer_key,
             subject=req.subject,
+            max_points_template=req.max_points_template,
         )
         return GenerateResponse(
             code=result.code,
             lessons_used=result.lessons_used,
             run_id=result.run_id,
+            confidence=infer_confidence(parse_grade_json(result.code)),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -160,7 +165,8 @@ async def regrade(req: RegradeRequest):
 
     # 1 — Persist lesson (reject=5.0 > revise=4.0, per retrieval ordering)
     score = 5.0 if action == "reject" else 4.0
-    lesson_id = prompt_orch.ingest_feedback(
+    lesson_id = await asyncio.to_thread(
+        prompt_orch.ingest_feedback,
         task=req.task,
         wrong_code=req.wrong_code,
         correct_code="",
@@ -192,12 +198,14 @@ async def regrade(req: RegradeRequest):
             answer_key=answer_key,
             parent_run_id=req.run_id,
             subject=req.subject,
+            max_points_template=req.max_points_template,
         )
         return RegradeResponse(
             code=result.code,
             lessons_used=result.lessons_used,
             run_id=result.run_id,
             lesson_id=lesson_id,
+            confidence=infer_confidence(parse_grade_json(result.code)),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -229,7 +237,7 @@ async def feedback(req: FeedbackRequest):
         )
 
     if action == "approve":
-        return _handle_approve(req)
+        return await _handle_approve(req)
 
     if not req.comment.strip():
         raise HTTPException(
@@ -239,7 +247,8 @@ async def feedback(req: FeedbackRequest):
 
     # reject > revise: stronger rejection must dominate retrieval ordering
     score = 5.0 if action == "reject" else 4.0
-    lesson_id = prompt_orch.ingest_feedback(
+    lesson_id = await asyncio.to_thread(
+        prompt_orch.ingest_feedback,
         task=req.task,
         wrong_code=req.wrong_code,
         correct_code="",  # no teacher-edited corrected grade from this endpoint
@@ -262,7 +271,7 @@ async def feedback(req: FeedbackRequest):
     )
 
 
-def _handle_approve(req: FeedbackRequest) -> FeedbackResponse:
+async def _handle_approve(req: FeedbackRequest) -> FeedbackResponse:
     """Approve path of /api/feedback — extracted to keep the router flat.
 
     Persists the approved grade, back-fills correct_code on earlier lessons,
@@ -273,14 +282,15 @@ def _handle_approve(req: FeedbackRequest) -> FeedbackResponse:
     approved_id: int | None = None
     grade = req.wrong_code.strip()
     if grade:
-        approved_id = memory.save_approved_grade(
+        approved_id = await asyncio.to_thread(
+            memory.save_approved_grade,
             task=req.task,
             grade_json=grade,
             run_id=req.run_id,
         )
         # Back-propagate the approved grade as correct_code into any lessons
         # created during earlier revise/reject cycles for this task.
-        memory.backfill_correct_code(task=req.task, correct_code=grade)
+        await asyncio.to_thread(memory.backfill_correct_code, task=req.task, correct_code=grade)
 
     # Prefer the structured ``staged_lessons`` (per-question distilled rules
     # from /api/analyze-comment) — they embed much better than the aggregated
@@ -293,7 +303,8 @@ def _handle_approve(req: FeedbackRequest) -> FeedbackResponse:
                 continue
             prefix = f"[{staged.question_ref}] " if staged.question_ref else ""
             lesson_ids.append(
-                prompt_orch.ingest_feedback(
+                await asyncio.to_thread(
+                    prompt_orch.ingest_feedback,
                     task=req.task,
                     wrong_code="",
                     correct_code=grade,
@@ -304,7 +315,8 @@ def _handle_approve(req: FeedbackRequest) -> FeedbackResponse:
             )
     elif req.comment.strip():
         lesson_ids.append(
-            prompt_orch.ingest_feedback(
+            await asyncio.to_thread(
+                prompt_orch.ingest_feedback,
                 task=req.task,
                 wrong_code="",
                 correct_code=grade,
@@ -358,16 +370,19 @@ async def finalize_grade(req: FinalizeGradeRequest):
     keeps double-clicks on "Đã lưu" from polluting the corpus.
     """
     memory, prompt_orch, _ = _require_deps()
-    PER_RUBRIC_THRESHOLD = 0.25
     PER_QUESTION_THRESHOLD = 0.25
+    # Sub-câu criteria use a tighter threshold than full-câu since they're
+    # finer-grained corrections (a 0.5đ shift on "Tính toán" within a 3đ
+    # câu is more diagnostic than the same shift on the câu total).
+    PER_STEP_THRESHOLD = 0.15
     OVERALL_THRESHOLD = 0.10
     DEDUP_WINDOW_SECONDS = 300
 
-    rubric_deltas = compute_score_deltas(
-        req.ai_scores, req.teacher_scores, PER_RUBRIC_THRESHOLD
-    )
     per_question_deltas = compute_per_question_deltas(
         req.ai_per_question, req.teacher_per_question, PER_QUESTION_THRESHOLD
+    )
+    per_step_deltas = compute_per_step_deltas(
+        req.ai_per_step, req.teacher_per_step, PER_STEP_THRESHOLD
     )
     overall_delta = safe_delta(req.ai_overall, req.teacher_overall)
 
@@ -376,7 +391,8 @@ async def finalize_grade(req: FinalizeGradeRequest):
     approved_id: int | None = None
     approved_grade_json = req.approved_grade_json.strip()
     if approved_grade_json:
-        approved_id = memory.save_approved_grade(
+        approved_id = await asyncio.to_thread(
+            memory.save_approved_grade,
             task=req.task,
             grade_json=approved_grade_json,
             run_id=req.run_id,
@@ -384,15 +400,20 @@ async def finalize_grade(req: FinalizeGradeRequest):
         # Finalize is the one place that knows the teacher-approved JSON.
         # Back-fill older revise/reject lessons here so Step 4 no longer
         # needs to call /api/feedback with a premature "approve" signal.
-        memory.backfill_correct_code(task=req.task, correct_code=approved_grade_json)
+        await asyncio.to_thread(
+            memory.backfill_correct_code,
+            task=req.task,
+            correct_code=approved_grade_json,
+        )
 
     # Save review annotations atomically with finalization. Prefer the
     # distilled per-question lessons staged by the frontend; fall back to an
     # aggregate comment only when no structured lessons were staged.
     comment_lesson_ids: list[int] = []
 
-    def _save_comment_lesson(text: str, score: float) -> int:
-        existing_id = memory.find_recent_lesson(
+    async def _save_comment_lesson(text: str, score: float) -> int:
+        existing_id = await asyncio.to_thread(
+            memory.find_recent_lesson,
             task=req.task,
             lesson_text=text,
             feedback_score=score,
@@ -400,7 +421,8 @@ async def finalize_grade(req: FinalizeGradeRequest):
         )
         if existing_id is not None:
             return existing_id
-        return prompt_orch.ingest_feedback(
+        return await asyncio.to_thread(
+            prompt_orch.ingest_feedback,
             task=req.task,
             wrong_code="",
             correct_code=approved_grade_json,
@@ -416,36 +438,39 @@ async def finalize_grade(req: FinalizeGradeRequest):
                 continue
             prefix = f"[{staged.question_ref}] " if staged.question_ref else ""
             comment_lesson_ids.append(
-                _save_comment_lesson(f"{prefix}{text}", 3.5)
+                await _save_comment_lesson(f"{prefix}{text}", 3.5)
             )
     elif req.comment.strip():
-        comment_lesson_ids.append(_save_comment_lesson(req.comment.strip(), 3.0))
+        comment_lesson_ids.append(await _save_comment_lesson(req.comment.strip(), 3.0))
 
     # Auto-generate a lesson capturing the numeric correction so future
     # grading runs can learn the AI's tendency. Fires if ANY axis has a
     # delta above its threshold — including per-câu, which is the path that
     # 100% of teacher edits flow through under the current step-4 UI.
     delta_lesson_id: int | None = None
-    has_signal = bool(rubric_deltas) or bool(per_question_deltas) or (
-        overall_delta is not None and abs(overall_delta) >= OVERALL_THRESHOLD
+    has_signal = (
+        bool(per_question_deltas)
+        or bool(per_step_deltas)
+        or (overall_delta is not None and abs(overall_delta) >= OVERALL_THRESHOLD)
     )
     if has_signal:
         lesson_text = format_delta_lesson(
             ai_overall=req.ai_overall,
             teacher_overall=req.teacher_overall,
             overall_delta=overall_delta,
-            ai_scores=req.ai_scores,
-            teacher_scores=req.teacher_scores,
-            rubric_deltas=rubric_deltas,
             ai_per_question=req.ai_per_question,
             teacher_per_question=req.teacher_per_question,
             per_question_deltas=per_question_deltas,
+            ai_per_step=req.ai_per_step,
+            teacher_per_step=req.teacher_per_step,
+            per_step_deltas=per_step_deltas,
         )
         # Idempotent save: a recent identical lesson (same task + same
         # rendered text + same score tier) means the teacher already
         # finalized this correction. Returning the existing id keeps the
         # corpus clean instead of duplicating the embedding/row.
-        existing_id = memory.find_recent_lesson(
+        existing_id = await asyncio.to_thread(
+            memory.find_recent_lesson,
             task=req.task,
             lesson_text=lesson_text,
             feedback_score=4.0,
@@ -454,7 +479,8 @@ async def finalize_grade(req: FinalizeGradeRequest):
         if existing_id is not None:
             delta_lesson_id = existing_id
         else:
-            delta_lesson_id = prompt_orch.ingest_feedback(
+            delta_lesson_id = await asyncio.to_thread(
+                prompt_orch.ingest_feedback,
                 task=req.task,
                 wrong_code="",
                 correct_code=approved_grade_json,
@@ -463,20 +489,25 @@ async def finalize_grade(req: FinalizeGradeRequest):
                 subject=req.subject,
             )
 
-    deltas_out: dict[str, float] = dict(rubric_deltas)
+    # Per-câu keys prefixed "cau:N", per-step keys nested as "step:CAU:LABEL"
+    # so the frontend can split them back into per-câu / per-criterion views
+    # without parsing nested JSON. Label may contain spaces — UI splits on
+    # ":" with maxsplit=2.
+    deltas_out: dict[str, float] = {}
     for cau, d in per_question_deltas.items():
-        # Prefix per-câu keys so the API response can distinguish them from
-        # rubric keys ("content" vs "cau:1") without changing the dict shape.
         deltas_out[f"cau:{cau}"] = d
+    for cau, step_map in per_step_deltas.items():
+        for label, d in step_map.items():
+            deltas_out[f"step:{cau}:{label}"] = d
     if overall_delta is not None:
         deltas_out["overall"] = overall_delta
 
-    rubric_count = len(rubric_deltas)
     cau_count = len(per_question_deltas)
+    step_count = sum(len(v) for v in per_step_deltas.values())
     if delta_lesson_id:
         message = (
-            f"Finalized. Captured {rubric_count} rubric delta(s) "
-            f"and {cau_count} per-câu delta(s)."
+            f"Finalized. Captured {cau_count} per-câu delta(s), "
+            f"{step_count} per-step delta(s)."
         )
     else:
         message = "Finalized. No significant delta to learn from."

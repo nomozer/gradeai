@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { T } from "../../theme/tokens";
 import { OriginalImageModal } from "../../components/ui/OriginalImageModal";
 import { ActionBar, GhostButton, PrimaryButton } from "../../components/ui/ActionBar";
 import { Icon } from "../../components/ui/Icon";
@@ -12,11 +11,13 @@ import { i18n } from "../../i18n";
 import type {
   EssayFile,
   Grade,
+  GradeConfidence,
   SelectionAnnotation,
 } from "../../types";
 import { MOCK_REGRADE } from "./__mocks__/regrade.mock";
 import type { RegradePayload, RegradeQuestion } from "./types";
 import { PaperRegrade } from "./components/PaperRegrade";
+import { ScoreInline } from "../workspace/components/ScoreBottomBar";
 
 // ---------------------------------------------------------------------------
 // StepRegrade — Step 4 "Chốt điểm".
@@ -130,6 +131,9 @@ export interface StepRegradeProps {
    *  judgment when finalizing. Step 5 saves them with the final grade. */
   teacherAnnotations?: SelectionAnnotation[];
   subject?: any;
+  /** Server-inferred grade confidence — surfaced as a small chip in the
+   *  unified sticky ActionBar. */
+  confidence?: GradeConfidence | null;
 }
 
 export function StepRegrade({
@@ -143,6 +147,7 @@ export function StepRegrade({
   setMaxOverrides,
   teacherAnnotations,
   subject,
+  confidence,
 }: StepRegradeProps) {
   // Derive the review payload: real grade data when the pipeline produced
   // scored per-câu, else the legacy mock so the UI still renders for
@@ -238,27 +243,21 @@ export function StepRegrade({
 
       <ActionBar
         status={
-          anyEdited ? (
-            <>
-              Điểm cuối:{" "}
-              <span
-                style={{
-                  fontWeight: 700,
-                  color: T.text,
-                }}
-              >
-                {teacherTotal.toFixed(1)}
-              </span>
-              <span style={{ color: T.textFaint }}>
-                {" "}
-                / {review.maxTotal.toFixed(1)}đ
-              </span>
-              <span style={{ color: T.textFaint }}> · </span>
-              Mỗi thay đổi sẽ lưu khi bạn xác nhận điểm.
-            </>
-          ) : (
-            "Nhận xét và điểm sẽ lưu khi bạn xác nhận điểm ở bước cuối."
-          )
+          anyEdited
+            ? "Mỗi thay đổi sẽ lưu khi bạn xác nhận điểm."
+            : "Nhận xét và điểm sẽ lưu khi bạn xác nhận điểm ở bước cuối."
+        }
+        scoreSlot={
+          grade ? (
+            <ScoreInline
+              grade={grade}
+              finalScores={finalScores}
+              maxOverrides={maxOverrides}
+              finalized={false}
+              showCounter={false}
+              confidence={confidence}
+            />
+          ) : undefined
         }
       >
         <GhostButton onClick={onPrev} disabled={!onPrev}>

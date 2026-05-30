@@ -11,6 +11,11 @@ export interface GenerateRequest {
   task_pdf_b64?: string | null;
   subject?: BackendSubject | null;
   answer_key_pdf_b64?: string | null;
+  /** Per-câu max-points scheme propagated across a batch. Backend uses
+   *  it as an authoritative constraint so AI's max_points output stays
+   *  consistent with whatever the teacher decided on the first paper.
+   *  Keys are câu numbers as strings (JSON dict over the wire). */
+  max_points_template?: Record<string, number> | null;
 }
 
 export interface RegradeRequest {
@@ -24,6 +29,8 @@ export interface RegradeRequest {
   run_id?: number | null;
   subject?: BackendSubject | null;
   answer_key_pdf_b64?: string | null;
+  /** See GenerateRequest.max_points_template — same semantics. */
+  max_points_template?: Record<string, number> | null;
 }
 
 export function generate(

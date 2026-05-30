@@ -16,11 +16,11 @@ Internal modules:
 
 from .agent import AgentOrchestrator, PipelineResult, looks_like_timeout
 from .file_processor import extract_pdf_text
+from .grade_parser import infer_confidence, parse_grade_json
 from .prompt_orchestrator import PromptOrchestrator
 from .scoring import (
-    RUBRIC_KEYS,
     compute_per_question_deltas,
-    compute_score_deltas,
+    compute_per_step_deltas,
     format_delta_lesson,
     safe_delta,
 )
@@ -30,10 +30,11 @@ __all__ = [
     "PipelineResult",
     "PromptOrchestrator",
     "extract_pdf_text",
+    "infer_confidence",
     "looks_like_timeout",
-    "RUBRIC_KEYS",
+    "parse_grade_json",
     "compute_per_question_deltas",
-    "compute_score_deltas",
+    "compute_per_step_deltas",
     "format_delta_lesson",
     "safe_delta",
 ]

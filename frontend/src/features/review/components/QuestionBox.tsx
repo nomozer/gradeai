@@ -282,6 +282,11 @@ export function QuestionBox({
                   t={t}
                 />
               )}
+              {/* Pattern B per-câu sub-criteria — read-only strip showing
+                  Đặt vấn đề / Biến đổi / Kết quả / ... breakdown when the
+                  backend emitted it. Phase 1: display only; editing is
+                  Phase 2. */}
+              <CriteriaStrip feedback={feedback} />
             </div>
           )}
         </div>
@@ -470,4 +475,114 @@ function AnnotationGroup({
       </div>
     </div>
   );
+}
+
+// Per-câu sub-criteria breakdown (Pattern B rubric). Read-only strip
+// rendering the AI's points / max per criterion (Đặt vấn đề · Biến đổi ·
+// Kết quả · ... for math; Thuật toán · Hiện thực · Độ phức tạp for CS;
+// etc.). Hidden when the câu has no criteria — backward-compat with old
+// grade payloads. Editing arrives in Phase 2.
+function CriteriaStrip({ feedback }: { feedback?: PerQuestionFeedback }) {
+  const criteria = feedback?.criteria;
+  if (!criteria || criteria.length === 0) return null;
+  return (
+    <div
+      style={{
+        background: "rgba(74, 76, 92, 0.02)",
+        borderLeft: "3px solid #7B6D8D",
+        borderRadius: "0 8px 8px 0",
+        padding: "10px 14px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          color: T.textMute,
+          fontFamily: '"Inter", "Outfit", system-ui, -apple-system, sans-serif',
+        }}
+      >
+        <Icon.Award size={11} />
+        <span>Tiêu chí chấm</span>
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
+          paddingLeft: 4,
+        }}
+      >
+        {criteria.map((c, idx) => {
+          const ratio = c.max > 0 ? Math.max(0, Math.min(1, c.points / c.max)) : 0;
+          const accent =
+            ratio >= 0.85
+              ? T.green || "#2E7D5B"
+              : ratio >= 0.5
+                ? "#C08B30"
+                : "#E07A5F";
+          return (
+            <div
+              key={idx}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(110px, max-content) 1fr auto",
+                alignItems: "center",
+                gap: 10,
+                fontSize: 12.5,
+                color: T.textSoft,
+                fontFamily: T.font,
+              }}
+            >
+              <span style={{ fontWeight: 600, color: T.text }}>{c.label}</span>
+              <span
+                style={{
+                  height: 4,
+                  borderRadius: 2,
+                  background: "rgba(123, 109, 141, 0.12)",
+                  position: "relative",
+                  overflow: "hidden",
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: `${Math.round(ratio * 100)}%`,
+                    background: accent,
+                    transition: "width 0.2s",
+                  }}
+                />
+              </span>
+              <span
+                style={{
+                  fontVariantNumeric: "tabular-nums",
+                  fontWeight: 600,
+                  color: accent,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {formatScore(c.points)} / {formatScore(c.max)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Tabular-nums formatter — "1" not "1.0" for whole numbers, keep .5 for
+// halves. Matches what teachers actually write on a chấm phiếu.
+function formatScore(n: number): string {
+  if (!isFinite(n)) return "—";
+  return n === Math.floor(n) ? String(n) : n.toFixed(1);
 }

@@ -32,6 +32,37 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error || new Error("blob read failed"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function canvasToJpegDataUrl(canvas: HTMLCanvasElement, quality: number): Promise<string> {
+  return new Promise((resolve) => {
+    if (typeof canvas.toBlob !== "function") {
+      resolve(canvas.toDataURL("image/jpeg", quality));
+      return;
+    }
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          resolve(canvas.toDataURL("image/jpeg", quality));
+          return;
+        }
+        blobToDataUrl(blob).then(resolve).catch(() => {
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        });
+      },
+      "image/jpeg",
+      quality,
+    );
+  });
+}
+
 export async function readOptimizedUploadDataUrl(
   file: File | null | undefined,
 ): Promise<string | null> {
@@ -50,11 +81,16 @@ export async function readOptimizedUploadDataUrl(
     return original;
   }
 
+  // Base64 is ~33% larger than binary, so 1.5MB binary is ~2M chars.
+  const charLimit = Math.floor(IMAGE_MAX_BYTES * 1.33);
   const image = await loadImage(original);
   const longestEdge = Math.max(image.naturalWidth || 0, image.naturalHeight || 0);
 
   // Resize and Compression logic
   const scale = longestEdge > IMAGE_MAX_DIMENSION ? IMAGE_MAX_DIMENSION / longestEdge : 1;
+  if (scale === 1 && original.length <= charLimit) {
+    return original;
+  }
   const width = Math.max(1, Math.round((image.naturalWidth || image.width || 1) * scale));
   const height = Math.max(1, Math.round((image.naturalHeight || image.height || 1) * scale));
 
@@ -66,12 +102,10 @@ export async function readOptimizedUploadDataUrl(
   ctx.drawImage(image, 0, 0, width, height);
 
   // Iterative compression to hit < 1.5MB target
-  // Note: Base64 is ~33% larger than binary, so 1.5MB binary is ~2M chars
-  const charLimit = Math.floor(IMAGE_MAX_BYTES * 1.33);
   let optimized = original;
 
   for (const q of [0.85, 0.7, 0.5, 0.3]) {
-    const current = canvas.toDataURL("image/jpeg", q);
+    const current = await canvasToJpegDataUrl(canvas, q);
     optimized = current;
     if (current.length < charLimit) break;
   }

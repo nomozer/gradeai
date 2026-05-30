@@ -1,3 +1,4 @@
+import type { GradeHistoryEntry } from "./api";
 import type { PipelinePhase } from "./domain";
 import type { EssayFile, TaskFile } from "./grade";
 
@@ -30,6 +31,22 @@ export interface Tab {
   initialTaskFile?: TaskFile | null;
   initialAnswerKeyFile?: TaskFile | null;
   initialSubject?: any;
+  // Per-câu max-points scheme propagated across a batch (same task PDF).
+  // Set by EssayWorkspace when the teacher edits ``maxOverrides`` on any
+  // tab; App.tsx cross-tab sync copies it to other non-finalized tabs
+  // sharing the same ``initialTaskFile``. Threaded into pipeline.generate
+  // / regrade so the backend prompt locks max_points to the teacher's
+  // numbers — keeps the AI from re-guessing inconsistently across the
+  // batch when the exam itself doesn't pin per-câu points.
+  maxPointsTemplate?: Record<number, number> | null;
+  // Set by App.tsx when the teacher clicks an entry in the "Bài đã chấm"
+  // header dropdown — opens the history entry in a NEW tab rather than
+  // overwriting the current tab's in-progress work. The new tab's
+  // EssayWorkspace consumes this on mount via pipeline.loadHistoryEntry.
+  // ``initialHistoryStep`` carries which surface to land on (3: Review,
+  // 4/5: Done). Both clear themselves after consumption.
+  initialHistoryEntry?: GradeHistoryEntry | null;
+  initialHistoryStep?: 3 | 4 | 5 | null;
   questions?: { num: number; score: number; label: string }[];
 }
 

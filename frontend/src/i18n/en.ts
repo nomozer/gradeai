@@ -7,7 +7,7 @@ export const en: I18nStrings = {
   // Steps short labels
   stepUpload: "Upload",
   stepReading: "Reading",
-  stepReview: "Review",
+  stepReview: "Review & Score",
   stepRegrade: "Re-grade",
   stepDone: "Done",
   // Step 1
@@ -55,8 +55,8 @@ export const en: I18nStrings = {
   step2Title: "AI is Reading",
   step2Desc: "The AI model is analyzing the essay. This may take a moment…",
   // Step 3
-  step3Title: "Review & Feedback",
-  step3Desc: "Review the AI's grading and provide your feedback",
+  step3Title: "Review & Score",
+  step3Desc: "Review the AI's grading, adjust scores directly, and finalize",
   overallScore: "Overall",
   outOf: "/ 10",
   rubric: "Rubric Scores",

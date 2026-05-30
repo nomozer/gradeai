@@ -173,6 +173,7 @@ export function deriveStepReviewData(
       summary: q.good_points || q.errors || parsed.prompt || "",
       lines: lines.length > 0 ? lines : [`Câu ${parsed.num}.`],
       annotations: buildSyntheticAnnotations(q, lines.length),
+      criteria: q.criteria,
     };
   });
 

@@ -11,9 +11,8 @@ These are pure functions — no fixtures needed, no Gemini calls, fast.
 """
 
 from grading.scoring import (
-    RUBRIC_KEYS,
     compute_per_question_deltas,
-    compute_score_deltas,
+    compute_per_step_deltas,
     format_delta_lesson,
     safe_delta,
 )
@@ -42,58 +41,6 @@ class TestSafeDelta:
 
     def test_non_numeric_string_returns_none(self):
         assert safe_delta("oops", 5.0) is None
-
-
-class TestComputeScoreDeltas:
-    def test_only_above_threshold_kept(self):
-        ai = {"content": 8.0, "argument": 7.5, "expression": 9.0, "creativity": 6.0}
-        teacher = {
-            "content": 8.3,    # delta 0.3 — kept (≥ 0.25)
-            "argument": 7.6,   # delta 0.1 — filtered
-            "expression": 9.0, # delta 0.0 — filtered
-            "creativity": 6.5, # delta 0.5 — kept
-        }
-        out = compute_score_deltas(ai, teacher, threshold=0.25)
-        assert out == {"content": 0.3, "creativity": 0.5}
-
-    def test_negative_deltas_pass_threshold(self):
-        # abs() in the filter — teacher rating lower than AI is still a signal.
-        ai = {"content": 9.0, "argument": 8.0, "expression": 7.0, "creativity": 6.0}
-        teacher = {"content": 8.0, "argument": 8.0, "expression": 7.0, "creativity": 6.0}
-        out = compute_score_deltas(ai, teacher, threshold=0.25)
-        assert out == {"content": -1.0}
-
-    def test_threshold_boundary_inclusive(self):
-        # |delta| == threshold is KEPT (`>=` semantics). Note that
-        # safe_delta ROUNDS to 2 decimals BEFORE filtering, so a teacher
-        # score of 7.249 rounds to 0.25 and slips through — use clearly
-        # sub-threshold values (0.20) to test the negative case.
-        ai = {"content": 7.0, "argument": 7.0, "expression": 7.0, "creativity": 7.0}
-        teacher = {
-            "content": 7.25,    # delta 0.25 — kept exactly at boundary
-            "argument": 7.20,   # delta 0.20 — filtered, well below threshold
-            "expression": 7.0,
-            "creativity": 7.0,
-        }
-        out = compute_score_deltas(ai, teacher, threshold=0.25)
-        assert "content" in out
-        assert "argument" not in out
-
-    def test_missing_rubric_key_skipped(self):
-        # Pydantic envelopes guarantee 4 keys, but defensive code keeps the
-        # contract: missing → safe_delta(None,_) → None → skipped.
-        ai = {"content": 8.0}  # only one key
-        teacher = {"content": 8.0, "argument": 9.0}
-        out = compute_score_deltas(ai, teacher, threshold=0.25)
-        assert out == {}
-
-    def test_only_iterates_rubric_keys(self):
-        # Extra keys in either map are ignored — RUBRIC_KEYS is the
-        # authoritative list (matches the prompt rubric).
-        ai = dict.fromkeys(RUBRIC_KEYS, 7.0) | {"extra_bogus_key": 3.0}
-        teacher = dict.fromkeys(RUBRIC_KEYS, 7.0) | {"extra_bogus_key": 9.0}
-        out = compute_score_deltas(ai, teacher, threshold=0.1)
-        assert "extra_bogus_key" not in out
 
 
 class TestComputePerQuestionDeltas:
@@ -130,9 +77,6 @@ class TestFormatDeltaLesson:
             ai_overall=9.0,
             teacher_overall=8.0,
             overall_delta=-1.0,
-            ai_scores={},
-            teacher_scores={},
-            rubric_deltas={},
         )
         assert "Tổng điểm" in out
         assert "AI chấm 9.0" in out
@@ -143,39 +87,36 @@ class TestFormatDeltaLesson:
         assert out.rstrip().endswith("khớp với chuẩn chấm của giáo viên.")
 
     def test_overall_below_threshold_skipped(self):
-        # The function uses 0.1 as the overall threshold INSIDE the formatter.
-        # This is independent of the per-rubric threshold the caller passed
-        # to compute_score_deltas; encodes the same 0.10 cutoff as main.py.
+        # The function uses 0.1 as the overall threshold INSIDE the formatter
+        # — independent of the per-câu / per-step thresholds the caller
+        # passed. Encodes the same 0.10 cutoff as the API handler.
         out = format_delta_lesson(
             ai_overall=8.0,
             teacher_overall=8.05,  # delta 0.05 < 0.1
             overall_delta=0.05,
-            ai_scores={},
-            teacher_scores={},
-            rubric_deltas={},
         )
         assert "Tổng điểm" not in out
 
-    def test_rubric_lines_use_nâng_for_positive(self):
+    def test_per_cau_uses_nâng_for_positive(self):
         out = format_delta_lesson(
             ai_overall=None,
             teacher_overall=None,
             overall_delta=None,
-            ai_scores={"content": 7.0},
-            teacher_scores={"content": 8.0},
-            rubric_deltas={"content": 1.0},
+            ai_per_question={"1": 5.0},
+            teacher_per_question={"1": 6.0},
+            per_question_deltas={"1": 1.0},
         )
         assert "nâng" in out
         assert "hạ" not in out
 
-    def test_rubric_lines_use_hạ_for_negative(self):
+    def test_per_cau_uses_hạ_for_negative(self):
         out = format_delta_lesson(
             ai_overall=None,
             teacher_overall=None,
             overall_delta=None,
-            ai_scores={"argument": 9.0},
-            teacher_scores={"argument": 7.5},
-            rubric_deltas={"argument": -1.5},
+            ai_per_question={"1": 9.0},
+            teacher_per_question={"1": 7.5},
+            per_question_deltas={"1": -1.5},
         )
         assert "hạ" in out
 
@@ -186,9 +127,6 @@ class TestFormatDeltaLesson:
             ai_overall=None,
             teacher_overall=None,
             overall_delta=None,
-            ai_scores={},
-            teacher_scores={},
-            rubric_deltas={},
             ai_per_question={"1": 5.0, "2": 5.0, "10": 5.0},
             teacher_per_question={"1": 4.0, "2": 4.0, "10": 4.0},
             per_question_deltas={"1": -1.0, "2": -1.0, "10": -1.0},
@@ -200,14 +138,11 @@ class TestFormatDeltaLesson:
 
     def test_per_cau_skipped_when_partial(self):
         # Per-câu block requires ALL THREE maps; missing any one drops the
-        # whole per-câu section (still emits rubric / overall lines).
+        # whole per-câu section (still emits overall line).
         out = format_delta_lesson(
             ai_overall=8.0,
             teacher_overall=7.0,
             overall_delta=-1.0,
-            ai_scores={},
-            teacher_scores={},
-            rubric_deltas={},
             per_question_deltas={"1": -1.0},
             ai_per_question=None,        # missing one of the trio
             teacher_per_question={"1": 4.0},
@@ -216,21 +151,82 @@ class TestFormatDeltaLesson:
         assert "Tổng điểm" in out
 
     def test_combined_axes_produce_single_string(self):
-        # The whole point of this formatter: rubric + per-câu fold into ONE
-        # lesson so retrieval doesn't double-count a single correction.
+        # Per-câu + overall fold into ONE lesson so retrieval doesn't
+        # double-count a single correction.
         out = format_delta_lesson(
             ai_overall=9.0,
             teacher_overall=7.5,
             overall_delta=-1.5,
-            ai_scores={"content": 9.0},
-            teacher_scores={"content": 7.5},
-            rubric_deltas={"content": -1.5},
             ai_per_question={"1": 5.0},
             teacher_per_question={"1": 3.5},
             per_question_deltas={"1": -1.5},
         )
-        # One contiguous lesson — not three.
+        # One contiguous lesson, not two.
         assert out.count("Hiệu chỉnh điểm") == 1
         assert "Tổng điểm" in out
-        assert "content" in out
         assert "Câu 1" in out
+
+    def test_per_step_block_renders_under_câu(self):
+        # Pattern B per-step axis: each câu's criterion deltas nest as
+        # indented bullets under the lesson body. Verifies the formatter
+        # walks per_step_deltas correctly and includes labels verbatim.
+        out = format_delta_lesson(
+            ai_overall=None,
+            teacher_overall=None,
+            overall_delta=None,
+            ai_per_step={"1": {"Đặt vấn đề": 1.0, "Kết quả": 2.5}},
+            teacher_per_step={"1": {"Đặt vấn đề": 0.5, "Kết quả": 1.5}},
+            per_step_deltas={"1": {"Đặt vấn đề": -0.5, "Kết quả": -1.0}},
+        )
+        assert "Câu 1 → Đặt vấn đề" in out
+        assert "Câu 1 → Kết quả" in out
+        # Both should use "hạ" (negative deltas).
+        assert out.count("hạ") == 2
+
+
+class TestComputePerStepDeltas:
+    def test_basic(self):
+        ai = {
+            "1": {"Đặt vấn đề": 1.0, "Biến đổi": 1.5, "Kết quả": 0.5},
+            "2": {"Đặt vấn đề": 1.0},
+        }
+        teacher = {
+            "1": {"Đặt vấn đề": 0.5, "Biến đổi": 1.5, "Kết quả": 0.0},
+            "2": {"Đặt vấn đề": 1.0},  # no delta
+        }
+        out = compute_per_step_deltas(ai, teacher, threshold=0.15)
+        # Câu 1: "Đặt vấn đề" −0.5 and "Kết quả" −0.5 both above 0.15. "Biến đổi" 0 dropped.
+        # Câu 2: nothing crosses threshold → câu dropped entirely.
+        assert out == {"1": {"Đặt vấn đề": -0.5, "Kết quả": -0.5}}
+
+    def test_threshold_filters_small_deltas(self):
+        ai = {"1": {"Step": 1.0}}
+        teacher = {"1": {"Step": 1.1}}  # delta 0.1, below 0.15
+        assert compute_per_step_deltas(ai, teacher, threshold=0.15) == {}
+
+    def test_empty_inputs(self):
+        assert compute_per_step_deltas(None, {"1": {"Step": 1.0}}, 0.15) == {}
+        assert compute_per_step_deltas({"1": {"Step": 1.0}}, None, 0.15) == {}
+        assert compute_per_step_deltas({}, {}, 0.15) == {}
+
+    def test_missing_câu_in_teacher_skipped(self):
+        ai = {"1": {"Step": 1.0}, "2": {"Step": 1.0}}
+        teacher = {"1": {"Step": 0.0}}
+        out = compute_per_step_deltas(ai, teacher, threshold=0.15)
+        assert "2" not in out
+        assert out["1"]["Step"] == -1.0
+
+    def test_missing_label_in_teacher_câu_filtered(self):
+        # Teacher câu present but label missing → safe_delta None → drop label
+        # but keep the câu if other labels qualify.
+        ai = {"1": {"A": 1.0, "B": 1.0}}
+        teacher = {"1": {"A": 0.0}}  # B missing
+        out = compute_per_step_deltas(ai, teacher, threshold=0.15)
+        assert out == {"1": {"A": -1.0}}
+
+    def test_empty_câu_dropped(self):
+        # All labels in a câu below threshold → câu dropped (no empty dict).
+        ai = {"1": {"A": 1.0, "B": 1.0}}
+        teacher = {"1": {"A": 1.0, "B": 1.05}}
+        out = compute_per_step_deltas(ai, teacher, threshold=0.15)
+        assert out == {}

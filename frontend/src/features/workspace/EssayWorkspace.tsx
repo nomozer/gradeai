@@ -13,7 +13,6 @@ import { ResultCard } from "./ResultCard";
 import { ErrorBoundary } from "../../components/ui/ErrorBoundary";
 import { StepUpload } from "../upload/StepUpload";
 import { StepReview } from "../review/StepReview";
-import { StepRegrade } from "../regrade/StepRegrade";
 import {
   buildTaskContext,
   deriveDisplayStep,
@@ -26,8 +25,6 @@ import type {
   EssayFile,
   FinalizedResult,
   Grade,
-  GradeHistoryEntry,
-  RubricScores,
   SelectionAnnotation,
   StagedLesson,
   Tab,
@@ -78,6 +75,16 @@ function buildAnnotationFinalizePayload(annotations: SelectionAnnotation[]): {
   return { stagedLessons, aggregateComment, skippedCount: skipped.length };
 }
 
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+      resolve();
+      return;
+    }
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
 export function EssayWorkspace({
   active,
   tab,
@@ -117,8 +124,8 @@ export function EssayWorkspace({
   const [step, setStep] = useState<number>(1);
   // High-water-mark of the step the teacher reached this session. The
   // StepIndicator uses this so steps the user walked past keep their
-  // green-check state even when they navigate back (e.g. step 5 →
-  // "Sửa lại" → step 4). Without it, 4 and 5 collapse back to grey,
+  // green-check state even when they navigate back (e.g. step 4 →
+  // "Sửa lại" → step 3). Without it, 3 and 4 collapse back to grey,
   // which read like "you haven't done these" — a bug the teacher
   // flagged 2026-05-18.
   const [maxStepReached, setMaxStepReached] = useState<number>(1);
@@ -126,7 +133,7 @@ export function EssayWorkspace({
   const [isFinalizing, setIsFinalizing] = useState<boolean>(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
 
-  // Load initial files from tab metadata (used for batch uploads)
+  // Load initial files from tab metadata (used for batch uploads and sync)
   useEffect(() => {
     if (tab.initialEssayFile) {
       setEssayImage(tab.initialEssayFile);
@@ -142,52 +149,63 @@ export function EssayWorkspace({
       setDetectedSubject(tab.initialSubject);
       setManualSubject(true);
     }
+  }, [tab.initialEssayFile, tab.initialTaskFile, tab.initialAnswerKeyFile, tab.initialSubject]);
 
-    // Clear initial files after consuming them to avoid re-runs
-    if (tab.initialEssayFile || tab.initialTaskFile || tab.initialSubject || tab.initialAnswerKeyFile) {
-      onMeta({
-        initialEssayFile: null,
-        initialTaskFile: null,
-        initialAnswerKeyFile: null,
-        initialSubject: null,
-      });
-    }
-  }, [tab.initialEssayFile, tab.initialTaskFile, tab.initialAnswerKeyFile, tab.initialSubject, onMeta]);
+  // Teacher per-câu SCORE overrides only. The constraint is "sum(max) =
+  // 10 (hoặc bareme)" — max per câu belongs to the đề, not the teacher;
+  // AI reads it from the task PDF. Allowing teacher to override max led
+  // to silent corruption (a stale {1:10} leaking from a 1-câu paper into
+  // a 3-câu paper made the hero show 9.5/17 instead of 9.5/10). So we
+  // dropped the maxOverrides state entirely; ``q.max_points`` from
+  // pipeline output is the single source of truth.
+  const [finalScores, setFinalScores] = useState<Record<number, number>>({});
 
   // Batch Essay Upload handler
   const handleBatchEssayUpload = useCallback(
     (files: File[]) => {
-      files.forEach(async (file) => {
-        try {
-          const dataUrl = await readOptimizedUploadDataUrl(file);
-          if (dataUrl) {
-            onAddTab({
-              label: file.name.slice(0, 30),
-              initialEssayFile: {
-                dataUrl,
-                name: file.name,
-                isPdf: file.type === "application/pdf" || file.name.endsWith(".pdf"),
-              },
-              initialTaskFile: taskPdf,
-              initialAnswerKeyFile: answerKeyPdf,
-              initialSubject: subject,
-              canRun: !!taskPdf && !!subject,
-            });
-          }
-        } catch (err) {
-          console.error("Batch essay upload failed:", err);
+      // Snapshot AI's per-câu max from the current grade so each new tab
+      // inherits the batch's scoring scheme via ``initialMaxPointsTemplate``.
+      // Sourced from AI (not teacher edits) — teacher can't edit max anymore.
+      const templateFromGrade: Record<number, number> = {};
+      const pqf = grade?.per_question_feedback ?? [];
+      for (let i = 0; i < pqf.length; i++) {
+        const q = pqf[i];
+        const parsed = parseCauHeader(q.question ?? "", i + 1);
+        if (typeof q.max_points === "number" && Number.isFinite(q.max_points)) {
+          templateFromGrade[parsed.num] = q.max_points;
         }
-      });
+      }
+      void (async () => {
+        for (const file of files) {
+          try {
+            const dataUrl = await readOptimizedUploadDataUrl(file);
+            if (dataUrl) {
+              onAddTab({
+                label: file.name.slice(0, 30),
+                initialEssayFile: {
+                  dataUrl,
+                  name: file.name,
+                  isPdf: file.type === "application/pdf" || file.name.endsWith(".pdf"),
+                },
+                initialTaskFile: taskPdf,
+                initialAnswerKeyFile: answerKeyPdf,
+                initialSubject: subject,
+                maxPointsTemplate:
+                  Object.keys(templateFromGrade).length > 0
+                    ? { ...templateFromGrade }
+                    : null,
+                canRun: !!taskPdf && !!subject,
+              });
+            }
+          } catch (err) {
+            console.error("Batch essay upload failed:", err);
+          }
+          await nextFrame();
+        }
+      })();
     },
-    [onAddTab, taskPdf, answerKeyPdf, subject],
+    [onAddTab, taskPdf, answerKeyPdf, subject, grade],
   );
-  // Teacher per-câu score overrides — lifted up here so step 5 ResultCard
-  // can read the numbers the teacher set in step 4 (without it, step 4's
-  // local state would die on unmount and step 5 would show only AI's
-  // numbers). Reset together with grade when a fresh pipeline finishes
-  // — see the parseGrade effect below.
-  const [finalScores, setFinalScores] = useState<Record<number, number>>({});
-  const [maxOverrides, setMaxOverrides] = useState<Record<number, number>>({});
   // Step 3 "đối soát" annotations — Word-style highlights with comments
   // anchored to specific quotes in the AI transcript. Stored as a flat
   // array (filtered by `cau` for per-câu display). Wiped on every fresh
@@ -195,6 +213,7 @@ export function EssayWorkspace({
   const [teacherAnnotations, setTeacherAnnotations] = useState<
     SelectionAnnotation[]
   >([]);
+
 
   // When a grade is loaded from history, taskPdf is null so the normal
   // label derivation yields "". We stash the entry's task descriptor
@@ -293,14 +312,15 @@ export function EssayWorkspace({
       setFinalizedResult(null);
       setIsFinalizing(false);
       setFinalizeError(null);
-      // Restore teacher overrides if this grade was reloaded from backend
-      // history. Fresh grades reset to {} so old per-câu edits cannot leak
-      // into a new AI response.
+      // Restore teacher's per-câu SCORE overrides if reloaded from
+      // history. ``historyMaxOverrides`` is deliberately NOT consumed —
+      // max belongs to the đề (AI reads it from the task PDF) and stale
+      // values from older sessions would silently re-inflate the
+      // denominator (see comment at the maxOverrides removal).
       setFinalScores(pipeline.historyFinalScores ?? {});
-      setMaxOverrides(pipeline.historyMaxOverrides ?? {});
       setTeacherAnnotations([]);
       // Reset the step high-water-mark — a regrade restarts the review
-      // arc, so the indicator shouldn't claim step 5 is still "done"
+      // arc, so the indicator shouldn't claim step 4 is still "done"
       // from the previous round.
       setMaxStepReached((prev) => Math.max(prev, 3));
       setStep((s) => stepAfterGrade(s));
@@ -309,8 +329,33 @@ export function EssayWorkspace({
     pipeline.code,
     pipeline.runId,
     pipeline.historyFinalScores,
-    pipeline.historyMaxOverrides,
   ]);
+
+  // Mirror AI's per-câu max from the current grade into
+  // ``tab.maxPointsTemplate`` so App.tsx's cross-tab sync propagates the
+  // batch's authoritative scoring scheme. Sourced from
+  // ``grade.per_question_feedback[i].max_points`` — not from teacher
+  // edits, because teacher cannot edit max under the "total = 10 (or
+  // bareme)" invariant. Ref-guarded JSON compare prevents the loop where
+  // updateMeta returns a new tab object on every call.
+  const mirroredTemplateRef = useRef<string>("");
+  useEffect(() => {
+    if (!grade) return;
+    const next: Record<number, number> = {};
+    const pqf = grade.per_question_feedback ?? [];
+    for (let i = 0; i < pqf.length; i++) {
+      const q = pqf[i];
+      const parsed = parseCauHeader(q.question ?? "", i + 1);
+      if (typeof q.max_points === "number" && Number.isFinite(q.max_points)) {
+        next[parsed.num] = q.max_points;
+      }
+    }
+    const payload = Object.keys(next).length > 0 ? next : null;
+    const key = JSON.stringify(payload ?? {});
+    if (key === mirroredTemplateRef.current) return;
+    mirroredTemplateRef.current = key;
+    onMetaRef.current({ maxPointsTemplate: payload });
+  }, [grade]);
 
   // Track the highest step the teacher reaches. Plain ratchet — only
   // moves upward, never resets except on a fresh grade (above).
@@ -323,65 +368,71 @@ export function EssayWorkspace({
     setStep((s) => nextStepOnPhaseChange(s, pipeline.phase, pipeline.error));
   }, [pipeline.phase, pipeline.error]);
 
-  // Listen for "load grade history" requests from the header dropdown. Only
-  // the active tab reacts so clicking a history entry routes to the tab
-  // the teacher is currently looking at (mirrors Chrome's "open in current
-  // tab" behavior). Event detail carries the backend history entry AND
-  // an optional target step (3 = Xem xét, 4 = Chấm lại, 5 = Xong) — the
-  // dropdown surfaces three jump buttons per entry. Defaults to 3 when
-  // the field is omitted so older event payloads stay compatible.
-  //
-  // We always force the step explicitly after a load. The normal grade
-  // flow goes step 1 → 2 (loading) → 3 (review), and ``stepAfterGrade``
-  // (workspace.logic) only advances from 2 or 4. History loads dispatch
-  // PIPELINE_SUCCESS directly without ever entering step 2, so without
-  // this manual setStep the workspace would silently update the underlying
-  // grade state but leave the user stuck on the Upload screen.
-  // ``feedbackHook.reset()`` clears any pending teacher comments from the
-  // previous session — they belong to a different grade.
+  // Hydrate from an opened-in-new-tab history entry. App.tsx populates
+  // ``tab.initialHistoryEntry`` + ``tab.initialHistoryStep`` when the
+  // teacher clicks a row in the "Bài đã chấm" dropdown; addTab puts it
+  // into a fresh tab so this workspace mounts with a clean slate — no
+  // overwrite of any other tab's uploaded files or unsaved edits ever
+  // happens. We clear the fields after consuming them so a tab metadata
+  // re-render doesn't replay the load. Dep is intentionally narrow:
+  // ``pipeline.loadHistoryEntry`` is recreated each render and would
+  // re-run this effect spuriously if included.
   useEffect(() => {
-    if (!active) return;
-    const handler = (e: Event) => {
-      const detail =
-        (e as CustomEvent<{ entry: GradeHistoryEntry; step?: 3 | 4 | 5 }>).detail;
-      const entry = detail?.entry;
-      if (!entry || typeof entry.response?.code !== "string") return;
-      const ok = pipeline.loadHistoryEntry(entry);
-      if (ok) {
-        feedbackHook.reset();
-        setIsFinalizing(false);
-        setFinalizeError(null);
-        setFinalizedResult(null);
-        const targetStep = detail?.step ?? 3;
-        setStep(targetStep);
-        // History entries represent already-completed grades — mark all
-        // steps through 5 as reached so the stepper shows green checks
-        // and the teacher can freely navigate between steps.
-        setMaxStepReached(5);
-        // Restore subject from the history entry so the subject chip
-        // isn't blank and the workspace knows which prompt set was used.
-        if (entry.subject) {
-          setSubject(entry.subject as BackendSubject);
-          setDetectedSubject(entry.subject as BackendSubject);
-          setManualSubject(true);
-        }
-        // Stash the history entry's task descriptor ("Toán · ĐỀ HÌNH")
-        // for the tab label — taskPdf stays null when loading from
-        // history so the normal PDF-based label derivation yields "".
-        setHistoryTaskLabel(entry.task || "");
-      }
-    };
-    window.addEventListener("hitl.loadGrade", handler);
-    return () => window.removeEventListener("hitl.loadGrade", handler);
-  }, [active, pipeline, feedbackHook]);
+    const entry = tab.initialHistoryEntry;
+    if (!entry || typeof entry.response?.code !== "string") return;
+    const ok = pipeline.loadHistoryEntry(entry);
+    if (!ok) return;
+    feedbackHook.reset();
+    setIsFinalizing(false);
+    setFinalizeError(null);
+    setFinalizedResult(null);
+    const targetStep = tab.initialHistoryStep ?? 3;
+    const mappedStep = targetStep === 5 || targetStep === 4 ? 4 : targetStep;
+    setStep(mappedStep);
+    // History entries are already-completed grades — mark all steps
+    // through 4 as reached so the stepper shows green checks and the
+    // teacher can navigate freely.
+    setMaxStepReached(4);
+    if (entry.subject) {
+      setSubject(entry.subject as BackendSubject);
+      setDetectedSubject(entry.subject as BackendSubject);
+      setManualSubject(true);
+    }
+    // Stash the entry's task descriptor for the tab label — taskPdf
+    // stays null when loading from history so PDF-based label derivation
+    // yields "".
+    setHistoryTaskLabel(entry.task || "");
+    // ``initialHistoryEntry`` is intentionally NOT cleared after consume —
+    // it acts as the dedup key for App.tsx's ``hitl.openHistoryEntry``
+    // listener (clicking the same row twice switches to this tab instead
+    // of spawning a duplicate). The useEffect dep is the entry reference,
+    // which is stable across updateMeta re-renders, so keeping the field
+    // populated does not re-trigger the load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab.initialHistoryEntry]);
 
   // Report tab metadata. When loading from history, taskPdf is null so
   // taskLabel is empty — fall back to the entry's task string (e.g.
   // "Toán · ĐỀ HÌNH") which was persisted when the grade was saved.
   const historyTask = historyTaskLabel && !taskPdf ? historyTaskLabel : "";
+  // The bài làm (essay) filename is the per-student identifier — it's the
+  // one thing that differs across a batch of same-đề / same-môn papers, so
+  // the teacher always knows WHOSE paper they're on (teachers name the file
+  // after the student). Falls back to the đề name (before a bài làm is
+  // uploaded), then the persisted history descriptor (history loads have no
+  // essay file). Strip the extension and normalise _/- the same way
+  // taskFromPdfName does so "Nguyen_Van_A.pdf" reads as "Nguyen Van A".
+  const essayLabel = useMemo(
+    () =>
+      (essayImage?.name ?? "")
+        .replace(/\.[^./\\]+$/, "")
+        .replace(/[_-]+/g, " ")
+        .trim(),
+    [essayImage],
+  );
   const label = useMemo(
-    () => (taskLabel || historyTask).slice(0, 30),
-    [taskLabel, historyTask],
+    () => (essayLabel || taskLabel || historyTask).slice(0, 30),
+    [essayLabel, taskLabel, historyTask],
   );
 
 
@@ -392,6 +443,7 @@ export function EssayWorkspace({
   // prevent. The chip's amber state nudges the teacher to click.
   const canRun =
     !!taskPdf && !!essayImage && !!subject && pipeline.phase !== "generating";
+  const hasGrade = !!grade && step >= 3 && pipeline.phase !== "generating";
 
   const handleRun = useCallback(() => {
     feedbackHook.reset();
@@ -406,8 +458,12 @@ export function EssayWorkspace({
       taskPdf?.dataUrl || null,
       subject,
       answerKeyPdf?.dataUrl || null,
+      // Pass the batch-level max-points scheme so the backend prompt
+      // pins per-câu max to the teacher's numbers — keeps the AI from
+      // re-guessing inconsistently across papers from the same exam.
+      tab.maxPointsTemplate ?? null,
     );
-  }, [task, lang, essayImage, taskPdf, answerKeyPdf, pipeline, feedbackHook, subject]);
+  }, [task, lang, essayImage, taskPdf, answerKeyPdf, pipeline, feedbackHook, subject, tab.maxPointsTemplate]);
 
   // Auto-run grading when the workspace is mounted/updated and in the "generating" phase
   useEffect(() => {
@@ -421,7 +477,7 @@ export function EssayWorkspace({
       label,
       phase: pipeline.phase,
       step,
-      hasGrade: step === 5,
+      hasGrade,
       canRun,
       questions: tabQuestions,
       // Propagate pipeline error to tab meta so TabBar can render a
@@ -433,42 +489,32 @@ export function EssayWorkspace({
       error: pipeline.error || null,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [label, pipeline.phase, step, canRun, tabQuestions, pipeline.error]);
+  }, [label, pipeline.phase, step, hasGrade, canRun, tabQuestions, pipeline.error]);
 
-  const handleApprove = useCallback(() => setStep(5), []);
+  const handleApprove = useCallback(() => setStep(4), []);
 
   // Click on a completed step in the indicator → jump back. Only user
   // checkpoints (1: Upload, 3: Review) are exposed as navigable — steps
-  // 2 (AI reading) and 4 (AI re-grading) are transient loaders, not
+  // 2 (AI reading) are transient loaders, not
   // checkpoints; clicking them would put the UI back into a "loading"
   // state with no real work happening.
   const handleStepClick = useCallback((n: number) => {
     setStep(n);
   }, []);
-  // Step 4 (Chấm lại) is normally a transient pipeline loader, but during
-  // the UI mockup phase we expose it as a navigable checkpoint so the
-  // teacher can review the regrade design without triggering a real call.
+  // Expose navigable checkpoints (1: Upload, 3: Review & Score, 4: Done)
   const isStepNavigable = useCallback(
-    (n: number) => n === 1 || n === 3 || n === 4 || n === 5,
+    (n: number) => n === 1 || n === 3 || n === 4,
     [],
   );
 
   // Persist the finalized grade and capture AI↔teacher score delta as a
   // HITL lesson. The UI only locks after the backend confirms persistence.
   const persistFinalizedGrade = useCallback(
-    async (payload: { scores: RubricScores; overall: number | string }) => {
+    async (payload: { overall: number | string }) => {
       const toNum = (v: unknown): number | null => {
         const n = parseFloat(v as string);
         return Number.isFinite(n) ? n : null;
       };
-      const teacherScores: Record<string, number> = {};
-      const aiScores: Record<string, number> = {};
-      for (const key of ["content", "argument", "expression", "creativity"] as const) {
-        const te = toNum(payload?.scores?.[key]);
-        const ai = toNum(grade?.scores?.[key]);
-        if (te !== null) teacherScores[key] = te;
-        if (ai !== null) aiScores[key] = ai;
-      }
       // Per-câu maps mirror what step-4 actually edits. Teacher overrides
       // live in ``finalScores`` (câu_num → score); câus the teacher didn't
       // touch fall back to AI's score so the delta reads as 0 and gets
@@ -503,18 +549,16 @@ export function EssayWorkspace({
         const aiScore =
           typeof q.score === "number" && Number.isFinite(q.score) ? q.score : 0;
         const nextScore = finalScores[parsed.num] ?? aiScore;
-        const nextMax = maxOverrides[parsed.num] ?? q.max_points;
+        // Max stays at AI's value verbatim — see note at maxOverrides
+        // removal. The "total = 10 (hoặc bareme)" invariant is enforced
+        // by AI's prompt; frontend never overrides max.
         return {
           ...q,
           score: nextScore,
-          ...(typeof nextMax === "number" && Number.isFinite(nextMax)
-            ? { max_points: nextMax }
-            : {}),
         };
       });
       const finalGrade = {
         ...(grade || {}),
-        scores: { ...(grade?.scores || {}), ...teacherScores },
         overall: teacherOverall ?? grade?.overall ?? null,
         per_question_feedback: finalPerQuestionFeedback,
       };
@@ -525,8 +569,6 @@ export function EssayWorkspace({
           lang,
           ai_overall: aiOverall,
           teacher_overall: teacherOverall,
-          ai_scores: aiScores,
-          teacher_scores: teacherScores,
           ai_per_question: aiPerQuestion,
           teacher_per_question: teacherPerQuestion,
           approved_grade_json: JSON.stringify(finalGrade),
@@ -554,7 +596,6 @@ export function EssayWorkspace({
       pipeline.runId,
       subject,
       finalScores,
-      maxOverrides,
       teacherAnnotations,
       t,
     ],
@@ -566,7 +607,6 @@ export function EssayWorkspace({
     String(t.stepUpload ?? ""),
     String(t.stepReading ?? ""),
     String(t.stepReview ?? ""),
-    String(t.stepRegrade ?? ""),
     String(t.stepDone ?? ""),
   ];
 
@@ -615,7 +655,10 @@ export function EssayWorkspace({
               onMeta({ initialTaskFile: file });
             }}
             essayImage={essayImage}
-            setEssayImage={setEssayImage}
+            setEssayImage={(file) => {
+              setEssayImage(file);
+              onMeta({ initialEssayFile: file });
+            }}
             answerKeyPdf={answerKeyPdf}
             setAnswerKeyPdf={(file) => {
               setAnswerKeyPdf(file);
@@ -653,7 +696,7 @@ export function EssayWorkspace({
             pipeline={pipeline}
             feedbackHook={feedbackHook}
             onApprove={handleApprove}
-            onGoToRegrade={() => setStep(4)}
+            onFinish={() => setStep(4)}
             onPrev={() => setStep(1)}
             backendSubject={subject}
             task={task}
@@ -661,41 +704,14 @@ export function EssayWorkspace({
             essayImage={essayImage}
             teacherAnnotations={teacherAnnotations}
             setTeacherAnnotations={setTeacherAnnotations}
+            finalScores={finalScores}
+            setFinalScores={setFinalScores}
+            finalized={!!finalizedResult}
           />
         </ErrorBoundary>
       )}
 
       {step === 4 && (
-        // Mockup phase: step 4 used to be a loading spinner during the
-        // regrade pipeline run. While we're still iterating on the visual,
-        // show the design mockup so the teacher can click into the step
-        // from the stepper and review the layout. If a real regrade ever
-        // lands here while ``phase === "generating"``, fall back to the
-        // loading spinner so the UX matches the rest of the pipeline.
-        pipeline.phase === "generating" ? (
-          <LoadingSpinner
-            title={String(t.step4Title ?? "")}
-            description={String(t.step4Desc ?? "")}
-          />
-        ) : (
-          <ErrorBoundary label="Regrade mockup failed">
-            <StepRegrade
-              onPrev={() => setStep(3)}
-              onFinish={() => setStep(5)}
-              grade={grade}
-              essayImage={essayImage}
-              finalScores={finalScores}
-              setFinalScores={setFinalScores}
-              maxOverrides={maxOverrides}
-              setMaxOverrides={setMaxOverrides}
-              teacherAnnotations={teacherAnnotations}
-              subject={subject}
-            />
-          </ErrorBoundary>
-        )
-      )}
-
-      {step === 5 && (
         <ErrorBoundary label="Result card failed">
           <ResultCard
             grade={grade}
@@ -705,7 +721,7 @@ export function EssayWorkspace({
             finalizeError={finalizeError}
             subjectLabel={subjectLabel === "—" ? "" : subjectLabel}
             teacherFinalScores={finalScores}
-            teacherMaxOverrides={maxOverrides}
+            confidence={pipeline.confidence}
             onFinalize={async (payload) => {
               if (isFinalizing) return;
               setIsFinalizing(true);
@@ -741,9 +757,8 @@ export function EssayWorkspace({
             }}
             onEdit={() => {
               // "← Sửa lại" — release the finalized lock AND jump back
-              // to step 4 (Chấm lại) where per-câu editing actually
-              // happens. Without the setStep, the button would only
-              // unlock the UI in place, which doesn't match its label.
+              // to step 3 (Xem xét & Chốt) where per-câu editing actually
+              // happens.
               setFinalizedResult(null);
               setFinalizeError(null);
               // Clear cross-tab finalized flag too — the next finalize
@@ -751,7 +766,7 @@ export function EssayWorkspace({
               // the "done" icon and App.tsx's auto-advance would skip
               // this tab even though the teacher wants to redo it.
               onMeta({ finalized: false });
-              setStep(4);
+              setStep(3);
             }}
           />
         </ErrorBoundary>

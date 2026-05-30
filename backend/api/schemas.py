@@ -52,6 +52,15 @@ class GenerateRequest(BaseModel):
         default=None,
         description="Base64-encoded PDF of the exam answer key / bareme (data URL).",
     )
+    max_points_template: dict[str, float] | None = Field(
+        default=None,
+        description="Teacher-defined per-câu max-points scheme propagated "
+        "across a batch (frontend cross-tab sync mirrors the first paper's "
+        "maxOverrides to subsequent papers grading the same exam). When "
+        "present, the prompt orchestrator injects it as an authoritative "
+        "constraint so the AI's max_points output matches what the teacher "
+        "already decided. Keys are câu numbers as strings (JSON dict).",
+    )
 
 
 
@@ -59,6 +68,13 @@ class GenerateResponse(BaseModel):
     code: str  # Grader JSON output
     lessons_used: list[dict[str, Any]]
     run_id: int | None
+    confidence: str = Field(
+        default="medium",
+        description='Inferred grade confidence from envelope shape: '
+        '"high" | "medium" | "low". Drives the frontend "Độ tin cậy" '
+        "chip — teacher uses it to decide skim-vs-deep-dive before "
+        "reading. Derived by grading.grade_parser.infer_confidence.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -159,19 +175,18 @@ class FinalizeGradeRequest(BaseModel):
     signal — currently the strongest one the UI captures, since it's a
     concrete correction rather than free-form text.
 
-    Two complementary score axes are accepted:
-      * rubric: 4-dim VN STEM rubric (content/argument/expression/creativity)
+    Pattern B (Phase 3) score axes accepted:
       * per-câu: per-question scores keyed by câu number ("1","2",...)
+      * per-step: per-criterion points nested by câu then label
     Either or both may be empty. The finalize handler computes deltas on
     whichever axis has data and combines them into a single lesson so the
-    RAG corpus does not double-count a single correction.
+    RAG corpus does not double-count a single correction. The legacy 4-dim
+    global rubric (content/argument/expression/creativity) has been retired.
     """
 
     task: str = Field(..., min_length=1)
     ai_overall: float | None = None
     teacher_overall: float | None = None
-    ai_scores: dict[str, float] = Field(default_factory=dict)
-    teacher_scores: dict[str, float] = Field(default_factory=dict)
     ai_per_question: dict[str, float] = Field(
         default_factory=dict,
         description='Per-câu AI scores keyed by câu number as string ("1","2",...). '
@@ -180,6 +195,20 @@ class FinalizeGradeRequest(BaseModel):
     teacher_per_question: dict[str, float] = Field(
         default_factory=dict,
         description="Per-câu teacher overrides, same shape as ai_per_question.",
+    )
+    ai_per_step: dict[str, dict[str, float]] = Field(
+        default_factory=dict,
+        description="Pattern B per-câu per-criterion AI points. Shape: "
+        '``{"1": {"Đặt vấn đề": 1.0, "Biến đổi": 0.5, ...}, "2": {...}}``. '
+        "When present, finalize computes per-step deltas (criterion-level) "
+        "alongside per-câu and global ones — strongest signal for the "
+        "learning loop since it pinpoints WHICH step in WHICH câu the "
+        "teacher corrected.",
+    )
+    teacher_per_step: dict[str, dict[str, float]] = Field(
+        default_factory=dict,
+        description="Per-câu per-criterion teacher overrides, same shape "
+        "as ai_per_step.",
     )
     approved_grade_json: str = Field(default="")
     run_id: int | None = None
@@ -222,6 +251,10 @@ class RegradeRequest(BaseModel):
     run_id: int | None = None
     subject: str | None = None
     answer_key_pdf_b64: str | None = None
+    max_points_template: dict[str, float] | None = Field(
+        default=None,
+        description="See GenerateRequest.max_points_template — same semantics.",
+    )
 
 
 
@@ -232,6 +265,10 @@ class RegradeResponse(BaseModel):
     lessons_used: list[dict[str, Any]]
     run_id: int | None
     lesson_id: int | None = None
+    confidence: str = Field(
+        default="medium",
+        description='See GenerateResponse.confidence — same semantics.',
+    )
 
 
 # ---------------------------------------------------------------------------

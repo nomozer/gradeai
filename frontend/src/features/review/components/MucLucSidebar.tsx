@@ -28,6 +28,8 @@ export function MucLucSidebar({
   teacherAnnotations,
   collapsed,
   onToggle,
+  finalScores,
+  setFinalScores,
 }: {
   review: ReviewPayload;
   activeQ: number;
@@ -35,6 +37,8 @@ export function MucLucSidebar({
   teacherAnnotations?: SelectionAnnotation[];
   collapsed: boolean;
   onToggle: () => void;
+  finalScores?: Record<number, number>;
+  setFinalScores?: React.Dispatch<React.SetStateAction<Record<number, number>>>;
 }) {
   const totalNotes = (teacherAnnotations ?? []).length;
   const countByCau = (cau: number) =>
@@ -194,10 +198,13 @@ export function MucLucSidebar({
         {review.questions.map((q) => {
           const noteCount = countByCau(q.num);
           const active = q.num === activeQ;
+          const myScore = finalScores?.[q.num] ?? q.earned;
+          const isEdited = finalScores?.[q.num] !== undefined && Math.abs(finalScores[q.num] - q.earned) > 0.001;
+          const cap = q.max > 0 ? q.max : undefined;
+
           return (
-            <button
+            <div
               key={q.num}
-              type="button"
               onClick={() => onJumpToCau(q.num)}
               aria-pressed={active}
               style={{
@@ -207,18 +214,16 @@ export function MucLucSidebar({
                 gap: 10,
                 textAlign: "left",
                 width: "100%",
-                // Padding compensates for the 3px left border so the label
-                // stays at the same x-coordinate whether active or not.
                 padding: "9px 14px 9px 11px",
                 fontFamily: "inherit",
                 fontSize: T.fontSize.caption,
                 color: active ? T.accent : T.textSoft,
                 fontWeight: active ? 600 : 500,
                 background: active ? T.accentSoft : "transparent",
-                border: "none",
                 borderLeft: `3px solid ${active ? T.accent : "transparent"}`,
                 cursor: "pointer",
                 transition: "color 0.12s, background 0.12s, border-color 0.12s",
+                boxSizing: "border-box",
               }}
               onMouseEnter={(e) => {
                 if (active) return;
@@ -250,11 +255,58 @@ export function MucLucSidebar({
                   fontSize: 12,
                   fontFamily: T.mono,
                   color: active ? T.accent : T.textFaint,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 2,
                 }}
+                onClick={(e) => e.stopPropagation()}
               >
-                {q.earned.toFixed(1)}
+                {setFinalScores ? (
+                  <input
+                    type="number"
+                    step={0.25}
+                    min={0}
+                    max={cap}
+                    value={myScore}
+                    onChange={(e) => {
+                      const raw = parseFloat(e.target.value);
+                      if (Number.isNaN(raw)) {
+                        setFinalScores((prev) => {
+                          const next = { ...prev };
+                          delete next[q.num];
+                          return next;
+                        });
+                        return;
+                      }
+                      const clamped = cap != null
+                        ? Math.max(0, Math.min(cap, raw))
+                        : Math.max(0, raw);
+                      setFinalScores((prev) => ({ ...prev, [q.num]: clamped }));
+                    }}
+                    style={{
+                      width: 42,
+                      fontFamily: T.mono,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      padding: "1px 2px",
+                      border: `1px solid ${isEdited ? T.red : T.border}`,
+                      borderRadius: 4,
+                      background: T.bgCard,
+                      color: isEdited ? T.red : T.text,
+                      outline: "none",
+                      textAlign: "center",
+                    }}
+                  />
+                ) : (
+                  <span>{myScore.toFixed(1)}</span>
+                )}
+                {cap != null && (
+                  <span style={{ color: T.textMute, fontSize: 10, fontWeight: 400 }}>
+                    /{cap.toFixed(1)}
+                  </span>
+                )}
               </span>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -272,7 +324,6 @@ export function MucLucSidebar({
     </aside>
   );
 }
-
 // Horizontal chip strip — mobile / tablet variant of the câu navigation.
 // The vertical rail is too wide to coexist with the paper at <900px so it
 // gets hidden there; without something taking its place the teacher loses
@@ -283,10 +334,12 @@ export function MucLucChips({
   review,
   activeQ,
   onJumpToCau,
+  finalScores,
 }: {
   review: ReviewPayload;
   activeQ: number;
   onJumpToCau: (n: number) => void;
+  finalScores?: Record<number, number>;
 }) {
   return (
     <div
@@ -310,6 +363,8 @@ export function MucLucChips({
     >
       {review.questions.map((q) => {
         const active = q.num === activeQ;
+        const myScore = finalScores?.[q.num] ?? q.earned;
+        const cap = q.max > 0 ? q.max : undefined;
         return (
           <button
             key={q.num}
@@ -342,8 +397,19 @@ export function MucLucChips({
                 color: active ? "rgba(255,255,255,0.85)" : T.textFaint,
               }}
             >
-              {q.earned.toFixed(1)}
+              {myScore.toFixed(1)}
             </span>
+            {cap != null && (
+              <span
+                style={{
+                  fontFamily: T.mono,
+                  fontSize: 10,
+                  color: active ? "rgba(255,255,255,0.72)" : T.textFaint,
+                }}
+              >
+                /{cap.toFixed(1)}
+              </span>
+            )}
           </button>
         );
       })}

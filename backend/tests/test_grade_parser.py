@@ -27,12 +27,14 @@ from grading.grade_parser import (
 
 
 def _complete_grade(**overrides) -> dict:
-    """Build a complete grade envelope; overrides patch specific fields."""
+    """Build a complete grade envelope; overrides patch specific fields.
+
+    Pattern B envelope: no global ``scores`` field — ``overall`` is the
+    only top-level score; rubric breakdown lives in per_question_feedback
+    criteria.
+    """
     base = {
         "transcript": "Câu 1: Lời giải đúng.",
-        "scores": {
-            "content": 8.0, "argument": 7.5, "expression": 9.0, "creativity": 6.5,
-        },
         "overall": 7.75,
         "comment": "Bài làm tốt.",
         "per_question_feedback": [
@@ -52,7 +54,7 @@ class TestParseGradeJsonHappyPath:
     def test_markdown_fenced_json(self):
         text = "```json\n" + json.dumps(_complete_grade()) + "\n```"
         out = parse_grade_json(text)
-        assert out["scores"]["content"] == 8.0
+        assert out["overall"] == 7.75
         assert out.get("salvaged") is not True
 
     def test_bare_fence_no_lang(self):
@@ -69,21 +71,6 @@ class TestParseGradeJsonSoftTruncation:
         assert out["salvaged"] is True
         # Default supplied so UI doesn't crash on null arithmetic.
         assert out["overall"] == 0
-
-    def test_missing_scores_filled_with_zero_rubric(self):
-        bad = _complete_grade()
-        del bad["scores"]
-        out = parse_grade_json(json.dumps(bad))
-        assert out["salvaged"] is True
-        for key in ("content", "argument", "expression", "creativity"):
-            assert out["scores"][key] == 0
-
-    def test_empty_scores_dict_flagged(self):
-        # Edge case: scores key present but empty dict — same fallback path.
-        bad = _complete_grade(scores={})
-        out = parse_grade_json(json.dumps(bad))
-        assert out["salvaged"] is True
-        assert out["scores"]["content"] == 0
 
     def test_missing_per_question_feedback_defaulted(self):
         bad = _complete_grade()
@@ -104,8 +91,8 @@ class TestParseGradeJsonHardFailure:
     def test_total_garbage_returns_default_envelope(self):
         out = parse_grade_json("this is not JSON at all")
         assert out["salvaged"] is True
-        assert out["scores"]["content"] == 0
         assert out["overall"] == 0
+        assert out["per_question_feedback"] == []
         assert isinstance(out["weaknesses"], list)
 
     def test_truncated_mid_string_repaired(self):

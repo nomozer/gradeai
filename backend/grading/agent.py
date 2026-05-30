@@ -21,6 +21,7 @@ import asyncio
 import collections
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -121,6 +122,7 @@ class AgentOrchestrator:
         parent_run_id: int | None = None,
         subject: str | None = None,
         answer_key: str | None = None,
+        max_points_template: dict[str, float] | None = None,
         **_ignored: Any,
     ) -> PipelineResult:
         """Execute the end-to-end VLM Grading pipeline (single Gemini call).
@@ -161,6 +163,7 @@ class AgentOrchestrator:
                 wrong_code=wrong_code,
                 subject=subject,
                 answer_key=answer_key,
+                max_points_template=max_points_template,
             ),
         )
 
@@ -250,10 +253,23 @@ class AgentOrchestrator:
         # Cap at 768 tokens — slightly above the 512 used for the simpler
         # 2-field schema, since analysis now has room for evidence-based
         # rationale and we don't want JSON-mode truncation mid-string.
-        raw = await self.gemini.call_with_retry(
-            ANALYZE_COMMENT_SYSTEM, prompt,
-            json_mode=True, max_output_tokens=768,
-        )
+        try:
+            raw = await self.gemini.call_with_retry(
+                ANALYZE_COMMENT_SYSTEM,
+                prompt,
+                json_mode=True,
+                max_output_tokens=768,
+                timeout_secs=int(os.getenv("HITL_ANALYZE_COMMENT_TIMEOUT", "25")),
+                max_retries=int(os.getenv("HITL_ANALYZE_COMMENT_RETRIES", "1")),
+            )
+        except Exception as exc:
+            logger.warning(
+                "[HITL] analyze-comment upstream failed; using local fallback: %s",
+                exc,
+            )
+            return fallback_comment_analysis(
+                teacher_comment, student_answer=student_answer,
+            )
         parsed = parse_comment_analysis(raw)
         verdict = parsed.get("verdict", "agree")
         analysis = parsed.get("analysis", "").strip()

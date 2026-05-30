@@ -22,6 +22,7 @@ import { PaperHead } from "./components/PaperHead";
 import { QuestionBox } from "./components/QuestionBox";
 import { VerdictRow } from "./components/VerdictRow";
 import { formatLine } from "../../lib/mathFormat";
+import { ScoreInline } from "../workspace/components/ScoreBottomBar";
 import type {
   BackendSubject,
   CommentThreads,
@@ -70,7 +71,9 @@ function ReviewMockup({
   onAddAnnotation,
   onUpdateAnnotation,
   onRemoveAnnotation,
-  onGoToRegrade,
+  onFinish,
+  finalScores,
+  setFinalScores,
 }: {
   isMobile: boolean;
   review?: ReviewPayload;
@@ -80,9 +83,9 @@ function ReviewMockup({
   onAddAnnotation?: (a: SelectionAnnotation) => void;
   onUpdateAnnotation?: (id: string, patch: Partial<SelectionAnnotation>) => void;
   onRemoveAnnotation?: (id: string) => void;
-  /** Forward to step 4 — used by the "Bản chấm AI" peek modal's CTA so
-   *  teacher can jump straight to scoring after revealing AI's verdict. */
-  onGoToRegrade?: () => void;
+  onFinish?: () => void;
+  finalScores?: Record<number, number>;
+  setFinalScores?: React.Dispatch<React.SetStateAction<Record<number, number>>>;
 }) {
   const [activeQ, setActiveQ] = useState<number>(review.initialActiveQuestionNum);
   // Rail can be collapsed to a pull-tab so the teacher can reclaim full
@@ -142,6 +145,7 @@ function ReviewMockup({
           review={review}
           activeQ={activeQ}
           onJumpToCau={jumpToCau}
+          finalScores={finalScores}
         />
       )}
       <div
@@ -166,6 +170,8 @@ function ReviewMockup({
             teacherAnnotations={teacherAnnotations}
             collapsed={false}
             onToggle={() => setTocOpen(false)}
+            finalScores={finalScores}
+            setFinalScores={setFinalScores}
           />
         )}
         <PaperContainer
@@ -181,7 +187,7 @@ function ReviewMockup({
         open={aiPeekOpen}
         onClose={() => setAiPeekOpen(false)}
         review={review}
-        onGoToRegrade={onGoToRegrade}
+        onGoToRegrade={onFinish}
       />
     </div>
   );
@@ -645,7 +651,7 @@ function highlightColors(ann: SelectionAnnotation, active: boolean): {
     return { bg: active ? "#FDE68A" : "#FFFDF0" };
   }
   if (ann.verdict === "dispute" && ann.disputeDecision === "skip") {
-    return { bg: active ? "#D1D5DB" : "#F3F4F6", strike: true };
+    return { bg: active ? "#D1D5DB" : "#F3F4F6" };
   }
   if (ann.verdict === "agree") {
     return { bg: active ? "#A7F3D0" : "#ECFDF5" };
@@ -1241,9 +1247,7 @@ interface StepReviewProps {
    *  through step 4 → step 5 finalize, and the approve semantics are
    *  expected to be derived from "no scores changed" at step 5. */
   onApprove: () => void;
-  /** Primary forward action — go to step 4 (Chấm lại) for per-câu
-   *  review. */
-  onGoToRegrade?: () => void;
+  onFinish?: () => void;
   /** Back action — go to step 1 so the teacher can re-upload / swap
    *  files. "Đọc lại" reads as "đọc lại đề + bài làm" in this flow. */
   onPrev?: () => void;
@@ -1258,6 +1262,13 @@ interface StepReviewProps {
   setTeacherAnnotations: React.Dispatch<
     React.SetStateAction<SelectionAnnotation[]>
   >;
+  /** Per-câu score overrides (from step 4 if the teacher has been there
+   *  already). Empty Map ⇒ score panel shows pure AI proposal. Passed
+   *  through to ScoreInline so the unified footer shows the running
+   *  total even when the teacher navigates back to step 3. */
+  finalScores?: Record<number, number>;
+  setFinalScores?: React.Dispatch<React.SetStateAction<Record<number, number>>>;
+  finalized?: boolean;
 }
 
 export function StepReview({
@@ -1265,7 +1276,7 @@ export function StepReview({
   pipeline,
   feedbackHook,
   onApprove,
-  onGoToRegrade,
+  onFinish,
   onPrev,
   backendSubject,
   task,
@@ -1273,6 +1284,9 @@ export function StepReview({
   essayImage,
   teacherAnnotations,
   setTeacherAnnotations,
+  finalScores,
+  setFinalScores,
+  finalized,
 }: StepReviewProps) {
   const [commentThreads, setCommentThreads] = useState<CommentThreads>({});
   const [analyzingQ, setAnalyzingQ] = useState<number | null>(null);
@@ -1546,7 +1560,9 @@ export function StepReview({
         review={reviewData}
         essayAvailable={!!essayImage?.dataUrl}
         onViewOriginal={() => setShowOriginal(true)}
-        onGoToRegrade={onGoToRegrade}
+        onFinish={onFinish}
+        finalScores={finalScores}
+        setFinalScores={setFinalScores}
         teacherAnnotations={teacherAnnotations}
         onAddAnnotation={(a) => {
           setTeacherAnnotations((prev) => [...prev, a]);
@@ -1600,17 +1616,30 @@ export function StepReview({
           {feedbackHook.error}
         </div>
       )}
-      <ActionBar status="Bạn là người chấm cuối. AI chỉ đề xuất.">
+      <ActionBar
+        status="Bạn là người chấm cuối. AI chỉ đề xuất."
+        scoreSlot={
+          grade ? (
+            <ScoreInline
+              grade={grade}
+              finalScores={finalScores ?? {}}
+              maxOverrides={{}}
+              finalized={!!finalized}
+              confidence={pipeline.confidence}
+            />
+          ) : undefined
+        }
+      >
         <GhostButton onClick={onPrev}>
           <Icon.ArrowLeft size={14} />
           Tải bài khác
         </GhostButton>
         <PrimaryButton
-          onClick={onGoToRegrade}
+          onClick={onFinish}
           disabled={pipeline.phase === "generating"}
-          title="Mở bảng chấm lại — sửa điểm từng câu, chat với AI về phần chưa chắc."
+          title="Hoàn tất bài làm này và xem kết quả tổng hợp."
         >
-          Chấm lại / Phản hồi
+          Hoàn tất bài này
           <Icon.ChevronRight size={14} color="#fff" />
         </PrimaryButton>
       </ActionBar>

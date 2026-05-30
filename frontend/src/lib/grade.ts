@@ -1,4 +1,4 @@
-import type { Grade, PerQuestionFeedback } from "../types";
+import type { Criterion, Grade, PerQuestionFeedback } from "../types";
 
 /** Split a backend "question" string ("Câu 1: Giải phương trình…") into
  *  the câu number + the trailing prompt text. Tolerant of variants
@@ -134,6 +134,26 @@ function toFiniteNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+function normalizeCriteria(raw: unknown): Criterion[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const out: Criterion[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const label = typeof o.label === "string" ? o.label.trim() : "";
+    const points = toFiniteNumber(o.points);
+    const max = toFiniteNumber(o.max);
+    if (!label || points === undefined || max === undefined) continue;
+    out.push({
+      label,
+      points,
+      max,
+      errors: typeof o.errors === "string" ? o.errors : "",
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 function normalizePqf(raw: unknown): PerQuestionFeedback[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((item) => {
@@ -147,6 +167,11 @@ function normalizePqf(raw: unknown): PerQuestionFeedback[] {
       score: toFiniteNumber(o.score),
       good_points: typeof o.good_points === "string" ? o.good_points : "",
       errors: typeof o.errors === "string" ? o.errors : "",
+      // Pattern B per-câu sub-criteria. Drops malformed entries silently
+      // (missing label / non-numeric points or max) so a partial Gemini
+      // payload doesn't crash the UI — display layer just renders fewer
+      // bars in that câu's breakdown.
+      criteria: normalizeCriteria(o.criteria),
     };
   });
 }
@@ -163,12 +188,6 @@ export function parseGrade(raw: unknown): Grade | null {
         ? (JSON.parse(raw) as Record<string, any>)
         : (raw as Record<string, any>);
     return {
-      scores: {
-        content: p.scores?.content ?? "",
-        argument: p.scores?.argument ?? "",
-        expression: p.scores?.expression ?? "",
-        creativity: p.scores?.creativity ?? "",
-      },
       overall: p.overall ?? "",
       strengths: Array.isArray(p.strengths) ? p.strengths.slice() : [],
       weaknesses: Array.isArray(p.weaknesses) ? p.weaknesses.slice() : [],

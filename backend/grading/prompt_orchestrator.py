@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from memory import MemoryManager
-from prompts import GRADER_SYSTEM, detect_subject
+from prompts import GRADER_SYSTEM, detect_subject, format_criteria_block
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +108,7 @@ class PromptOrchestrator:
         wrong_code: Optional[str] = None,
         subject: Optional[str] = None,
         answer_key: Optional[str] = None,
+        max_points_template: Optional[dict[str, float]] = None,
     ) -> PromptBundle:
         """Assemble the Grader PromptBundle for this essay.
 
@@ -126,6 +127,13 @@ class PromptOrchestrator:
                         from a teacher-uploaded PDF. Injected verbatim into
                         the dynamic prompt so the Grader can score against
                         the official rubric.
+            max_points_template: Optional per-câu max-points scheme decided
+                        by the teacher on a prior paper in the same batch.
+                        When present, injected as the authoritative scoring
+                        scheme (overrides anything the AI might infer from
+                        the exam / answer key). Used so an exam without
+                        explicit per-câu point values doesn't let the AI
+                        guess inconsistently across the batch.
         """
         task = _sanitize(task, 4000)
         feedback = _sanitize(feedback or "", 2000)
@@ -169,6 +177,41 @@ class PromptOrchestrator:
                 "BẮT BUỘC chấm theo đúng đáp án này. Nếu bài làm học sinh "
                 "khác với đáp án, trừ điểm theo biểu điểm.\n\n"
                 f"{answer_key_text}"
+            )
+
+        # Per-câu sub-criteria template (Pattern B rubric). Authoritative
+        # — placed alongside answer key + max-points-template at the top
+        # of the dynamic block so the Grader treats the per-câu rubric as
+        # binding, not advisory. Sourced from ``prompts/rubric_templates``
+        # keyed by ``resolved_subject``; AI must echo each label verbatim
+        # in its ``criteria`` array per câu (see Rule 7).
+        dynamic_parts.append(format_criteria_block(resolved_subject))
+
+        # Per-câu max-points template (teacher-decided, batch-scoped).
+        # Placed AFTER answer key but BEFORE the topic so the Grader reads
+        # the official rubric, then the locked point allocation, then the
+        # essay topic — same reading order a teacher would follow when
+        # standardising grades across a stack of papers.
+        if max_points_template:
+            try:
+                rows = sorted(
+                    max_points_template.items(),
+                    key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else 10_000,
+                )
+            except (TypeError, ValueError):
+                rows = list(max_points_template.items())
+            lines = "\n".join(
+                f"- Câu {k}: {float(v):g} điểm" for k, v in rows
+            )
+            dynamic_parts.append(
+                "### PHÂN BỔ ĐIỂM TỐI ĐA TỪNG CÂU "
+                "(Giáo viên quy định — BẮT BUỘC tuân thủ)\n"
+                "Đây là biểu điểm chính thức cho đề này, đã được giáo viên "
+                "chốt ở bài chấm trước. Mỗi trường ``max_points`` trong "
+                "``per_question_feedback`` của output PHẢI khớp đúng giá trị "
+                "dưới đây. Điểm chấm cho từng câu (``score``) không được "
+                "vượt quá ``max_points`` tương ứng.\n\n"
+                f"{lines}"
             )
 
         dynamic_parts.append(f"### ĐỀ BÀI TỰ LUẬN\n{task}")

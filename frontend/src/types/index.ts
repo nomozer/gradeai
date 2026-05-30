@@ -15,8 +15,8 @@ export type {
 } from "./domain";
 
 export type {
-  RubricScores,
   PerQuestionFeedback,
+  Criterion,
   Grade,
   TaskFile,
   EssayFile,
@@ -29,6 +29,7 @@ export type {
   GradeHistoryResponse,
   StagedLesson,
   GenerateResponse,
+  GradeConfidence,
   FeedbackResponse,
   AnalyzeCommentResponse,
   FinalizeGradeResponse,

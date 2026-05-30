@@ -15,18 +15,16 @@ export function deriveDisplayStep(step: number): number {
 export function nextStepOnPhaseChange(step: number, phase: string, error: string | null): number {
   if (phase === "generating") {
     if (step === 1) return 2;
-    if (step === 3) return 4;
   }
   if (phase === "idle" && error) {
     if (step === 2) return 1;
-    if (step === 4) return 3;
   }
   return step;
 }
 
-/** After a grade is parsed, jump back to review if we were loading. */
+/** After a grade is parsed, jump to review if we were loading. */
 export function stepAfterGrade(step: number): number {
-  return step === 2 || step === 4 ? 3 : step;
+  return step === 2 ? 3 : step;
 }
 
 /** Derive a short task label from the PDF filename. */

@@ -8,11 +8,12 @@ import { MOCK_QUESTIONS } from "./__mocks__/resultCard.mock";
 import { FeedbackBlock } from "./components/FeedbackBlock";
 import { ScoreChip } from "./components/ScoreChip";
 import { LearningBanner } from "./components/LearningBanner";
+import { ScoreInline } from "./components/ScoreBottomBar";
 import type {
   FinalizedResult,
   Grade,
+  GradeConfidence,
   I18nStrings,
-  RubricScores,
 } from "../../types";
 
 // ---------------------------------------------------------------------------
@@ -60,7 +61,7 @@ export interface ResultCardProps {
   grade: Grade | null;
   t: I18nStrings;
   finalized: FinalizedResult | null;
-  onFinalize: (payload: { scores: RubricScores; overall: number | string }) => void | Promise<void>;
+  onFinalize: (payload: { overall: number | string }) => void | Promise<void>;
   /** "← Sửa lại" — caller should clear finalized state AND navigate the
    *  workspace back to step 4 (Chấm lại) so the teacher can re-edit. */
   onEdit?: () => void;
@@ -74,9 +75,9 @@ export interface ResultCardProps {
    *  defaulting to AI's score). Drives the "AI ban đầu" hero column
    *  visibility — if any câu was overridden, the comparison shows. */
   teacherFinalScores?: Record<number, number>;
-  /** Teacher per-câu max overrides from step 4 (for câu where the đề
-   *  didn't pre-allocate points). Falls back to grade.max_points. */
-  teacherMaxOverrides?: Record<number, number>;
+  /** Server-inferred grade confidence — small chip in the sticky
+   *  ActionBar. Null on history-loaded entries that predate the field. */
+  confidence?: GradeConfidence | null;
 }
 
 export function ResultCard({
@@ -89,18 +90,9 @@ export function ResultCard({
   finalizeError = null,
   subjectLabel = "",
   teacherFinalScores,
-  teacherMaxOverrides,
+  confidence,
 }: ResultCardProps) {
   const locked = !!finalized;
-
-  // Step 4 is the single source of truth for rubric scores. We pass
-  // them straight through to /api/finalize-grade — no editing here.
-  const scores: RubricScores = {
-    content: grade?.scores?.content ?? "",
-    argument: grade?.scores?.argument ?? "",
-    expression: grade?.scores?.expression ?? "",
-    creativity: grade?.scores?.creativity ?? "",
-  };
   const overall: number | string = grade?.overall ?? "";
 
   // Salvage state — warn before committing partial/unparseable AI output.
@@ -121,12 +113,12 @@ export function ResultCard({
   // teacherScore, maxPoints, goodPoints, improvements) is the only
   // contract the JSX below relies on.
   //
-  // teacherScore: prefer the per-câu override the teacher set in step 4
-  // (passed in via teacherFinalScores). Falls back to aiScore so a
-  // câu the teacher didn't touch reads as "no delta". Same fallback
-  // chain for maxPoints via teacherMaxOverrides — used only when the đề
-  // didn't pre-allocate points and the teacher had to set the cap by
-  // hand in step 4.
+  // teacherScore: prefer the per-câu override the teacher set in step 3
+  // (passed in via teacherFinalScores). Falls back to aiScore so a câu
+  // the teacher didn't touch reads as "no delta". maxPoints comes
+  // straight from AI's q.max_points — the "total = 10 (hoặc bareme)"
+  // invariant means teacher cannot edit per-câu max; AI's value is the
+  // single source of truth.
   const pqf = grade?.per_question_feedback ?? [];
   const hasRealRows =
     pqf.length > 0 && pqf.some((q) => typeof q.score === "number");
@@ -137,8 +129,7 @@ export function ResultCard({
           typeof q.max_points === "number" && isFinite(q.max_points)
             ? q.max_points
             : 0;
-        const maxPoints =
-          teacherMaxOverrides?.[parsed.num] ?? (aiMax > 0 ? aiMax : 0);
+        const maxPoints = aiMax > 0 ? aiMax : 0;
         const aiScore =
           typeof q.score === "number" && isFinite(q.score) ? q.score : 0;
         const teacherScore = teacherFinalScores?.[parsed.num] ?? aiScore;
@@ -185,17 +176,12 @@ export function ResultCard({
   const handleFinalize = () => {
     if (onFinalize && !isFinalizing) {
       // Send the teacher's per-câu sum as the final overall — that's what
-      // the hero is showing the teacher right now. The previous version
-      // sent ``grade.overall`` (AI's rubric-derived overall), which meant
-      // step 4 edits were silently discarded: hero showed 8.0 (teacher's
-      // sum after edit), but POST /api/finalize-grade persisted 8.5 (AI's
-      // overall), so the locked-state hero snapped BACK to 8.5 after
-      // save. Rubric scores stay at AI's values since the current flow
-      // has no rubric editor — fine as long as overall reflects the
-      // teacher's actual decision.
+      // the hero is showing the teacher right now. Pattern B has no
+      // global rubric breakdown; per-câu criteria edits already live in
+      // ``approved_grade_json`` built upstream in EssayWorkspace.
       const teacherOverall =
         typeof displayOverall === "number" ? displayOverall : overall;
-      onFinalize({ scores, overall: teacherOverall });
+      onFinalize({ overall: teacherOverall });
     }
   };
   const handlePrint = () => {
@@ -808,7 +794,20 @@ export function ResultCard({
         )}
 
         {/* ── BOTTOM ACTION BAR (outside card) ──────────────────────── */}
-        <ActionBar>
+        <ActionBar
+          scoreSlot={
+            grade ? (
+              <ScoreInline
+                grade={grade}
+                finalScores={teacherFinalScores ?? {}}
+                maxOverrides={{}}
+                finalized={locked}
+                showCounter={false}
+                confidence={confidence}
+              />
+            ) : undefined
+          }
+        >
           <GhostButton
             onClick={onEdit}
             disabled={isFinalizing}

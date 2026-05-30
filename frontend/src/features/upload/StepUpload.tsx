@@ -33,6 +33,40 @@ interface StepUploadProps {
   onBatchEssayUpload?: (files: File[]) => void;
 }
 
+const fileButtonBaseStyle = {
+  position: "relative" as const,
+  overflow: "hidden" as const,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+  userSelect: "none" as const,
+};
+
+const hiddenFileInputStyle = {
+  position: "fixed" as const,
+  left: -10000,
+  top: 0,
+  width: 1,
+  height: 1,
+  opacity: 0,
+};
+
+function openFilePicker(ref: { current: HTMLInputElement | null }) {
+  const input = ref.current;
+  if (!input) return;
+  input.value = "";
+  try {
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+  } catch {
+    // Fall back to click below for browsers that expose but reject showPicker.
+  }
+  input.click();
+}
+
 export function StepUpload({
   taskPdf,
   setTaskPdf,
@@ -170,6 +204,7 @@ export function StepUpload({
           display: isMobile ? "flex" : "grid",
           flexDirection: isMobile ? "column" : undefined,
           gridTemplateColumns: isMobile ? undefined : "1fr 1fr",
+          alignItems: "stretch",
           gap: 24,
           marginBottom: 24,
         }}
@@ -257,18 +292,15 @@ export function StepUpload({
                 setDragOverTask(false);
                 handleTaskFile(e.dataTransfer.files?.[0]);
               }}
-              onClick={() => {
-                if (taskInputRef.current) {
-                  taskInputRef.current.value = "";
-                  taskInputRef.current.click();
-                }
-              }}
+              onClick={() => openFilePicker(taskInputRef)}
               style={{
+                position: "relative",
                 border: dragOverTask ? `2px solid ${T.accent}` : `2px dashed ${T.border}`,
                 borderRadius: 12,
                 padding: "36px 16px",
                 textAlign: "center",
                 cursor: "pointer",
+                userSelect: "none",
                 transition: "all 0.25s ease",
                 background: dragOverTask
                   ? "linear-gradient(135deg, rgba(59,79,138,0.04), rgba(59,79,138,0.10))"
@@ -276,13 +308,14 @@ export function StepUpload({
                     ? "rgba(59, 79, 138, 0.01)"
                     : "rgba(44, 46, 58, 0.01)",
                 boxShadow: dragOverTask ? `0 0 0 3px ${T.accentSoft}, 0 4px 16px ${T.accentSoft}` : "none",
+                display: "block",
               }}
             >
               <input
                 ref={taskInputRef}
                 type="file"
                 accept=".pdf,application/pdf"
-                style={{ display: "none" }}
+                style={hiddenFileInputStyle}
                 onChange={(e) => {
                   handleTaskFile(e.target.files?.[0]);
                   e.target.value = "";
@@ -317,7 +350,12 @@ export function StepUpload({
               >
                 {dragOverTask ? "Thả file để tải lên!" : String(t.promptDrop ?? "Thả file PDF đề bài vào đây")}
               </div>
-              <span
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openFilePicker(taskInputRef);
+                }}
                 style={{
                   display: "inline-block",
                   padding: "6px 16px",
@@ -325,15 +363,17 @@ export function StepUpload({
                   background: hoveredZone === "task" ? T.accent : "transparent",
                   border: `1px solid ${hoveredZone === "task" ? T.accent : T.border}`,
                   color: hoveredZone === "task" ? "#FFFFFF" : T.textSoft,
+                  fontFamily: T.font,
                   fontSize: 11,
                   fontWeight: 700,
                   letterSpacing: "0.03em",
                   textTransform: "uppercase",
                   transition: "all 0.2s",
+                  cursor: "pointer",
                 }}
               >
                 Chọn tệp
-              </span>
+              </button>
             </div>
           ) : (
             <div
@@ -408,23 +448,19 @@ export function StepUpload({
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  if (taskInputRef.current) {
-                    taskInputRef.current.value = "";
-                    taskInputRef.current.click();
-                  }
-                }}
+                onClick={() => openFilePicker(taskInputRef)}
                 style={{
+                  ...fileButtonBaseStyle,
                   background: "transparent",
                   border: `1px solid ${T.accent}`,
                   color: T.accent,
                   borderRadius: 999,
                   padding: "4px 12px",
+                  fontFamily: T.font,
                   fontSize: 11,
                   fontWeight: 700,
                   letterSpacing: "0.03em",
                   textTransform: "uppercase",
-                  cursor: "pointer",
                   transition: "all 0.2s",
                 }}
                 onMouseEnter={(e) => {
@@ -440,7 +476,7 @@ export function StepUpload({
                 ref={taskInputRef}
                 type="file"
                 accept=".pdf,application/pdf"
-                style={{ display: "none" }}
+                style={hiddenFileInputStyle}
                 onChange={(e) => {
                   handleTaskFile(e.target.files?.[0]);
                   e.target.value = "";
@@ -585,18 +621,15 @@ export function StepUpload({
                   handleEssayFile(e.dataTransfer.files?.[0]);
                 }
               }}
-              onClick={() => {
-                if (essayInputRef.current) {
-                  essayInputRef.current.value = "";
-                  essayInputRef.current.click();
-                }
-              }}
+              onClick={() => openFilePicker(essayInputRef)}
               style={{
+                position: "relative",
                 border: dragOverEssay ? `2px solid ${T.green}` : `2px dashed ${T.border}`,
                 borderRadius: 12,
                 padding: "36px 16px",
                 textAlign: "center",
                 cursor: "pointer",
+                userSelect: "none",
                 transition: "all 0.25s ease",
                 background: dragOverEssay
                   ? "linear-gradient(135deg, rgba(46,125,91,0.04), rgba(46,125,91,0.10))"
@@ -604,6 +637,7 @@ export function StepUpload({
                     ? "rgba(46, 125, 91, 0.01)"
                     : "rgba(44, 46, 58, 0.01)",
                 boxShadow: dragOverEssay ? `0 0 0 3px ${T.greenSoft}, 0 4px 16px ${T.greenSoft}` : "none",
+                display: "block",
               }}
             >
               <input
@@ -611,7 +645,7 @@ export function StepUpload({
                 type="file"
                 accept="image/*,.pdf,application/pdf"
                 multiple
-                style={{ display: "none" }}
+                style={hiddenFileInputStyle}
                 onChange={(e) => {
                   if (e.target.files && e.target.files.length > 1) {
                     const filesArr = Array.from(e.target.files);
@@ -652,7 +686,12 @@ export function StepUpload({
               >
                 {dragOverEssay ? "Thả file để tải lên!" : String(t.imageDrop ?? "Thả ảnh hoặc PDF bài làm vào đây")}
               </div>
-              <span
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openFilePicker(essayInputRef);
+                }}
                 style={{
                   display: "inline-block",
                   padding: "6px 16px",
@@ -660,15 +699,17 @@ export function StepUpload({
                   background: hoveredZone === "essay" ? T.green : "transparent",
                   border: `1px solid ${hoveredZone === "essay" ? T.green : T.border}`,
                   color: hoveredZone === "essay" ? "#FFFFFF" : T.textSoft,
+                  fontFamily: T.font,
                   fontSize: 11,
                   fontWeight: 700,
                   letterSpacing: "0.03em",
                   textTransform: "uppercase",
                   transition: "all 0.2s",
+                  cursor: "pointer",
                 }}
               >
                 Chọn tệp
-              </span>
+              </button>
             </div>
           ) : (
             <div
@@ -729,13 +770,14 @@ export function StepUpload({
                 <div
                   style={{
                     position: "relative",
-                    borderRadius: 8,
+                    borderRadius: 10,
                     overflow: "hidden",
-                    boxShadow: "0 6px 16px rgba(44, 46, 58, 0.08)",
+                    boxShadow: "0 4px 20px rgba(44, 46, 58, 0.12)",
                     border: `1px solid ${T.border}`,
                     marginBottom: 12,
-                    maxWidth: "100%",
-                    height: 80,
+                    width: "100%",
+                    maxWidth: 220,
+                    aspectRatio: "3 / 2",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -773,23 +815,19 @@ export function StepUpload({
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  if (essayInputRef.current) {
-                    essayInputRef.current.value = "";
-                    essayInputRef.current.click();
-                  }
-                }}
+                onClick={() => openFilePicker(essayInputRef)}
                 style={{
+                  ...fileButtonBaseStyle,
                   background: "transparent",
                   border: `1px solid ${T.green}`,
                   color: T.green,
                   borderRadius: 999,
                   padding: "4px 12px",
+                  fontFamily: T.font,
                   fontSize: 11,
                   fontWeight: 700,
                   letterSpacing: "0.03em",
                   textTransform: "uppercase",
-                  cursor: "pointer",
                   transition: "all 0.2s",
                 }}
                 onMouseEnter={(e) => {
@@ -805,7 +843,7 @@ export function StepUpload({
                 ref={essayInputRef}
                 type="file"
                 accept="image/*,.pdf,application/pdf"
-                style={{ display: "none" }}
+                style={hiddenFileInputStyle}
                 onChange={(e) => {
                   handleEssayFile(e.target.files?.[0]);
                   e.target.value = "";
@@ -953,8 +991,9 @@ export function StepUpload({
                 const file = e.dataTransfer?.files?.[0];
                 if (file) handleAnswerKeyFile(file);
               }}
-              onClick={() => answerKeyInputRef.current?.click()}
+              onClick={() => openFilePicker(answerKeyInputRef)}
               style={{
+                position: "relative",
                 border: `2px dashed ${dragOverAnswerKey ? T.amber : T.border}`,
                 borderRadius: 10,
                 padding: "8px 16px",
@@ -963,6 +1002,7 @@ export function StepUpload({
                 justifyContent: "center",
                 gap: 8,
                 cursor: "pointer",
+                userSelect: "none",
                 background: dragOverAnswerKey
                   ? "rgba(192, 139, 48, 0.04)"
                   : hoveredZone === "answerKey"
@@ -977,7 +1017,7 @@ export function StepUpload({
                 ref={answerKeyInputRef}
                 type="file"
                 accept=".pdf"
-                style={{ display: "none" }}
+                style={hiddenFileInputStyle}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) handleAnswerKeyFile(file);
@@ -1055,8 +1095,9 @@ export function StepUpload({
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
               <button
                 type="button"
-                onClick={() => answerKeyInputRef.current?.click()}
+                onClick={() => openFilePicker(answerKeyInputRef)}
                 style={{
+                  ...fileButtonBaseStyle,
                   fontFamily: T.font,
                   fontSize: 12,
                   fontWeight: 700,
@@ -1065,7 +1106,6 @@ export function StepUpload({
                   border: `1px solid ${T.border}`,
                   borderRadius: 8,
                   padding: "8px 16px",
-                  cursor: "pointer",
                   transition: "all 0.15s",
                 }}
                 onMouseEnter={(e) => {
@@ -1081,7 +1121,7 @@ export function StepUpload({
                 ref={answerKeyInputRef}
                 type="file"
                 accept=".pdf"
-                style={{ display: "none" }}
+                style={hiddenFileInputStyle}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) handleAnswerKeyFile(file);

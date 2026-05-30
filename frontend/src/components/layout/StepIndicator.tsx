@@ -28,8 +28,8 @@ function getShortStep(step: string): string {
   const s = step.trim().toUpperCase();
   if (s.includes("TẢI LÊN") || s.includes("UPLOAD")) return "Lên";
   if (s.includes("ĐỌC") || s.includes("READ")) return "Đọc";
+  if (s.includes("CHỐT") || s.includes("SCORE")) return "Chốt";
   if (s.includes("XEM XÉT") || s.includes("REVIEW")) return "Xét";
-  if (s.includes("CHẤM LẠI") || s.includes("REGRADE")) return "Sửa";
   if (s.includes("XONG") || s.includes("DONE") || s.includes("FINISH")) return "Xong";
   return step;
 }

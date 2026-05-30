@@ -31,6 +31,7 @@ from sqlalchemy import (
     Integer,
     Text,
     create_engine,
+    event,
     inspect,
     text,
 )
@@ -226,6 +227,33 @@ class MemoryManager:
             f"sqlite:///{db_path}",
             connect_args={"check_same_thread": False},
         )
+        # Concurrency hardening for batch grading. Without these, a SQLite
+        # READ from a worker thread (e.g. ``search_relevant_lessons`` inside
+        # ``build_prompt``, run via ``asyncio.to_thread``) colliding with a
+        # WRITE on the event-loop thread (``log_pipeline_run`` /
+        # ``finalize_grade``) raises "database is locked" IMMEDIATELY —
+        # because SQLite's default ``busy_timeout`` is 0. At 3× concurrency
+        # over a 30-paper batch that collision is a when-not-if, and it
+        # surfaces as a 502 that silently drops one paper's grade.
+        #
+        #   • WAL          — readers don't block the writer and vice-versa;
+        #                    only writer-vs-writer serialises. Persists in
+        #                    the DB file header once set.
+        #   • busy_timeout — wait up to 5 s for a lock instead of failing.
+        #   • synchronous=NORMAL — safe with WAL, avoids an fsync per commit
+        #                    (WAL already gives durability at checkpoint).
+        #
+        # Set per-connection via a connect listener because ``busy_timeout``
+        # is a per-connection PRAGMA — every pooled connection must get it,
+        # not just the first.
+        @event.listens_for(self._engine, "connect")
+        def _set_sqlite_pragmas(dbapi_conn, _record):  # noqa: ANN001
+            cur = dbapi_conn.cursor()
+            cur.execute("PRAGMA journal_mode=WAL")
+            cur.execute("PRAGMA busy_timeout=5000")
+            cur.execute("PRAGMA synchronous=NORMAL")
+            cur.close()
+
         Base.metadata.create_all(self._engine)
         self._migrate_legacy_schema()
         # BUG-3 FIX: sessionmaker produces context-manager-compatible sessions in SQLAlchemy 2.x

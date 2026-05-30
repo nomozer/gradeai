@@ -6,7 +6,8 @@ Public API consumed by prompt_orchestrator / agent:
     GRADER_SYSTEM[subject]         — full system prompt for each subject
     ANALYZE_COMMENT_SYSTEM         — HITL comment-analysis system instruction
     ANALYZE_COMMENT_USER_TEMPLATE  — HITL comment-analysis user template
-    RUBRIC_LABELS                  — 4-rubric STEM labels (shared)
+    RUBRIC_TEMPLATES               — per-subject per-câu criteria templates
+                                     (Pattern B; replaces legacy 4-trục rubric)
     DEFAULT_SUBJECT                — fallback when detection finds nothing
     detect_subject(task, hint)     — pick subject from explicit hint or
                                      keyword-match on task text
@@ -27,7 +28,12 @@ import re
 from .base import (
     ANALYZE_COMMENT_SYSTEM,
     ANALYZE_COMMENT_USER_TEMPLATE,
-    RUBRIC_LABELS,
+)
+from .rubric_templates import (
+    RUBRIC_TEMPLATES,
+    CriterionDef,
+    format_criteria_block,
+    get_criteria,
 )
 from .math import GRADER_SYSTEM_MATH
 from .cs import GRADER_SYSTEM_CS
@@ -201,7 +207,10 @@ __all__ = [
     "GRADER_SYSTEM",
     "ANALYZE_COMMENT_SYSTEM",
     "ANALYZE_COMMENT_USER_TEMPLATE",
-    "RUBRIC_LABELS",
+    "RUBRIC_TEMPLATES",
+    "CriterionDef",
+    "format_criteria_block",
+    "get_criteria",
     "DEFAULT_SUBJECT",
     "detect_subject",
     "score_subjects",
