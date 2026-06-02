@@ -273,13 +273,34 @@ export function TabBar({
                   </span>
                 </span>
 
-                {/* Status dots — amber pending / indigo grading / red
-                    error. Each shows only when its count > 0, so an
-                    all-done batch stays just "✓ N/total". Error keeps a
-                    warning icon (not a plain dot) because it's the one
-                    state that needs the teacher to act. */}
+                {/* Status indicators — show only when count > 0, so an
+                    all-done batch stays just "✓ N/total".
+                      • pending  (amber)  — static dot: nothing is moving
+                      • grading  (indigo) — SPINNING refresh icon, matching
+                        the drawer, because it's an in-progress state
+                      • error    (red)    — warning icon, the one state that
+                        needs the teacher to act */}
                 <Dot count={awaitingReview} color={T.amber} />
-                <Dot count={generatingCount} color={T.accent} />
+                {generatingCount > 0 && (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 3,
+                      fontSize: 11,
+                      fontFamily: T.font,
+                      fontWeight: 600,
+                      color: T.accent,
+                    }}
+                  >
+                    <Icon.RefreshCw
+                      size={11}
+                      color={T.accent}
+                      style={{ animation: "spin 1.5s linear infinite" }}
+                    />
+                    {generatingCount}
+                  </span>
+                )}
                 {failedCount > 0 && (
                   <span
                     style={{
