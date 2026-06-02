@@ -171,18 +171,60 @@ export function OriginalImageModal({
             {openingLabel}
           </div>
         ) : isPdf ? (
-          <iframe
-            src={viewerUrl}
-            title={originalImageLabel}
-            loading="eager"
-            style={{
-              display: "block",
-              width: "100%",
-              height: "100%",
-              border: "none",
-              background: "#fff",
-            }}
-          />
+          <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
+            {/* Always-visible escape hatch above the embed. Some browsers /
+                extensions block blob-PDF inside an <iframe> and just show a
+                blank "content blocked" pane — when that happens the iframe
+                gives no affordance to recover. This strip guarantees the
+                teacher can always open/download the PDF even if the inline
+                viewer is blocked. */}
+            <div
+              style={{
+                flex: "0 0 auto",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "8px 12px",
+                background: T.bgElevated,
+                borderBottom: `1px solid ${T.border}`,
+                fontSize: 13,
+                color: T.textSoft,
+                fontFamily: T.font,
+              }}
+            >
+              <span style={{ minWidth: 0, flex: 1 }}>{inlineErrorMessage}</span>
+              <a
+                href={viewerUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  flex: "0 0 auto",
+                  borderRadius: 8,
+                  background: T.accent,
+                  color: "#fff",
+                  padding: "6px 14px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {openNewTabLabel}
+              </a>
+            </div>
+            <iframe
+              src={viewerUrl}
+              title={originalImageLabel}
+              loading="eager"
+              style={{
+                display: "block",
+                width: "100%",
+                flex: "1 1 auto",
+                border: "none",
+                background: "#fff",
+              }}
+            />
+          </div>
         ) : (
           <img
             src={viewerUrl}
@@ -197,7 +239,10 @@ export function OriginalImageModal({
             }}
           />
         )}
-        {viewerUrl && (
+        {/* Image branch keeps the corner "open in new tab" chip; the PDF
+            branch already has its own escape strip above the iframe, so we
+            skip it there to avoid two identical buttons. */}
+        {viewerUrl && !isPdf && (
           <a
             href={viewerUrl}
             target="_blank"
