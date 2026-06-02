@@ -196,9 +196,45 @@ export function TabBar({
             }
             const total = tabs.length;
             const finalizedCount = tabs.filter((tt) => tt.finalized).length;
+            const awaitingReview = tabs.filter(
+              (tt) => tt.hasGrade && !tt.finalized,
+            ).length;
+            const generatingCount = tabs.filter(
+              (tt) => tt.phase === "generating",
+            ).length;
             const failedCount = tabs.filter((tt) => tt.error).length;
 
             const isAllDone = finalizedCount === total;
+
+            // Glance-only status dots: a coloured dot + count, NO words.
+            // Different from the old "N chờ duyệt" text badge that made the
+            // capsule long and duplicated the drawer — here it's just a dot
+            // so the teacher can spot "something needs me" (amber pending /
+            // indigo grading / red error) without hover, click, or reading.
+            const Dot = ({ count, color }: { count: number; color: string }) =>
+              count > 0 ? (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 3,
+                    fontSize: 11,
+                    fontFamily: T.font,
+                    fontWeight: 600,
+                    color,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: color,
+                    }}
+                  />
+                  {count}
+                </span>
+              ) : null;
 
             return (
               <div
@@ -237,28 +273,27 @@ export function TabBar({
                   </span>
                 </span>
 
-                {/* Failed badge — the one detail kept on the trigger: a
-                    failure needs attention without opening the drawer. */}
+                {/* Status dots — amber pending / indigo grading / red
+                    error. Each shows only when its count > 0, so an
+                    all-done batch stays just "✓ N/total". Error keeps a
+                    warning icon (not a plain dot) because it's the one
+                    state that needs the teacher to act. */}
+                <Dot count={awaitingReview} color={T.amber} />
+                <Dot count={generatingCount} color={T.accent} />
                 {failedCount > 0 && (
                   <span
                     style={{
                       display: "inline-flex",
                       alignItems: "center",
-                      gap: 4,
-                      padding: "3px 8px",
-                      background: "rgba(184, 66, 58, 0.06)",
-                      border: `1px solid rgba(184, 66, 58, 0.15)`,
-                      borderRadius: 999,
-                      color: T.red,
+                      gap: 3,
                       fontSize: 11,
                       fontFamily: T.font,
                       fontWeight: 600,
+                      color: T.red,
                     }}
                   >
-                    <Icon.AlertTriangle size={10} color={T.red} />
-                    <span>
-                      {failedCount} lỗi
-                    </span>
+                    <Icon.AlertTriangle size={11} color={T.red} />
+                    {failedCount}
                   </span>
                 )}
               </div>
