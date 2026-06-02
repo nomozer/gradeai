@@ -2246,11 +2246,11 @@ export function StepReview({
         </div>
       )}
       <ActionBar
-        // Pre-finalize: a one-line reminder of the teacher's role in the
-        // HITL loop. Once locked, drop it — the green "Đã lưu" pill + the
-        // "Sửa lại" button already say everything, so a status line would
-        // just re-narrate the buttons next to it.
-        status={locked ? undefined : "Bạn là người chấm cuối. AI chỉ đề xuất."}
+        // No center status line. The "AI chỉ đề xuất" reminder it used to
+        // carry is already implicit in the flow (the teacher types the
+        // scores; the button says "Chốt điểm"), so the sentence was just
+        // preaching in the bar's most valuable space. Dropping it lets the
+        // score cluster (left) and the action (right) breathe.
         scoreSlot={
           grade ? (
             // Just the running totals. The old "Quay lại" button was
