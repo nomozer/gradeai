@@ -182,4 +182,10 @@ export const en: I18nStrings = {
   activeLabel: "Active",
   backToUpload: "Back",
   editGrade: "Edit",
+  // OriginalImageModal (original submission viewer)
+  close: "Close",
+  originalImage: "Original submission",
+  originalImageOpening: "Opening original submission…",
+  originalImageInlineError: "Can't display the file here. Open it in a new tab.",
+  originalImageOpenNewTab: "Open in new tab",
 };

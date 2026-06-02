@@ -194,9 +194,11 @@ export function ActionBar({ children, status, scoreSlot }: ActionBarProps) {
         marginLeft: "calc(-1 * clamp(16px, 4vw, 32px))",
         marginRight: "calc(-1 * clamp(16px, 4vw, 32px))",
         padding: "14px clamp(16px, 4vw, 32px)",
-        background: "rgba(255, 253, 248, 0.95)",
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
+        // Opaque paper, no blur. The earlier glass effect (translucent +
+        // backdrop-blur) let dense transcript text bleed through the bar as
+        // it scrolled behind, which read as clutter. A solid bg cleanly
+        // occludes the content under it — readability over the glass look.
+        background: "#FFFDF8",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",

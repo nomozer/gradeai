@@ -174,4 +174,10 @@ export const vi: I18nStrings = {
   activeLabel: "Đang dùng",
   backToUpload: "Quay lại",
   editGrade: "Sửa lại",
+  // OriginalImageModal (Xem PDF gốc / bài làm gốc)
+  close: "Đóng",
+  originalImage: "Bài làm gốc",
+  originalImageOpening: "Đang mở bài làm gốc…",
+  originalImageInlineError: "Không hiển thị được tệp ở đây. Hãy mở ở tab mới.",
+  originalImageOpenNewTab: "Mở ở tab mới",
 };
