@@ -129,6 +129,7 @@ class TestParseCommentAnalysis:
             "verdict": "agree",
             "analysis": "Học sinh đã làm đúng.",
             "lesson": "Khi gặp bài tương tự, cần làm tương tự.",
+            "category": "",
         }
 
     def test_unknown_verdict_normalized_to_agree(self):
