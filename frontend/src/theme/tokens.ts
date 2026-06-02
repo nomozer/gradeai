@@ -40,6 +40,13 @@ export const T = {
   amberSoft: "rgba(192, 139, 48, 0.10)",
   gold: "#2E7D5B",
   goldSoft: "rgba(46, 125, 91, 0.10)",
+  // "Memory" violet — the single identity colour for the HITL loop, i.e.
+  // the teacher's fingerprint inside the AI. Used by BOTH ends of the
+  // loop so they read as one motif: the "AI đã ghi nhớ" banner (write
+  // side) and the "Đã học từ bạn" chip (read side). Reuses the violet of
+  // the annotation "Lập luận" highlight so the palette stays coherent.
+  memory: "#7C3AED",
+  memorySoft: "#E8D5F6",
 
   // Typography — font families
   font: `"Inter", "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`,

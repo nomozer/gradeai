@@ -15,11 +15,16 @@ export function Step3Toolbar({
   essayAvailable,
   tocOpen,
   onToggleToc,
+  onPrint,
 }: {
   onViewOriginal?: () => void;
   essayAvailable?: boolean;
   tocOpen?: boolean;
   onToggleToc?: () => void;
+  /** Print the formal phiếu chấm. Lives here (a document-level tool next
+   *  to "Xem PDF gốc") instead of a dedicated finalize screen, so the
+   *  teacher can print at any time without leaving the review surface. */
+  onPrint?: () => void;
 }) {
   const bp = useBreakpoint();
   const isMobile = bp === "mobile";
@@ -115,6 +120,15 @@ export function Step3Toolbar({
         >
           Xem PDF gốc
         </ToolbarButton>
+        {onPrint && (
+          <ToolbarButton
+            icon={<Icon.Printer size={12} />}
+            onClick={onPrint}
+            title="In phiếu chấm — xuất bản giấy với chữ ký và điểm bằng chữ."
+          >
+            In phiếu chấm
+          </ToolbarButton>
+        )}
       </div>
     </div>
   );

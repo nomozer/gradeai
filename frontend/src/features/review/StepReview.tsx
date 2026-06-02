@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import { T } from "../../theme/tokens";
 import { Icon } from "../../components/ui/Icon";
-import { ActionBar, PrimaryButton, GhostButton } from "../../components/ui/ActionBar";
+import { ActionBar, PrimaryButton, SecondaryButton, GhostButton } from "../../components/ui/ActionBar";
 import { OriginalImageModal } from "../../components/ui/OriginalImageModal";
 import { getStageableLesson } from "../../lib/hitl";
 import { analyzeComment } from "../../api";
@@ -22,11 +22,15 @@ import { QuestionBox } from "./components/QuestionBox";
 import { VerdictRow } from "./components/VerdictRow";
 import { formatLine } from "../../lib/mathFormat";
 import { ScoreInline } from "../workspace/components/ScoreBottomBar";
+import { LearningBanner } from "../workspace/components/LearningBanner";
+import { PrintablePhieu } from "../workspace/PrintablePhieu";
+import { printPhieu } from "../workspace/printPhieu";
 import type {
   BackendSubject,
   CommentThreads,
   CommentVerdict,
   EssayFile,
+  FinalizedResult,
   Grade,
   I18nStrings,
   SelectionAnnotation,
@@ -72,6 +76,7 @@ function ReviewMockup({
   onRemoveAnnotation,
   finalScores,
   setFinalScores,
+  onPrint,
   t,
 }: {
   isMobile: boolean;
@@ -84,6 +89,7 @@ function ReviewMockup({
   onRemoveAnnotation?: (id: string) => void;
   finalScores?: Record<number, number>;
   setFinalScores?: React.Dispatch<React.SetStateAction<Record<number, number>>>;
+  onPrint?: () => void;
   t: I18nStrings;
 }) {
   const [activeQ, setActiveQ] = useState<number>(review.initialActiveQuestionNum);
@@ -136,6 +142,7 @@ function ReviewMockup({
         essayAvailable={essayAvailable}
         tocOpen={tocOpen}
         onToggleToc={() => setTocOpen((v) => !v)}
+        onPrint={onPrint}
       />
       {isMobile && (
         <MucLucChips
@@ -1795,9 +1802,6 @@ interface StepReviewProps {
    *  expected to be derived from "no scores changed" at step 5. */
   onApprove: () => void;
   onFinish?: () => void;
-  /** Back action — go to step 1 so the teacher can re-upload / swap
-   *  files. "Đọc lại" reads as "đọc lại đề + bài làm" in this flow. */
-  onPrev?: () => void;
   backendSubject: BackendSubject | null;
   task: string;
   t: I18nStrings;
@@ -1815,7 +1819,19 @@ interface StepReviewProps {
    *  total even when the teacher navigates back to step 3. */
   finalScores?: Record<number, number>;
   setFinalScores?: React.Dispatch<React.SetStateAction<Record<number, number>>>;
-  finalized?: boolean;
+  /** The old Step-4 "Xong" screen is folded into this single surface.
+   *  Null ⇒ editable review (đối soát + scoring + the "Chốt điểm" commit).
+   *  Non-null ⇒ the grade is locked: score inputs go read-only, the
+   *  "AI đã học" banner shows, and the action bar swaps to Sửa lại / Đã
+   *  lưu. ``onFinish`` is the finalize commit; ``onUnlock`` releases the
+   *  lock back to editable. ``isFinalizing`` / ``finalizeError`` drive the
+   *  commit button's in-flight + error states. */
+  finalizedResult?: FinalizedResult | null;
+  onUnlock?: () => void;
+  isFinalizing?: boolean;
+  finalizeError?: string | null;
+  /** Subject label for the printed phiếu chấm (e.g. "Sinh · Lớp 11"). */
+  subjectLabel?: string;
 }
 
 export function StepReview({
@@ -1824,7 +1840,6 @@ export function StepReview({
   feedbackHook,
   onApprove,
   onFinish,
-  onPrev,
   backendSubject,
   task,
   t,
@@ -1833,8 +1848,13 @@ export function StepReview({
   setTeacherAnnotations,
   finalScores,
   setFinalScores,
-  finalized,
+  finalizedResult,
+  onUnlock,
+  isFinalizing,
+  finalizeError,
+  subjectLabel = "",
 }: StepReviewProps) {
+  const locked = !!finalizedResult;
   const [commentThreads, setCommentThreads] = useState<CommentThreads>({});
   const [analyzingQ, setAnalyzingQ] = useState<number | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
@@ -2066,6 +2086,37 @@ export function StepReview({
         t={t}
       />
 
+      {/* Hidden print-only phiếu chấm. Always mounted so the toolbar's
+          "In phiếu chấm" button can fire window.print() at any time —
+          no dedicated finalize screen. Renders nothing on screen. */}
+      <PrintablePhieu
+        grade={grade}
+        teacherFinalScores={finalScores}
+        teacherAnnotations={teacherAnnotations}
+        subjectLabel={subjectLabel}
+        finalizedAt={finalizedResult?.finalizedAt}
+      />
+
+      {/* Post-finalize confirmation. Only shown when it carries something
+          NOT already on screen: i.e. the teacher's đối-soát comments were
+          saved (or skipped) to HITL memory. A pure score-delta lesson is
+          deliberately NOT enough to trigger it — the delta is already
+          visible on the sidebar (red "đã chỉnh") and the "Đã học từ bạn"
+          header chip, so a banner repeating it just read as duplicate
+          memory-tinted clutter. Comments, by contrast, have no other
+          on-screen confirmation that they reached memory. */}
+      {locked && finalizedResult && (
+        ((finalizedResult.commentsSavedCount ?? 0) > 0) ||
+        ((finalizedResult.commentsSkippedCount ?? 0) > 0)
+      ) && (
+        <LearningBanner
+          commentsSaved={finalizedResult.commentsSavedCount ?? 0}
+          commentsSkipped={finalizedResult.commentsSkippedCount ?? 0}
+          deltaLessonId={finalizedResult.deltaLessonId ?? null}
+          deltas={finalizedResult.deltas ?? {}}
+        />
+      )}
+
       {isSalvaged && (
         <div
           style={{
@@ -2107,21 +2158,36 @@ export function StepReview({
         review={reviewData}
         essayAvailable={!!essayImage?.dataUrl}
         onViewOriginal={() => setShowOriginal(true)}
+        onPrint={() => printPhieu(subjectLabel)}
         finalScores={finalScores}
-        setFinalScores={setFinalScores}
+        // Locked ⇒ omit the setter so MucLucSidebar renders read-only
+        // score text (not editable inputs) and annotations can't be added.
+        setFinalScores={locked ? undefined : setFinalScores}
         teacherAnnotations={teacherAnnotations}
         t={t}
-        onAddAnnotation={(a) => {
-          setTeacherAnnotations((prev) => [...prev, a]);
-        }}
-        onUpdateAnnotation={(id, patch) => {
-          setTeacherAnnotations((prev) =>
-            prev.map((a) => (a.id === id ? { ...a, ...patch } : a)),
-          );
-        }}
-        onRemoveAnnotation={(id) => {
-          setTeacherAnnotations((prev) => prev.filter((a) => a.id !== id));
-        }}
+        onAddAnnotation={
+          locked
+            ? undefined
+            : (a) => {
+                setTeacherAnnotations((prev) => [...prev, a]);
+              }
+        }
+        onUpdateAnnotation={
+          locked
+            ? undefined
+            : (id, patch) => {
+                setTeacherAnnotations((prev) =>
+                  prev.map((a) => (a.id === id ? { ...a, ...patch } : a)),
+                );
+              }
+        }
+        onRemoveAnnotation={
+          locked
+            ? undefined
+            : (id) => {
+                setTeacherAnnotations((prev) => prev.filter((a) => a.id !== id));
+              }
+        }
       />
       {/* Acknowledge the legacy plumbing as "intentionally suspended" so
           the compiler doesn't complain about unused locals while we wait
@@ -2163,46 +2229,101 @@ export function StepReview({
           {feedbackHook.error}
         </div>
       )}
+      {finalizeError && (
+        <div
+          style={{
+            marginTop: 16,
+            padding: "8px 12px",
+            background: T.redSoft,
+            borderRadius: 6,
+            fontSize: 14,
+            color: T.red,
+            textAlign: "center",
+          }}
+        >
+          <Icon.AlertTriangle size={12} color={T.red} style={{ marginRight: 4 }} />
+          {finalizeError}
+        </div>
+      )}
       <ActionBar
-        status="Bạn là người chấm cuối. AI chỉ đề xuất."
+        // Pre-finalize: a one-line reminder of the teacher's role in the
+        // HITL loop. Once locked, drop it — the green "Đã lưu" pill + the
+        // "Sửa lại" button already say everything, so a status line would
+        // just re-narrate the buttons next to it.
+        status={locked ? undefined : "Bạn là người chấm cuối. AI chỉ đề xuất."}
         scoreSlot={
-          <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-            {grade && (
-              <ScoreInline
-                grade={grade}
-                finalScores={finalScores ?? {}}
-                maxOverrides={{}}
-                finalized={!!finalized}
-                confidence={pipeline.confidence}
-              />
-            )}
-            {grade && (
-              <span
-                aria-hidden
-                style={{
-                  width: 1,
-                  height: 24,
-                  background: T.border,
-                  opacity: 0.6,
-                  flex: "0 0 auto",
-                }}
-              />
-            )}
-            <GhostButton onClick={onPrev}>
-              <Icon.ArrowLeft size={14} />
-              {String(t.backToUpload ?? "Quay lại")}
-            </GhostButton>
-          </div>
+          grade ? (
+            // Just the running totals. The old "Quay lại" button was
+            // dropped — the stepper's "TẢI LÊN" chip already navigates back
+            // to upload (step 1 is navigable), so a second back affordance
+            // here was redundant.
+            <ScoreInline
+              grade={grade}
+              finalScores={finalScores ?? {}}
+              maxOverrides={{}}
+              finalized={locked}
+              confidence={pipeline.confidence}
+            />
+          ) : undefined
         }
       >
-        <PrimaryButton
-          onClick={onFinish}
-          disabled={pipeline.phase === "generating"}
-          title="Hoàn tất bài làm này và xem kết quả tổng hợp."
-        >
-          Hoàn tất bài này
-          <Icon.ChevronRight size={14} color="#fff" />
-        </PrimaryButton>
+        {locked ? (
+          <>
+            <GhostButton onClick={onUnlock} disabled={!!isFinalizing}>
+              <Icon.ArrowLeft size={14} />
+              {String(t.editGrade ?? "Sửa lại")}
+            </GhostButton>
+            {/* Print is also reachable from the toolbar at any time, but
+                surface it here too: right after chốt is exactly when the
+                teacher wants the slip, so they don't have to scroll back
+                up to the toolbar to get it. */}
+            <SecondaryButton
+              onClick={() => printPhieu(subjectLabel)}
+              title="In phiếu chấm — xuất bản giấy với chữ ký và điểm bằng chữ."
+            >
+              <Icon.Printer size={14} />
+              In phiếu chấm
+            </SecondaryButton>
+            <span
+              style={{
+                padding: "0 22px",
+                height: 40,
+                fontSize: 14,
+                color: T.green,
+                background: T.greenSoft,
+                border: `1.5px solid ${T.green}`,
+                borderRadius: 8,
+                fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 7,
+                fontFamily: T.font,
+                boxSizing: "border-box",
+              }}
+            >
+              <Icon.Check size={14} color={T.green} />
+              Đã lưu
+            </span>
+          </>
+        ) : (
+          <PrimaryButton
+            onClick={onFinish}
+            disabled={pipeline.phase === "generating" || !!isFinalizing}
+            title="Chốt điểm và lưu — nhận xét HITL được lưu cùng lúc."
+          >
+            {isFinalizing ? (
+              <>
+                <Icon.RefreshCw size={14} color="#fff" />
+                {String(t.finalizeSaving ?? "Đang lưu…")}
+              </>
+            ) : (
+              <>
+                Chốt điểm &amp; lưu
+                <Icon.ChevronRight size={14} color="#fff" />
+              </>
+            )}
+          </PrimaryButton>
+        )}
       </ActionBar>
       {/* Suspend the approve plumbing we no longer render but want to
           keep alive for the eventual backend rewire (mirrors the legacy

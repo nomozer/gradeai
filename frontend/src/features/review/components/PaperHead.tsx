@@ -29,6 +29,24 @@ export function PaperHead({ review }: { review: ReviewPayload }) {
   );
   const scoreText = formatScore(review.overallScore, review.overallMax);
 
+  // "Đã học từ bạn" — the read-side of the HITL loop. When this AI run
+  // retrieved lessons the teacher previously taught, surface it right on
+  // the "Bản chấm AI" header: this grade was shaped by N things you taught.
+  // Lightbulb is the app-wide learning motif (LearningBanner + the staged-
+  // lessons counter use it too), so the signal reads consistently. Câu-
+  // level attribution would need backend (lesson→câu mapping the grader
+  // doesn't emit yet); this paper-level cue is honest with what we have.
+  const lessons = review.referencedLessons;
+  const lessonTooltip =
+    lessons.length > 0
+      ? "AI đã dùng kiến thức bạn từng dạy để chấm bài này:\n" +
+        lessons
+          .slice(0, 6)
+          .map((l) => `• ${l.text}`)
+          .join("\n") +
+        (lessons.length > 6 ? `\n… và ${lessons.length - 6} điều khác` : "")
+      : "";
+
   return (
     <div
       style={{
@@ -79,6 +97,14 @@ export function PaperHead({ review }: { review: ReviewPayload }) {
             flexWrap: "wrap",
           }}
         >
+          {lessons.length > 0 && (
+            <Chip
+              tone="memory"
+              icon={<Icon.Lightbulb size={13} />}
+              label={`Đã học từ bạn: ${lessons.length}`}
+              title={lessonTooltip}
+            />
+          )}
           {totalErrors > 0 && (
             <Chip
               tone="amber"
@@ -107,22 +133,27 @@ function formatScore(score: number, max: number): string {
   return `${fmt(score)}/${fmt(max)}`;
 }
 
-type ChipTone = "green" | "amber" | "accent" | "green-soft" | "red";
+type ChipTone = "green" | "amber" | "accent" | "green-soft" | "red" | "memory";
 
 function Chip({
   tone,
   icon,
   label,
   bold,
+  title,
 }: {
   tone: ChipTone;
   icon?: ReactNode;
   label: string;
   bold?: boolean;
+  /** Native tooltip — used by the "Đã học từ bạn" chip to list the
+   *  retrieved lessons on hover without a separate popover. */
+  title?: string;
 }) {
   const palette = chipPalette(tone);
   return (
     <span
+      title={title}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -137,6 +168,7 @@ function Chip({
         fontWeight: bold ? 700 : 600,
         lineHeight: 1.4,
         whiteSpace: "nowrap",
+        cursor: title ? "help" : "default",
       }}
     >
       {icon}
@@ -159,6 +191,11 @@ function chipPalette(tone: ChipTone): {
       return { bg: T.amberSoft, fg: T.amber, border: "transparent" };
     case "red":
       return { bg: T.redSoft, fg: T.red, border: "transparent" };
+    case "memory":
+      // The HITL-loop identity colour (see tokens.memory) — shared with
+      // the "AI đã ghi nhớ" banner so write-side and read-side of the loop
+      // read as one motif.
+      return { bg: T.memorySoft, fg: T.memory, border: "transparent" };
     case "accent":
     default:
       return { bg: T.accentSoft, fg: T.accentDark, border: "transparent" };

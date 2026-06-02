@@ -338,4 +338,4 @@ export function GradeHistoryDropdown({ open, onClose, anchorRect }: GradeHistory
   );
 }
 
-// HistoryRow + SecondaryJump live in components/HistoryRow.tsx.
+// HistoryRow lives in components/HistoryRow.tsx.

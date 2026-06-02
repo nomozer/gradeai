@@ -9,7 +9,6 @@ import { parseCauHeader, parseGrade } from "../../lib/grade";
 import { LoadingSpinner } from "../../components/ui/LoadingSpinner";
 import { StepIndicator } from "../../components/layout/StepIndicator";
 import { subjectLabelOf } from "../../lib/subject";
-import { ResultCard } from "./ResultCard";
 import { ErrorBoundary } from "../../components/ui/ErrorBoundary";
 import { StepUpload } from "../upload/StepUpload";
 import { StepReview } from "../review/StepReview";
@@ -387,12 +386,14 @@ export function EssayWorkspace({
     setFinalizeError(null);
     setFinalizedResult(null);
     const targetStep = tab.initialHistoryStep ?? 3;
-    const mappedStep = targetStep === 5 || targetStep === 4 ? 4 : targetStep;
+    // Step 4/5 (the old "Xong" screen) folded into Step 3 — history
+    // entries always land on the review surface.
+    const mappedStep = targetStep === 5 || targetStep === 4 ? 3 : targetStep;
     setStep(mappedStep);
     // History entries are already-completed grades — mark all steps
-    // through 4 as reached so the stepper shows green checks and the
+    // through 3 as reached so the stepper shows green checks and the
     // teacher can navigate freely.
-    setMaxStepReached(4);
+    setMaxStepReached(3);
     if (entry.subject) {
       setSubject(entry.subject as BackendSubject);
       setDetectedSubject(entry.subject as BackendSubject);
@@ -491,7 +492,7 @@ export function EssayWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [label, pipeline.phase, step, hasGrade, canRun, tabQuestions, pipeline.error]);
 
-  const handleApprove = useCallback(() => setStep(4), []);
+  const handleApprove = useCallback(() => setStep(3), []);
 
   // Click on a completed step in the indicator → jump back. Only user
   // checkpoints (1: Upload, 3: Review) are exposed as navigable — steps
@@ -501,9 +502,10 @@ export function EssayWorkspace({
   const handleStepClick = useCallback((n: number) => {
     setStep(n);
   }, []);
-  // Expose navigable checkpoints (1: Upload, 3: Review & Score, 4: Done)
+  // Expose navigable checkpoints (1: Upload, 3: Review/Score/Finalize).
+  // Step 4 (the old "Xong" screen) is folded into Step 3.
   const isStepNavigable = useCallback(
-    (n: number) => n === 1 || n === 3 || n === 4,
+    (n: number) => n === 1 || n === 3,
     [],
   );
 
@@ -601,13 +603,74 @@ export function EssayWorkspace({
     ],
   );
 
+  // Finalize the grade in place (Step 3). The review surface owns the
+  // single "Chốt điểm" commit. ``runFinalize`` persists then sets
+  // ``finalizedResult`` (which locks StepReview in place: read-only
+  // scores + "AI đã học" banner) and the cross-tab ``finalized`` flag so
+  // App.tsx auto-advances to the next paper.
+  const runFinalize = useCallback(
+    async (payload: { overall: number | string }) => {
+      if (isFinalizing) return;
+      setIsFinalizing(true);
+      setFinalizeError(null);
+      try {
+        const resp = await persistFinalizedGrade(payload);
+        const annotationPayload = buildAnnotationFinalizePayload(teacherAnnotations);
+        setFinalizedResult({
+          ...payload,
+          finalizedAt: new Date().toISOString(),
+          commentsSavedCount: resp?.comment_lesson_ids?.length ?? 0,
+          commentsSkippedCount: annotationPayload.skippedCount,
+          deltaLessonId: resp?.delta_lesson_id ?? null,
+          deltas: resp?.deltas,
+        });
+        onMeta({ finalized: true });
+      } catch (err) {
+        const e = err as Error;
+        setFinalizeError(
+          e?.message ||
+            String(t.finalizeSaveError ?? "") ||
+            "Không thể lưu điểm cuối cùng. Vui lòng thử lại.",
+        );
+      } finally {
+        setIsFinalizing(false);
+      }
+    },
+    [isFinalizing, persistFinalizedGrade, teacherAnnotations, onMeta, t],
+  );
+
+  // "Chốt điểm" from Step 3 — compute the teacher's final total (sum of
+  // per-câu scores, teacher override falling back to AI), then commit.
+  const handleFinalizeFromReview = useCallback(() => {
+    const pqf = grade?.per_question_feedback ?? [];
+    let sum = 0;
+    let hasReal = false;
+    for (let i = 0; i < pqf.length; i++) {
+      const q = pqf[i];
+      const ai =
+        typeof q.score === "number" && Number.isFinite(q.score) ? q.score : 0;
+      if (typeof q.score === "number" && Number.isFinite(q.score)) hasReal = true;
+      const parsed = parseCauHeader(q.question ?? "", i + 1);
+      sum += finalScores[parsed.num] ?? ai;
+    }
+    const overall = hasReal ? sum : grade?.overall ?? 0;
+    void runFinalize({ overall });
+  }, [grade, finalScores, runFinalize]);
+
+  // "← Sửa lại" from the locked summary — release the lock, stay on
+  // Step 3 (now showing the editable StepReview again).
+  const handleUnlockFinalize = useCallback(() => {
+    setFinalizedResult(null);
+    setFinalizeError(null);
+    onMeta({ finalized: false });
+  }, [onMeta]);
+
   const displayStep = deriveDisplayStep(step);
 
   const stepLabels = [
     String(t.stepUpload ?? ""),
     String(t.stepReading ?? ""),
     String(t.stepReview ?? ""),
-    String(t.stepDone ?? ""),
   ];
 
   return (
@@ -689,6 +752,15 @@ export function EssayWorkspace({
         />
       )}
 
+      {/* Step 3 has two phases on ONE screen (the old Step-4 "Xong" was
+          folded in here): before finalize → the editable StepReview
+          (đối soát + per-câu scoring + the "Chốt điểm" commit). After
+          finalize the SAME component locks in place: score inputs go
+          read-only, the "AI đã học" banner appears, and the action bar
+          swaps to Sửa lại / Đã lưu. Printing lives in the toolbar (gated
+          on nothing — the teacher prints whenever), and "Sửa lại"
+          releases the lock without any screen change. The old separate
+          ResultCard "Xong" screen is gone. */}
       {step === 3 && (
         <ErrorBoundary label="Review step failed">
           <StepReview
@@ -696,78 +768,20 @@ export function EssayWorkspace({
             pipeline={pipeline}
             feedbackHook={feedbackHook}
             onApprove={handleApprove}
-            onFinish={() => setStep(4)}
-            onPrev={() => setStep(1)}
+            onFinish={handleFinalizeFromReview}
+            onUnlock={handleUnlockFinalize}
             backendSubject={subject}
             task={task}
             t={t}
             essayImage={essayImage}
+            subjectLabel={subjectLabel === "—" ? "" : subjectLabel}
             teacherAnnotations={teacherAnnotations}
             setTeacherAnnotations={setTeacherAnnotations}
             finalScores={finalScores}
             setFinalScores={setFinalScores}
-            finalized={!!finalizedResult}
-          />
-        </ErrorBoundary>
-      )}
-
-      {step === 4 && (
-        <ErrorBoundary label="Result card failed">
-          <ResultCard
-            grade={grade}
-            t={t}
-            finalized={finalizedResult}
+            finalizedResult={finalizedResult}
             isFinalizing={isFinalizing}
             finalizeError={finalizeError}
-            subjectLabel={subjectLabel === "—" ? "" : subjectLabel}
-            teacherFinalScores={finalScores}
-            confidence={pipeline.confidence}
-            onFinalize={async (payload) => {
-              if (isFinalizing) return;
-              setIsFinalizing(true);
-              setFinalizeError(null);
-              try {
-                const resp = await persistFinalizedGrade(payload);
-                const annotationPayload =
-                  buildAnnotationFinalizePayload(teacherAnnotations);
-                setFinalizedResult({
-                  ...payload,
-                  finalizedAt: new Date().toISOString(),
-                  commentsSavedCount: resp?.comment_lesson_ids?.length ?? 0,
-                  commentsSkippedCount: annotationPayload.skippedCount,
-                  deltaLessonId: resp?.delta_lesson_id ?? null,
-                  deltas: resp?.deltas,
-                });
-                // Mark this tab as finalized so App.tsx can auto-advance to
-                // the next AI-graded-but-not-yet-reviewed tab and TabBar
-                // can render the "done" icon. Local ``finalizedResult``
-                // already gates the same-tab UI (Đã lưu pill, Sửa lại
-                // button); ``onMeta`` is purely about cross-tab state.
-                onMeta({ finalized: true });
-              } catch (err) {
-                const e = err as Error;
-                setFinalizeError(
-                  e?.message ||
-                    String(t.finalizeSaveError ?? "") ||
-                    "Không thể lưu điểm cuối cùng. Vui lòng thử lại.",
-                );
-              } finally {
-                setIsFinalizing(false);
-              }
-            }}
-            onEdit={() => {
-              // "← Sửa lại" — release the finalized lock AND jump back
-              // to step 3 (Xem xét & Chốt) where per-câu editing actually
-              // happens.
-              setFinalizedResult(null);
-              setFinalizeError(null);
-              // Clear cross-tab finalized flag too — the next finalize
-              // call will re-set it. Without this, TabBar would keep
-              // the "done" icon and App.tsx's auto-advance would skip
-              // this tab even though the teacher wants to redo it.
-              onMeta({ finalized: false });
-              setStep(3);
-            }}
           />
         </ErrorBoundary>
       )}

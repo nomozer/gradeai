@@ -73,6 +73,10 @@ export function GlobalStyles() {
         60%  { transform: scale(1.18); opacity: 1; }
         100% { transform: scale(1); opacity: 1; }
       }
+      @keyframes toastIn {
+        from { opacity: 0; transform: translate(-50%, -12px); }
+        to   { opacity: 1; transform: translate(-50%, 0); }
+      }
       @keyframes subjectPrompt {
         0%, 100% { box-shadow: 0 0 0 0 ${T.accentSoft}; }
         50%      { box-shadow: 0 0 0 6px ${T.accentSoft}; }

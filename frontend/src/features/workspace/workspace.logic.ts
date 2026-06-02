@@ -2,11 +2,11 @@
  * Pure helpers for EssayWorkspace — step transition logic.
  */
 
-/** Map internal 5-step to the visible wizard progression.
- *  Previously collapsed step 4 → 3 when step 4 was just a transient
- *  re-grading loader. Step 4 now has its own StepRegrade UI ("Chấm lại")
- *  so the stepper should reflect the actual position, otherwise the
- *  teacher sees a CHẤM LẠI page while the stepper still highlights XEM XÉT. */
+/** Map the internal step number to the visible 3-step wizard position.
+ *  The flow is now Tải lên (1) → Đọc (2) → Xem xét & Chốt (3); the old
+ *  step-4 "Xong" screen was folded into step 3 (the review surface owns
+ *  both the editable pass and the locked post-finalize summary + print),
+ *  so this is an identity map kept as a seam for any future remap. */
 export function deriveDisplayStep(step: number): number {
   return step;
 }

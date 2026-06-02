@@ -196,10 +196,6 @@ export function TabBar({
             }
             const total = tabs.length;
             const finalizedCount = tabs.filter((tt) => tt.finalized).length;
-            const awaitingReview = tabs.filter(
-              (tt) => tt.hasGrade && !tt.finalized,
-            ).length;
-            const generatingCount = tabs.filter((tt) => tt.phase === "generating").length;
             const failedCount = tabs.filter((tt) => tt.error).length;
 
             const isAllDone = finalizedCount === total;
@@ -231,73 +227,18 @@ export function TabBar({
                   }}
                 >
                   <Icon.Check size={10} color={isAllDone ? T.green : T.textMute} style={{ strokeWidth: 3 }} />
+                  {/* Glance-only progress — just "✓ N/total", no "Xong"
+                      word. The capsule is the TRIGGER; full per-state detail
+                      (chờ duyệt / đang chấm) lives in the drawer it opens,
+                      so repeating them here only made the pill long and
+                      duplicated the drawer header. */}
                   <span>
-                    {finalizedCount}/{total} {String(t.done ?? "Xong")}
+                    {finalizedCount}/{total}
                   </span>
                 </span>
 
-                {/* 2. Awaiting review badge */}
-                {awaitingReview > 0 && (
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                      padding: "3px 8px",
-                      background: "rgba(192, 139, 48, 0.06)",
-                      border: `1px solid rgba(192, 139, 48, 0.15)`,
-                      borderRadius: 999,
-                      color: T.amber,
-                      fontSize: 11,
-                      fontFamily: T.font,
-                      fontWeight: 600,
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 5,
-                        height: 5,
-                        borderRadius: "50%",
-                        background: T.amber,
-                      }}
-                    />
-                    <span>
-                      {awaitingReview} chờ duyệt
-                    </span>
-                  </span>
-                )}
-
-                {/* 3. Generating badge */}
-                {generatingCount > 0 && (
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                      padding: "3px 8px",
-                      background: "rgba(59, 79, 138, 0.06)",
-                      border: `1px solid rgba(59, 79, 138, 0.15)`,
-                      borderRadius: 999,
-                      color: T.accent,
-                      fontSize: 11,
-                      fontFamily: T.font,
-                      fontWeight: 600,
-                    }}
-                  >
-                    <Icon.RefreshCw
-                      size={10}
-                      color={T.accent}
-                      style={{
-                        animation: "spin 1.5s linear infinite",
-                      }}
-                    />
-                    <span>
-                      {generatingCount} đang chấm
-                    </span>
-                  </span>
-                )}
-
-                {/* 4. Failed badge */}
+                {/* Failed badge — the one detail kept on the trigger: a
+                    failure needs attention without opening the drawer. */}
                 {failedCount > 0 && (
                   <span
                     style={{

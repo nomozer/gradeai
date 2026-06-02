@@ -22,6 +22,12 @@ export interface PhieuChamPrintRow {
   teacherScore: number;
   goodPoints: string;
   improvements: string;
+  /** Teacher's own đối-soát note(s) for this câu, joined into one string.
+   *  Hybrid print policy (C): when present, this REPLACES the AI's
+   *  good_points/errors on the printed slip — the phiếu the student
+   *  receives carries the teacher's verdict, not the machine's. Empty ⇒
+   *  fall back to the AI nhận xét. */
+  teacherNote?: string;
 }
 
 export interface PhieuChamPrintProps {
@@ -246,15 +252,28 @@ export function PhieuChamPrint({
                 <div style={{ fontWeight: 600, marginBottom: 4 }}>
                   {r.prompt}
                 </div>
-                {r.goodPoints && (
+                {/* Hybrid (C): the teacher's own note wins. When the
+                    teacher wrote a đối-soát comment for this câu, the slip
+                    prints THAT (the official verdict the student reads) and
+                    suppresses the AI's good_points/errors. Câu the teacher
+                    didn't touch fall back to the AI nhận xét. */}
+                {r.teacherNote ? (
                   <div style={{ marginTop: 2 }}>
-                    <em>Ưu điểm:</em> {r.goodPoints}
+                    <em>Nhận xét của giáo viên:</em> {r.teacherNote}
                   </div>
-                )}
-                {r.improvements && (
-                  <div style={{ marginTop: 2 }}>
-                    <em>Cần cải thiện:</em> {r.improvements}
-                  </div>
+                ) : (
+                  <>
+                    {r.goodPoints && (
+                      <div style={{ marginTop: 2 }}>
+                        <em>Ưu điểm:</em> {r.goodPoints}
+                      </div>
+                    )}
+                    {r.improvements && (
+                      <div style={{ marginTop: 2 }}>
+                        <em>Cần cải thiện:</em> {r.improvements}
+                      </div>
+                    )}
+                  </>
                 )}
               </td>
               <td style={{ ...cellBase, textAlign: "center" }}>

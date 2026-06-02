@@ -30,6 +30,7 @@ import { EssayWorkspace } from "./features/workspace/EssayWorkspace";
 import { MemoryPanel } from "./features/memory/MemoryPanel";
 import { HelpModal } from "./features/help/HelpModal";
 import { GradeHistoryDropdown } from "./features/history/GradeHistoryDropdown";
+import { Toast } from "./components/ui/Toast";
 import type { GradeHistoryEntry } from "./types";
 
 const MEMORY_HASH = "#memory";
@@ -97,6 +98,13 @@ function WorkspacePage() {
 
   // Pending queue of tab IDs waiting to be graded
   const [pendingQueue, setPendingQueue] = useState<string[]>([]);
+
+  // Transient "đã lưu, sang bài kế" toast. Set only when a chốt triggers an
+  // auto-advance — at that moment the just-saved paper's locked summary
+  // scrolls off-screen, so the toast is the sole confirmation the save
+  // landed. When there's NO next paper we stay put and the in-place locked
+  // summary (StepReview) is confirmation enough, so no toast there.
+  const [toast, setToast] = useState<string | null>(null);
 
   // Maximum number of parallel grading calls. 3 is the sweet spot for
   // batch grading a class of 30+ papers without tripping Gemini free-tier
@@ -229,7 +237,19 @@ function WorkspacePage() {
 
     if (newlyFinalized.includes(activeId)) {
       const next = pickNextPending();
-      if (next) setActive(next.id);
+      if (next) {
+        // Name the paper just saved (its tab label is the student / bài làm
+        // identifier) so the toast confirms WHICH paper landed before we
+        // pull the teacher to the next one.
+        const justSaved = tabs.find((tab) => tab.id === activeId);
+        const name = (justSaved?.label || "").trim();
+        setToast(
+          name
+            ? `Đã chấm xong bài của ${name} — chuyển tới bài kế tiếp`
+            : "Đã lưu — chuyển tới bài kế tiếp",
+        );
+        setActive(next.id);
+      }
       return;
     }
 
@@ -373,6 +393,8 @@ function WorkspacePage() {
         onClose={closeHistory}
         anchorRect={historyAnchor}
       />
+
+      {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
     </div>
   );
 }

@@ -6,7 +6,7 @@ export const vi: I18nStrings = {
   langSwitch: "English",
   stepUpload: "Tải lên",
   stepReading: "Đọc",
-  stepReview: "Xem xét & Chốt",
+  stepReview: "Chấm điểm",
   stepRegrade: "Chấm lại",
   stepDone: "Xong",
   step1Title: "Tải Bài Lên",

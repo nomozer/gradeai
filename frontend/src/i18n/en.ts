@@ -7,7 +7,7 @@ export const en: I18nStrings = {
   // Steps short labels
   stepUpload: "Upload",
   stepReading: "Reading",
-  stepReview: "Review & Score",
+  stepReview: "Grade",
   stepRegrade: "Re-grade",
   stepDone: "Done",
   // Step 1
