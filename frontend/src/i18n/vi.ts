@@ -178,6 +178,6 @@ export const vi: I18nStrings = {
   close: "Đóng",
   originalImage: "Bài làm gốc",
   originalImageOpening: "Đang mở bài làm gốc…",
-  originalImageInlineError: "Không hiển thị được tệp ở đây. Hãy mở ở tab mới.",
+  originalImageInlineError: "Tệp PDF không hiển thị? Mở ở tab mới.",
   originalImageOpenNewTab: "Mở ở tab mới",
 };

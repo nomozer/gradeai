@@ -186,6 +186,6 @@ export const en: I18nStrings = {
   close: "Close",
   originalImage: "Original submission",
   originalImageOpening: "Opening original submission…",
-  originalImageInlineError: "Can't display the file here. Open it in a new tab.",
+  originalImageInlineError: "PDF not showing? Open it in a new tab.",
   originalImageOpenNewTab: "Open in new tab",
 };

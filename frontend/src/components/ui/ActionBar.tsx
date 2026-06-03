@@ -198,7 +198,7 @@ export function ActionBar({ children, status, scoreSlot }: ActionBarProps) {
         // backdrop-blur) let dense transcript text bleed through the bar as
         // it scrolled behind, which read as clutter. A solid bg cleanly
         // occludes the content under it — readability over the glass look.
-        background: "#FFFDF8",
+        background: T.paper,
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
