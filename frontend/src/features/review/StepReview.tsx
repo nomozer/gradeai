@@ -2002,6 +2002,13 @@ export function StepReview({
       style={{
         maxWidth: 1200,
         margin: "0 auto",
+        // Fill at least the viewport (minus header) so the spacer below can
+        // push the sticky ActionBar to the bottom even on short papers —
+        // without this, sticky-bottom only hugs the bottom when content is
+        // tall enough, leaving the bar floating mid-page on short ones.
+        minHeight: "calc(100vh - 64px)",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
       {/* Top toolbar — horizontal padding matches the QuestionBox card's
@@ -2245,6 +2252,10 @@ export function StepReview({
           {finalizeError}
         </div>
       )}
+      {/* Spacer — soaks up leftover height on short papers so the sticky
+          ActionBar sits at the bottom instead of floating mid-page. On long
+          papers it collapses to 0 and the bar behaves as before. */}
+      <div style={{ flex: "1 0 0" }} />
       <ActionBar
         // No center status line. The "AI chỉ đề xuất" reminder it used to
         // carry is already implicit in the flow (the teacher types the
