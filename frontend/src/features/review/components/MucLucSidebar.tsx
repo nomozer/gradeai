@@ -284,6 +284,7 @@ export function MucLucSidebar({
               >
                 {setFinalScores ? (
                   <input
+                    className="score-input"
                     type="number"
                     step={0.25}
                     min={0}
@@ -305,11 +306,11 @@ export function MucLucSidebar({
                       setFinalScores((prev) => ({ ...prev, [q.num]: clamped }));
                     }}
                     style={{
-                      width: 42,
+                      width: 48,
                       fontFamily: T.mono,
                       fontSize: 11,
                       fontWeight: 700,
-                      padding: "1px 2px",
+                      padding: "2px 4px",
                       border: `1px solid ${isEdited ? T.red : T.border}`,
                       borderRadius: 4,
                       background: T.bgCard,

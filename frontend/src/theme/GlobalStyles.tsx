@@ -77,6 +77,18 @@ export function GlobalStyles() {
         from { opacity: 0; transform: translate(-50%, -12px); }
         to   { opacity: 1; transform: translate(-50%, 0); }
       }
+      /* Score inputs (per-câu in MucLucSidebar): hide the browser's native
+         number spinner ▲▼ — it's off-theme and eats width in the narrow
+         cell. Teachers type the score directly; the steppers add nothing. */
+      .score-input::-webkit-outer-spin-button,
+      .score-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      .score-input {
+        -moz-appearance: textfield;
+        appearance: textfield;
+      }
       @keyframes subjectPrompt {
         0%, 100% { box-shadow: 0 0 0 0 ${T.accentSoft}; }
         50%      { box-shadow: 0 0 0 6px ${T.accentSoft}; }
