@@ -593,7 +593,9 @@ function AnnotatedAnswer({
             style={{
               padding: "8px 16px",
               margin: "0 -16px 12px",
-              borderRadius: 8,
+              // Square corners (no radius): this is a text-highlight tint
+              // over a câu, so it should read like Word/Docs highlighting —
+              // a flat band hugging the lines — not a rounded card/chip.
               background: flashing ? T.accentGlow : "transparent",
               transition: flashing
                 ? "background 0.1s ease-out"
