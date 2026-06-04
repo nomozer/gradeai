@@ -22,6 +22,7 @@ import collections
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -63,6 +64,10 @@ class PipelineResult:
     code: str
     lessons_used: list[dict[str, Any]] = field(default_factory=list)
     run_id: int | None = None
+    # Per-run telemetry (latency_ms / model_name / retry_count / *_tokens) so
+    # callers — incl. the offline experiment runner — can record performance
+    # and cost alongside the grade without re-querying the DB.
+    meta: dict[str, Any] = field(default_factory=dict)
 
 
 class AgentOrchestrator:
@@ -123,6 +128,7 @@ class AgentOrchestrator:
         subject: str | None = None,
         answer_key: str | None = None,
         max_points_template: dict[str, float] | None = None,
+        use_lessons: bool = True,
         **_ignored: Any,
     ) -> PipelineResult:
         """Execute the end-to-end VLM Grading pipeline (single Gemini call).
@@ -164,6 +170,7 @@ class AgentOrchestrator:
                 subject=subject,
                 answer_key=answer_key,
                 max_points_template=max_points_template,
+                use_lessons=use_lessons,
             ),
         )
 
@@ -193,12 +200,21 @@ class AgentOrchestrator:
         # failure mode). max_output_tokens is a ceiling, not a target —
         # Gemini stops on its own well below this for short essays, so this
         # does NOT increase latency on normal grades.
-        raw_grade = await self.gemini.call_with_retry(
+        t0 = time.perf_counter()
+        vlm = await self.gemini.call_with_retry(
             grader_bundle.system, grader_bundle.user_content,
             image_parts=image_parts, task_pdf_part=task_pdf_part,
             json_mode=True, max_output_tokens=32768,
         )
-        grade_json = parse_grade_json(raw_grade)
+        run_meta = {
+            "latency_ms": int((time.perf_counter() - t0) * 1000),
+            "model_name": vlm.model,
+            "retry_count": vlm.attempts - 1,  # attempts beyond the first
+            "prompt_tokens": vlm.prompt_tokens,
+            "completion_tokens": vlm.completion_tokens,
+            "total_tokens": vlm.total_tokens,
+        }
+        grade_json = parse_grade_json(vlm.text)
         # Always "stem" for frontend compat — math/cs share the same STEM
         # rubric set. The internal subject dispatch (math vs cs) lives only
         # in the system prompt; the grade envelope stays uniform.
@@ -211,6 +227,7 @@ class AgentOrchestrator:
             grade_json=grade_str,
             subject=str(grader_bundle.meta.get("subject") or ""),
             lessons_used=grader_bundle.lessons_used,
+            meta=run_meta,
         )
         self._cache_files(run_id, image_parts, task_pdf_part)
 
@@ -218,6 +235,7 @@ class AgentOrchestrator:
             code=grade_str,
             lessons_used=grader_bundle.lessons_used,
             run_id=run_id,
+            meta=run_meta,
         )
 
     async def analyze_teacher_comment(
@@ -256,14 +274,14 @@ class AgentOrchestrator:
         # 2-field schema, since analysis now has room for evidence-based
         # rationale and we don't want JSON-mode truncation mid-string.
         try:
-            raw = await self.gemini.call_with_retry(
+            raw = (await self.gemini.call_with_retry(
                 ANALYZE_COMMENT_SYSTEM,
                 prompt,
                 json_mode=True,
                 max_output_tokens=768,
                 timeout_secs=int(os.getenv("HITL_ANALYZE_COMMENT_TIMEOUT", "25")),
                 max_retries=int(os.getenv("HITL_ANALYZE_COMMENT_RETRIES", "1")),
-            )
+            )).text
         except Exception as exc:
             logger.warning(
                 "[HITL] analyze-comment upstream failed; using local fallback: %s",

@@ -50,4 +50,5 @@ AGENTS.md
 # Visual audit and tests
 screenshots/
 test-results/
-test_papers/
+test_papers/
+benchmark/

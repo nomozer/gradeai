@@ -109,6 +109,7 @@ class PromptOrchestrator:
         subject: Optional[str] = None,
         answer_key: Optional[str] = None,
         max_points_template: Optional[dict[str, float]] = None,
+        use_lessons: bool = True,
     ) -> PromptBundle:
         """Assemble the Grader PromptBundle for this essay.
 
@@ -134,6 +135,9 @@ class PromptOrchestrator:
                         the exam / answer key). Used so an exam without
                         explicit per-câu point values doesn't let the AI
                         guess inconsistently across the batch.
+            use_lessons: When False, skip lesson retrieval entirely (the
+                        "cold" condition for the HITL ablation experiment).
+                        Defaults True so normal grading is unaffected.
         """
         task = _sanitize(task, 4000)
         feedback = _sanitize(feedback or "", 2000)
@@ -148,13 +152,16 @@ class PromptOrchestrator:
         system_prompt = GRADER_SYSTEM[resolved_subject]
 
         # 1. Memory component — retrieved lessons, sorted by HITL priority.
+        # ``use_lessons=False`` forces the no-retrieval ("cold") condition for
+        # the HITL ablation experiment — grade as if the lesson corpus were
+        # empty, so cold-vs-warm isolates the effect of teacher feedback.
         lessons = (
             self.memory.search_relevant_lessons(
                 task,
                 top_k=self.k,
                 subject=resolved_subject,
             )
-            if task
+            if task and use_lessons
             else []
         )
         lessons = sorted(

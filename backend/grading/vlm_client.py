@@ -18,12 +18,31 @@ import asyncio
 import logging
 import os
 import re
+from dataclasses import dataclass
 from typing import Any
 
 import google.generativeai as genai
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class VlmCallResult:
+    """Outcome of a successful Gemini call: the text plus per-call telemetry.
+
+    ``call_with_retry`` used to return the bare ``response.text``; it now
+    returns this so callers can persist latency/cost metrics (the model that
+    actually answered, how many attempts it took, and token usage) into
+    ``pipeline_runs`` without a second SDK round-trip.
+    """
+
+    text: str
+    model: str = ""
+    attempts: int = 1
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +215,7 @@ class GeminiClient:
         max_output_tokens: int = 32768,
         timeout_secs: int | None = None,
         max_retries: int | None = None,
-    ) -> str:
+    ) -> VlmCallResult:
         """Call Gemini with auto model-rotation on quota errors.
 
         Multimodal call: essay images + exam-prompt PDF + text prompt are
@@ -250,7 +269,15 @@ class GeminiClient:
                     raise ValueError("Model returned no candidates.")
                 if not response.text:
                     raise ValueError("Model output is empty. Please try again.")
-                return response.text
+                usage = getattr(response, "usage_metadata", None)
+                return VlmCallResult(
+                    text=response.text,
+                    model=self.current_model_name(),
+                    attempts=attempt,
+                    prompt_tokens=int(getattr(usage, "prompt_token_count", 0) or 0),
+                    completion_tokens=int(getattr(usage, "candidates_token_count", 0) or 0),
+                    total_tokens=int(getattr(usage, "total_token_count", 0) or 0),
+                )
             except Exception as exc:
                 last_exc = exc
                 err_str = str(exc)

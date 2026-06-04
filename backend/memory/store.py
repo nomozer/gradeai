@@ -114,6 +114,15 @@ class PipelineRun(Base):
     grade_json: Mapped[str] = mapped_column(Text, nullable=False, default="")
     subject: Mapped[str] = mapped_column(Text, nullable=False, default="")
     lessons_used_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    # Per-run performance/cost telemetry (added v2). Defaults 0/'' so legacy
+    # rows (and any path that doesn't supply meta) stay valid. Powers the
+    # latency + token-cost breakdown in scripts/eval_metrics.py.
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    model_name: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class ApprovedGrade(Base):
@@ -299,6 +308,12 @@ class MemoryManager:
                 "grade_json": "ALTER TABLE pipeline_runs ADD COLUMN grade_json TEXT NOT NULL DEFAULT ''",
                 "subject": "ALTER TABLE pipeline_runs ADD COLUMN subject TEXT NOT NULL DEFAULT ''",
                 "lessons_used_json": "ALTER TABLE pipeline_runs ADD COLUMN lessons_used_json TEXT NOT NULL DEFAULT '[]'",
+                "latency_ms": "ALTER TABLE pipeline_runs ADD COLUMN latency_ms INTEGER NOT NULL DEFAULT 0",
+                "model_name": "ALTER TABLE pipeline_runs ADD COLUMN model_name TEXT NOT NULL DEFAULT ''",
+                "retry_count": "ALTER TABLE pipeline_runs ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0",
+                "prompt_tokens": "ALTER TABLE pipeline_runs ADD COLUMN prompt_tokens INTEGER NOT NULL DEFAULT 0",
+                "completion_tokens": "ALTER TABLE pipeline_runs ADD COLUMN completion_tokens INTEGER NOT NULL DEFAULT 0",
+                "total_tokens": "ALTER TABLE pipeline_runs ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0",
             }
             for column, ddl in run_migrations.items():
                 if column not in run_columns:
@@ -552,17 +567,23 @@ class MemoryManager:
         grade_json: str = "",
         subject: str = "",
         lessons_used: list[dict[str, Any]] | None = None,
+        meta: dict[str, Any] | None = None,
     ) -> int:
         """Record a pipeline execution for research metrics.
 
         Args:
             parent_run_id: ID of the previous run when this is a teacher-
                            triggered re-grade, forming a chain for analysis.
+            meta:          Optional per-run telemetry — ``latency_ms``,
+                           ``model_name``, ``retry_count``, ``prompt_tokens``,
+                           ``completion_tokens``, ``total_tokens``. Missing
+                           keys default to 0/'' so callers can omit it.
         """
         try:
             lessons_used_json = json.dumps(lessons_used or [], ensure_ascii=False)
         except TypeError:
             lessons_used_json = "[]"
+        meta = meta or {}
         with self._get_session() as session:
             run = PipelineRun(
                 task=task,
@@ -572,6 +593,12 @@ class MemoryManager:
                 grade_json=grade_json,
                 subject=subject,
                 lessons_used_json=lessons_used_json,
+                latency_ms=int(meta.get("latency_ms", 0) or 0),
+                model_name=str(meta.get("model_name", "") or ""),
+                retry_count=int(meta.get("retry_count", 0) or 0),
+                prompt_tokens=int(meta.get("prompt_tokens", 0) or 0),
+                completion_tokens=int(meta.get("completion_tokens", 0) or 0),
+                total_tokens=int(meta.get("total_tokens", 0) or 0),
             )
             session.add(run)
             session.flush()
@@ -718,6 +745,27 @@ class MemoryManager:
                 return False
             session.delete(lesson)
             return True
+
+    def clear_lessons(self) -> None:
+        """Wipe ALL lessons from both stores (SQLite + Chroma).
+
+        Intended for offline experiments / test fixtures that need a clean
+        lesson corpus between runs without tearing down the whole DB dir —
+        e.g. the cold-vs-warm ablation in ``scripts/run_experiment.py``,
+        which resets the corpus between cells so each warm grade sees only
+        the lesson(s) it injected. Recreates the Chroma collection wholesale
+        (cheaper and surer than enumerating every id).
+        """
+        with self._get_session() as session:
+            session.query(Lesson).delete()
+        try:
+            self._chroma_client.delete_collection(CHROMA_COLLECTION)
+        except Exception:
+            logger.exception("Chroma collection drop failed during clear_lessons")
+        self._collection = self._chroma_client.get_or_create_collection(
+            name=CHROMA_COLLECTION,
+            metadata={"hnsw:space": "cosine"},
+        )
 
     def get_memory_stats(self) -> dict[str, Any]:
         """Aggregate counts for the memory inspector dashboard.
