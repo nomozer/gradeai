@@ -1,5 +1,5 @@
 /**
- * review.mock.ts — UI fixture data for StepReview's "Trần Minh Khôi" mockup.
+ * review.ts — UI fixture data for StepReview's "Trần Minh Khôi" mockup.
  *
  * Two roles in the live app:
  *   • Fallback when a grade has no per-question scored data (legacy or

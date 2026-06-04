@@ -14,7 +14,7 @@ import {
   splitTranscriptByCau,
 } from "../../lib/grade";
 import type { Grade, I18nStrings, Lesson } from "../../types";
-import { MOCK_REVIEW } from "./__mocks__/review.mock";
+import { MOCK_REVIEW } from "./fixtures/review";
 import type {
   MockQuestion,
   MockReferencedLesson,

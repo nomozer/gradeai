@@ -1,6 +1,6 @@
 import { PhieuChamPrint, type PhieuChamPrintRow } from "./PhieuChamPrint";
 import { parseCauHeader } from "../../lib/grade";
-import { MOCK_QUESTIONS } from "./__mocks__/resultCard.mock";
+import { MOCK_QUESTIONS } from "./fixtures/phieu";
 import type { Grade, SelectionAnnotation } from "../../types";
 
 /** Collapse the teacher's đối-soát annotations into one note string per

@@ -6,7 +6,7 @@ import { OriginalImageModal } from "../../components/ui/OriginalImageModal";
 import { getStageableLesson } from "../../lib/hitl";
 import { analyzeComment } from "../../api";
 import { useIsMobile } from "../../hooks/useIsMobile";
-import { MOCK_REVIEW } from "./__mocks__/review.mock";
+import { MOCK_REVIEW } from "./fixtures/review";
 import type { MockQuestion, ReviewPayload } from "./types";
 import {
   alignByQuestionNumber,
@@ -62,7 +62,7 @@ import type { UseFeedbackResult } from "../../hooks/useFeedback";
 // no props from real grade state yet. Wiring comes after sign-off.
 // ---------------------------------------------------------------------------
 
-// MOCK_REVIEW + Mock* type fixtures live in __mocks__/review.mock.ts.
+// MOCK_REVIEW + Mock* type fixtures live in fixtures/review.ts.
 // deriveStepReviewData (live grade → ReviewPayload) lives in ./utils.
 
 function ReviewMockup({

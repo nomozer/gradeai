@@ -1,5 +1,5 @@
 /**
- * resultCard.mock.ts — UI fixture data for the ResultCard component.
+ * phieu.ts — UI fixture data for the printable phiếu chấm (PrintablePhieu).
  *
  *   • MOCK_QUESTIONS — fallback only, used when the grade payload has no
  *     per_question_feedback with scores (legacy grade or salvaged). Once

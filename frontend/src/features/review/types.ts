@@ -1,7 +1,7 @@
 /**
  * features/review/types.ts — canonical domain types for the step-3 review UI.
  *
- * These used to live alongside MOCK_REVIEW in __mocks__/review.mock.ts and
+ * These used to live alongside MOCK_REVIEW in fixtures/review.ts and
  * consumers depended on `typeof MOCK_REVIEW`. That coupled the type system
  * to the demo data — renaming a mock field broke every component. The
  * types are now defined here, MOCK_REVIEW just satisfies them, and any
