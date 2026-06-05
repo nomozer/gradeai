@@ -124,6 +124,7 @@ export function Step3Toolbar({
           <ToolbarButton
             icon={<Icon.Printer size={12} />}
             onClick={onPrint}
+            variant="blue"
             title="In phiếu chấm — xuất bản giấy với chữ ký và điểm bằng chữ."
           >
             In phiếu chấm
@@ -134,10 +135,9 @@ export function Step3Toolbar({
   );
 }
 
-// ToolbarButton — pill-shaped action button used inside Step3Toolbar.
-// Matches MetaPill's silhouette so adjacent surfaces (PaperHead before
-// the redesign, MucLuc items now) read as part of the same visual
-// system.
+// ToolbarButton — rounded-rectangle action button used inside Step3Toolbar.
+// Matches standard button shape (borderRadius: 8) to maintain visual consistency
+// with the bottom ActionBar and the rest of the application's design system.
 function ToolbarButton({
   children,
   icon,
@@ -151,9 +151,10 @@ function ToolbarButton({
   onClick?: () => void;
   title?: string;
   disabled?: boolean;
-  variant?: "default" | "accent";
+  variant?: "default" | "accent" | "blue";
 }) {
   const isAccent = variant === "accent";
+  const isBlue = variant === "blue";
 
   // Custom styles based on variant
   const getStyle = (): React.CSSProperties => {
@@ -173,6 +174,14 @@ function ToolbarButton({
         background: "rgba(192, 139, 48, 0.05)",
         border: `1.5px solid rgba(192, 139, 48, 0.25)`,
         boxShadow: "0 1px 2px rgba(192, 139, 48, 0.05)",
+      };
+    }
+
+    if (isBlue) {
+      return {
+        color: T.accent,
+        background: T.bgCard,
+        border: `1.5px solid ${T.accent}40`,
       };
     }
 
@@ -198,7 +207,7 @@ function ToolbarButton({
         fontSize: 12,
         fontFamily: `"Inter", "Outfit", system-ui, -apple-system, sans-serif`,
         fontWeight: 600,
-        borderRadius: 999,
+        borderRadius: 8,
         cursor: "pointer",
         transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
         whiteSpace: "nowrap",
@@ -209,6 +218,10 @@ function ToolbarButton({
         if (isAccent) {
           e.currentTarget.style.background = "rgba(192, 139, 48, 0.09)";
           e.currentTarget.style.borderColor = "rgba(192, 139, 48, 0.4)";
+        } else if (isBlue) {
+          e.currentTarget.style.background = `${T.accent}08`;
+          e.currentTarget.style.borderColor = `${T.accent}80`;
+          e.currentTarget.style.color = T.accentDark;
         } else {
           e.currentTarget.style.color = T.accent;
           e.currentTarget.style.borderColor = T.accent;
@@ -220,6 +233,10 @@ function ToolbarButton({
         if (isAccent) {
           e.currentTarget.style.background = "rgba(192, 139, 48, 0.05)";
           e.currentTarget.style.borderColor = "rgba(192, 139, 48, 0.25)";
+        } else if (isBlue) {
+          e.currentTarget.style.background = T.bgCard;
+          e.currentTarget.style.borderColor = `${T.accent}40`;
+          e.currentTarget.style.color = T.accent;
         } else {
           e.currentTarget.style.color = T.textSoft;
           e.currentTarget.style.borderColor = T.border;

@@ -31,6 +31,7 @@ import { MemoryPanel } from "./features/memory/MemoryPanel";
 import { HelpModal } from "./features/help/HelpModal";
 import { GradeHistoryDropdown } from "./features/history/GradeHistoryDropdown";
 import { Toast } from "./components/ui/Toast";
+import { MobileHint } from "./components/ui/MobileHint";
 import type { GradeHistoryEntry } from "./types";
 
 const MEMORY_HASH = "#memory";
@@ -341,6 +342,7 @@ function WorkspacePage() {
       }}
     >
       <GlobalStyles />
+      <MobileHint />
 
       <AppHeader
         brand={String(t.title)}

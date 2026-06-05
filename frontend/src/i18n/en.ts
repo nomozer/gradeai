@@ -188,4 +188,7 @@ export const en: I18nStrings = {
   originalImageOpening: "Opening original submission…",
   originalImageInlineError: "PDF not showing? Open it in a new tab.",
   originalImageOpenNewTab: "Open in new tab",
+  mobileHintText:
+    "This interface is optimized for larger screens (desktop/laptop). You can still use it here, but grading is more comfortable on a bigger screen.",
+  mobileHintDismiss: "Got it",
 };
