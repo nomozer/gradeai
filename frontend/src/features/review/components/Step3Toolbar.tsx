@@ -196,6 +196,7 @@ function ToolbarButton({
   return (
     <button
       type="button"
+      className="rc-toolbar-btn"
       onClick={onClick}
       disabled={disabled || !onClick}
       title={title}

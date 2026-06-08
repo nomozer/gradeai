@@ -10,6 +10,7 @@ export function SearchInput({
 }) {
   return (
     <div
+      className="memory-search"
       style={{
         minWidth: 240,
         maxWidth: 320,

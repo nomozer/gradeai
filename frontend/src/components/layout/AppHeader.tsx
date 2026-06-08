@@ -473,6 +473,7 @@ function NavArrow({
   return (
     <button
       type="button"
+      className="hdr-nav-arrow"
       onClick={onClick}
       disabled={disabled}
       onMouseEnter={() => setHovered(true)}

@@ -73,7 +73,7 @@ export function ScoreInline({
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 16,
+        gap: "clamp(10px, 2.5vw, 16px)",
         flexWrap: "wrap",
       }}
     >

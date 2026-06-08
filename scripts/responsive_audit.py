@@ -27,14 +27,14 @@ VIEWPORTS = [
 
 # Dispatch the same event GradeHistoryDropdown uses. Pulls the first
 # (most-recent) entry from /api/history/grades and replays it with the
-# chosen step (3 = Review, 4 = Regrade, 5 = Done).
+# chosen step (3 = Review & Score).
 LOAD_GRADE_JS = """
 async (step) => {
   const r = await fetch('/api/history/grades?limit=1');
   const j = await r.json();
   const entry = j.items?.[0];
   if (!entry) throw new Error('no history entries');
-  window.dispatchEvent(new CustomEvent('hitl.loadGrade', { detail: { entry, step } }));
+  window.dispatchEvent(new CustomEvent('hitl.openHistoryEntry', { detail: { entry, step } }));
   return entry.id;
 }
 """
@@ -68,26 +68,42 @@ def main() -> None:
             page.wait_for_timeout(1500)
             capture(page, f"step1_{name}_{w}x{h}.png")
 
-            # Load history grade once, then walk the stepper via clicks —
-            # loadHistoryEntry() early-returns on a second dispatch, so
-            # re-dispatching with a different step number doesn't navigate.
+            # Load history grade, which defaults to the editable Step 3 page
             try:
                 entry_id = page.evaluate(LOAD_GRADE_JS, 3)
-                page.wait_for_timeout(1500)
-                capture(page, f"step3_{name}_{w}x{h}.png")
-                print(f"      (loaded entry id={entry_id})")
+                page.wait_for_timeout(2000)
+                capture(page, f"step3_editing_{name}_{w}x{h}.png")
+                print(f"      (loaded entry id={entry_id} - captured editing state)")
             except Exception as e:
-                print(f"      step3 load FAILED: {e}")
+                # Use ascii safe representation to prevent Windows console encoding crashes
+                print(f"      step3 load failed: {repr(e)}")
                 ctx.close()
                 continue
 
-            for step, vi in ((4, "CHẤM LẠI"), (5, "XONG")):
-                try:
-                    page.get_by_title(f"Quay lại: {vi}").click(timeout=5000)
-                    page.wait_for_timeout(1500)
-                    capture(page, f"step{step}_{name}_{w}x{h}.png")
-                except Exception as e:
-                    print(f"      step{step} nav FAILED: {e}")
+            # Click "Chốt điểm & lưu" to lock and save
+            try:
+                finalize_btn = page.locator('button:has-text("Chốt điểm & lưu"), button:has-text("Finalize")')
+                if finalize_btn.is_visible():
+                    finalize_btn.click()
+                    page.wait_for_timeout(2000)
+                    capture(page, f"step3_locked_{name}_{w}x{h}.png")
+                    print("      -> finalized and captured locked state")
+                else:
+                    print("      finalize button not visible")
+            except Exception as e:
+                print(f"      step3 finalize failed: {repr(e)}")
+
+            # Click "Sửa lại" to unlock and return to editable state
+            try:
+                edit_btn = page.locator('button:has-text("Sửa lại"), button:has-text("Edit")')
+                if edit_btn.is_visible():
+                    edit_btn.click()
+                    page.wait_for_timeout(1000)
+                    print("      -> clicked edit button to unlock successfully")
+                else:
+                    print("      edit button not visible after finalize")
+            except Exception as e:
+                print(f"      step3 unlock failed: {repr(e)}")
 
             # Sidebar drawer at narrow widths
             if name != "desktop":
@@ -100,14 +116,14 @@ def main() -> None:
                     page.screenshot(path=str(out), full_page=False)
                     print(f"    -> {out.name} (sidebar open)")
                 except Exception as e:
-                    print(f"    sidebar open FAILED: {e}")
+                    print(f"    sidebar open failed: {repr(e)}")
 
-            # Memory page — only meaningful at desktop where window.open
-            # creates a separate route; capture once
             if name == "desktop":
-                page.goto("http://localhost:3000/#memory", wait_until="domcontentloaded")
-                page.wait_for_timeout(1200)
-                capture(page, f"memory_{name}_{w}x{h}.png")
+                mem_page = ctx.new_page()
+                mem_page.goto("http://localhost:3000/#memory", wait_until="domcontentloaded")
+                mem_page.wait_for_timeout(1200)
+                capture(mem_page, f"memory_{name}_{w}x{h}.png")
+                mem_page.close()
 
             ctx.close()
         browser.close()

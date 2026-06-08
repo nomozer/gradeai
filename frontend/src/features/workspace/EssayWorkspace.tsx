@@ -674,7 +674,7 @@ export function EssayWorkspace({
   ];
 
   return (
-    <div className="workspace-container" style={{ padding: "0 clamp(16px, 4vw, 32px) 96px", display: active ? "block" : "none" }}>
+    <div className="workspace-container" style={{ padding: "0 var(--ws-bleed, clamp(16px, 4vw, 32px)) 96px", display: active ? "block" : "none" }}>
       <StepIndicator
         steps={stepLabels}
         currentStep={displayStep}

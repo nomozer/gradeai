@@ -131,15 +131,22 @@ export function GradeHistoryDropdown({ open, onClose, anchorRect }: GradeHistory
   );
 
   // Anchor under the trigger button's right edge so the popover hangs
-  // beneath the link rather than centering on the page.
+  // beneath the link rather than centering on the page. But the popover is
+  // wide (up to 420px) and on mobile the trigger ("Lịch sử") sits mid-header
+  // — "Bộ nhớ" + "?" are to its right — so a naive right-anchor pushed the
+  // popover ~120px off the LEFT edge and clipped its content ("Bài đã chấm"
+  // → "n", entries → "…ath de"). Clamp ``right`` so the left edge stays
+  // on-screen; on a narrow screen this lands the popover centred with 8px
+  // gutters, while desktop is unchanged.
   const popoverStyle = useMemo<React.CSSProperties>(() => {
+    const width = Math.min(420, window.innerWidth - 16);
     if (!anchorRect) {
-      return { top: 60, right: 24 };
+      return { top: 60, right: 24, width };
     }
-    return {
-      top: anchorRect.bottom + 6,
-      right: Math.max(8, window.innerWidth - anchorRect.right),
-    };
+    const desiredRight = window.innerWidth - anchorRect.right;
+    const maxRight = Math.max(8, window.innerWidth - width - 8);
+    const right = Math.min(Math.max(8, desiredRight), maxRight);
+    return { top: anchorRect.bottom + 6, right, width };
   }, [anchorRect]);
 
   if (!open) return null;
@@ -165,7 +172,6 @@ export function GradeHistoryDropdown({ open, onClose, anchorRect }: GradeHistory
         style={{
           position: "fixed",
           ...popoverStyle,
-          width: "min(420px, calc(100vw - 16px))",
           maxHeight: "min(560px, calc(100vh - 80px))",
           background: T.bgCard,
           border: `1px solid ${T.border}`,

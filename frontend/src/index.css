@@ -247,9 +247,11 @@ sub.math-expr {
     padding-left: 0 !important;
     padding-right: 0 !important;
   }
+  /* Drives BOTH the container's own horizontal padding and the sticky
+     .action-bar's full-bleed negative margin (single source of truth so
+     they stay in lockstep across breakpoints). */
   .workspace-container {
-    padding-left: clamp(12px, 3vw, 24px) !important;
-    padding-right: clamp(12px, 3vw, 24px) !important;
+    --ws-bleed: clamp(12px, 3vw, 24px);
   }
 
   /* Stepper: compact — smaller padding, smaller font. Max-width bumped
@@ -282,10 +284,9 @@ sub.math-expr {
     display: inline !important;
   }
 
-  /* Workspace: tighter padding */
+  /* Workspace: tighter padding (--ws-bleed keeps the action-bar in sync) */
   .workspace-container {
-    padding-left: 8px !important;
-    padding-right: 8px !important;
+    --ws-bleed: 8px;
     padding-bottom: 48px !important;
   }
 
@@ -311,12 +312,13 @@ sub.math-expr {
     display: none !important;
   }
 
-  /* Action bar: stack vertically */
+  /* Action bar: stack vertically. Keep horizontal padding = --ws-bleed so
+     the buttons align with the cards above while the bar bleeds full-width. */
   .action-bar {
     flex-direction: column !important;
     align-items: stretch !important;
     gap: 10px !important;
-    padding: 16px 0 !important;
+    padding: 16px var(--ws-bleed) !important;
   }
   .action-bar-status {
     order: -1 !important;
@@ -356,6 +358,12 @@ sub.math-expr {
   .review-layout-grid {
     display: block !important;
   }
+
+  /* Memory hero: stack title/description above the tier chart instead of
+     letting the chart's intrinsic width crush the text column. */
+  .memory-hero {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 
@@ -363,10 +371,9 @@ sub.math-expr {
    MOBILE  (≤ 480px)
    ══════════════════════════════════════════════════════════════════════ */
 @media (max-width: 480px) {
-  /* Workspace: minimal padding */
+  /* Workspace: minimal padding (--ws-bleed keeps the action-bar in sync) */
   .workspace-container {
-    padding-left: 6px !important;
-    padding-right: 6px !important;
+    --ws-bleed: 6px;
     padding-bottom: 32px !important;
   }
 
@@ -383,12 +390,13 @@ sub.math-expr {
     display: none !important;
   }
 
-  /* Action bar: full-width stacked buttons */
+  /* Action bar: full-width stacked buttons. Horizontal padding = --ws-bleed
+     so content aligns with the cards while the bar bleeds full-width. */
   .action-bar {
     flex-direction: column !important;
     align-items: stretch !important;
     gap: 8px !important;
-    padding: 12px 0 !important;
+    padding: 12px var(--ws-bleed) !important;
   }
   .action-bar button {
     width: 100% !important;
@@ -409,5 +417,55 @@ sub.math-expr {
     white-space: normal !important;
     overflow: visible !important;
     text-overflow: clip !important;
+  }
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════
+   TOUCH DEVICES  (phones + tablets, incl. iPad at any width)
+   ──────────────────────────────────────────────────────────────────────
+   Enlarge the dense grading controls to the 44px Apple / 48px Material
+   minimum tap target. Keyed on ``pointer: coarse`` (not viewport width) so
+   an iPad in landscape — which is "desktop-wide" but finger-driven — still
+   gets finger-friendly hit areas, while a real mouse/trackpad keeps the
+   compact, information-dense desktop layout untouched.
+   ══════════════════════════════════════════════════════════════════════ */
+@media (pointer: coarse) {
+  /* Per-câu score field — teachers edit these constantly; 20px tall is a
+     mis-tap magnet on glass. Taller box + larger numerals = easier tap and
+     easier read. */
+  .score-input {
+    min-height: 32px !important;
+    width: 52px !important;
+    font-size: 13px !important;
+    padding: 4px 6px !important;
+  }
+
+  /* Review toolbar (Mục lục / Xem PDF gốc / In phiếu chấm) */
+  .rc-toolbar-btn {
+    min-height: 44px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  /* Câu jump chips (mobile/tablet câu navigation) */
+  .cau-chip {
+    min-height: 38px;
+  }
+
+  /* Header prev/next paper arrows — primary control when batch-grading a
+     stack of papers on a tablet. */
+  .hdr-nav-arrow {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  /* Memory search box: 44px row, and ≥16px font on the input so iOS Safari
+     does not zoom the page in when the field is focused. */
+  .memory-search {
+    min-height: 44px;
+  }
+  .memory-search input {
+    font-size: 16px;
   }
 }

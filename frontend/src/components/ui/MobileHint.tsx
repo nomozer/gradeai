@@ -4,6 +4,7 @@ import { useBreakpoint } from "../../hooks/useBreakpoint";
 import { useLang } from "../../hooks/useLang";
 import { vi } from "../../i18n/vi";
 import { en } from "../../i18n/en";
+import { Icon } from "./Icon";
 
 const DISMISS_KEY = "hitl_mobile_hint_dismissed";
 
@@ -42,35 +43,61 @@ export function MobileHint() {
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        padding: "8px 14px",
+        gap: 12,
+        margin: "10px var(--ws-bleed, clamp(16px, 4vw, 32px)) 0",
+        padding: "10px 16px",
         background: T.amberSoft,
-        borderBottom: `1px solid ${T.amber}40`,
+        border: `1px solid rgba(192, 139, 48, 0.15)`,
+        borderLeft: `4px solid ${T.amber}`,
+        borderRadius: 8,
         fontFamily: T.font,
         fontSize: 13,
         color: T.textSoft,
-        lineHeight: 1.4,
+        lineHeight: 1.45,
+        boxSizing: "border-box",
       }}
     >
-      <span aria-hidden style={{ flexShrink: 0, fontSize: 15 }}>
-        💡
-      </span>
+      {/* Soft amber icon container */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: T.amber,
+          flexShrink: 0,
+        }}
+      >
+        <Icon.Lightbulb size={15} />
+      </div>
+
       <span style={{ flex: 1, minWidth: 0 }}>{String(dict.mobileHintText)}</span>
+
       <button
         type="button"
         onClick={dismiss}
         style={{
           flexShrink: 0,
-          border: `1px solid ${T.amber}55`,
-          background: "transparent",
+          border: `1px solid rgba(192, 139, 48, 0.25)`,
+          background: T.paper,
           color: T.amber,
           borderRadius: 6,
           padding: "4px 10px",
-          fontSize: 12,
-          fontWeight: 600,
+          fontSize: 11.5,
+          fontWeight: 700,
           fontFamily: T.font,
           cursor: "pointer",
           whiteSpace: "nowrap",
+          transition: "all 0.2s ease",
+          outline: "none",
+          boxSizing: "border-box",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "rgba(192, 139, 48, 0.05)";
+          e.currentTarget.style.borderColor = "rgba(192, 139, 48, 0.4)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = T.paper;
+          e.currentTarget.style.borderColor = "rgba(192, 139, 48, 0.25)";
         }}
       >
         {String(dict.mobileHintDismiss)}

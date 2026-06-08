@@ -342,7 +342,6 @@ function WorkspacePage() {
       }}
     >
       <GlobalStyles />
-      <MobileHint />
 
       <AppHeader
         brand={String(t.title)}
@@ -370,6 +369,7 @@ function WorkspacePage() {
       />
 
       <main className="workspace-main" style={{ paddingTop: 12 }}>
+        <MobileHint />
         {tabs.map((tab) => {
           const isActive = tab.id === activeId;
           const shouldMount = isActive || tab.hasGrade || tab.phase === "generating";

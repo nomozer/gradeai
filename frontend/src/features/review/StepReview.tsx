@@ -473,6 +473,29 @@ function AnnotatedAnswer({
     });
   }, [onAddAnnotation]);
 
+  // Touch devices: native long-press text selection drives the OS selection
+  // handles and does NOT reliably emit a `mouseup`, so the đối-soát toolbar
+  // (which we open from `handleMouseUp`) never appeared on phones/tablets.
+  // `selectionchange` DOES fire for touch selection — debounce it so we react
+  // only once the selection settles (not on every handle nudge), then reuse
+  // the exact same handler. Gated to coarse pointers so mouse/desktop keeps
+  // its instant, flicker-free `mouseup` path completely unchanged.
+  useEffect(() => {
+    if (!onAddAnnotation) return;
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    if (!window.matchMedia("(pointer: coarse)").matches) return;
+    let timer: number | undefined;
+    const onSelectionChange = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => handleMouseUp(), 350);
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("selectionchange", onSelectionChange);
+    };
+  }, [onAddAnnotation, handleMouseUp]);
+
   // Clear the pending toolbar on outside click. Without this the chip
   // lingers after the user moves on.
   useEffect(() => {

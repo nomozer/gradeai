@@ -391,22 +391,23 @@ export function MucLucChips({
           <button
             key={q.num}
             type="button"
+            className="cau-chip"
             onClick={() => onJumpToCau(q.num)}
             aria-pressed={active}
             style={{
               flex: "0 0 auto",
-              padding: "6px 12px",
-              borderRadius: 999,
+              padding: "5px 10px",
+              borderRadius: 8,
               border: `1px solid ${active ? T.accent : T.border}`,
               background: active ? T.accent : T.bgCard,
               color: active ? "#fff" : T.textSoft,
               fontFamily: T.font,
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: active ? 600 : 500,
               cursor: "pointer",
               display: "inline-flex",
               alignItems: "center",
-              gap: 6,
+              gap: 5,
               whiteSpace: "nowrap",
               transition: "background 0.12s, color 0.12s, border-color 0.12s",
             }}

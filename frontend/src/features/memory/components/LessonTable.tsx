@@ -27,6 +27,11 @@ export function LessonTable({
       <table
         style={{
           width: "100%",
+          // 520px of fixed columns + a readable lesson column. Without a
+          // min-width the ``tableLayout: fixed`` engine crushes the flexible
+          // BÀI HỌC column to ~30px on narrow screens (one word per line);
+          // the min-width lets the wrapper's overfl-x:auto scroll instead.
+          minWidth: 720,
           borderCollapse: "collapse",
           tableLayout: "fixed",
         }}

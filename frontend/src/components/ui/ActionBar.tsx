@@ -191,9 +191,17 @@ export function ActionBar({ children, status, scoreSlot }: ActionBarProps) {
         bottom: 0,
         zIndex: 40,
         marginTop: 20,
-        marginLeft: "calc(-1 * clamp(16px, 4vw, 32px))",
-        marginRight: "calc(-1 * clamp(16px, 4vw, 32px))",
-        padding: "14px clamp(16px, 4vw, 32px)",
+        // Full-bleed: cancel the workspace-container's horizontal padding so
+        // the bar's background/border span edge-to-edge, then push content
+        // back in via matching padding. Both read the SAME --ws-bleed var that
+        // the container sets per breakpoint, so they can never drift apart
+        // (the earlier hard-coded clamp here overshot the px-overridden
+        // container padding at mobile/tablet → horizontal scroll + clipped
+        // left content). Fallback clamp = the desktop value when no
+        // --ws-bleed is in scope.
+        marginLeft: "calc(-1 * var(--ws-bleed, clamp(16px, 4vw, 32px)))",
+        marginRight: "calc(-1 * var(--ws-bleed, clamp(16px, 4vw, 32px)))",
+        padding: "14px var(--ws-bleed, clamp(16px, 4vw, 32px))",
         // Opaque paper, no blur. The earlier glass effect (translucent +
         // backdrop-blur) let dense transcript text bleed through the bar as
         // it scrolled behind, which read as clutter. A solid bg cleanly

@@ -297,8 +297,12 @@ export function MemoryPanel() {
         </div>
       </header>
 
-      {/* Hero — title + description (left), tier distribution chart (right). */}
+      {/* Hero — title + description (left), tier distribution chart (right).
+          Stacks to one column at the tablet tier (≤767, see index.css) so the
+          chart's intrinsic ``auto`` width stops starving the text column into
+          one-word-per-line wrapping on narrow screens. */}
       <div
+        className="memory-hero"
         style={{
           maxWidth: T.width.app,
           margin: "0 auto",
