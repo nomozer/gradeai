@@ -68,6 +68,16 @@ def main() -> None:
             page.wait_for_timeout(1500)
             capture(page, f"step1_{name}_{w}x{h}.png")
 
+            # Dismiss welcome modal if visible (mobile/tablet viewports)
+            try:
+                dismiss_btn = page.locator('button:has-text("Đã hiểu"), button:has-text("Got it")')
+                if dismiss_btn.is_visible():
+                    dismiss_btn.click()
+                    page.wait_for_timeout(600)
+                    print("      -> dismissed welcome modal")
+            except Exception as e:
+                print(f"      modal dismiss failed: {repr(e)}")
+
             # Load history grade, which defaults to the editable Step 3 page
             try:
                 entry_id = page.evaluate(LOAD_GRADE_JS, 3)

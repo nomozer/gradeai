@@ -180,6 +180,7 @@ export const vi: I18nStrings = {
   originalImageOpening: "Đang mở bài làm gốc…",
   originalImageInlineError: "Tệp PDF không hiển thị? Mở ở tab mới.",
   originalImageOpenNewTab: "Mở ở tab mới",
+  mobileHintTitle: "Trải nghiệm màn hình lớn",
   mobileHintText:
     "Giao diện tối ưu cho màn hình lớn (máy tính/laptop). Bạn vẫn dùng được trên thiết bị này, nhưng chấm bài sẽ thoải mái hơn trên màn lớn.",
   mobileHintDismiss: "Đã hiểu",
