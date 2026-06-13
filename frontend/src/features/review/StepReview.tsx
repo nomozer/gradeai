@@ -229,9 +229,6 @@ function PaperContainer({
         borderRadius: 4,
         boxShadow: T.shadowStrong,
         minWidth: 0,
-        // overflow:hidden clips the paper-head's bottom rule to the
-        // rounded corners — without it the rule bleeds past the radius.
-        overflow: "hidden",
       }}
     >
       <PaperHead review={review} />
@@ -602,6 +599,7 @@ function AnnotatedAnswer({
         fontSize: 16,
         color: T.textSoft,
         lineHeight: 1.85,
+        position: "relative",
       }}
     >
       {questions.map((q) => {
@@ -678,6 +676,7 @@ function AnnotatedAnswer({
       {activeAnn && (
         <AnnotationBubble
           ann={activeAnn}
+          containerRef={containerRef}
           editing={editingId === activeAnn.id}
           analyzing={analyzingIds.has(activeAnn.id)}
           t={t}
@@ -1280,6 +1279,7 @@ function SelectionToolbar({
 // Repositions on scroll/resize.
 function AnnotationBubble({
   ann,
+  containerRef,
   editing,
   analyzing,
   onStartEdit,
@@ -1290,6 +1290,7 @@ function AnnotationBubble({
   t,
 }: {
   ann: SelectionAnnotation;
+  containerRef: React.RefObject<HTMLDivElement>;
   editing: boolean;
   analyzing: boolean;
   onStartEdit: () => void;
@@ -1323,72 +1324,102 @@ function AnnotationBubble({
   const reposition = useCallback((): boolean => {
     const mark = document.querySelector(`mark[data-ann-id="${ann.id}"]`);
     const bubble = bubbleRef.current;
-    if (!bubble) return false;
+    const container = containerRef.current;
+    if (!bubble || !container) return false;
     const bubbleRect = bubble.getBoundingClientRect();
     if (bubbleRect.width === 0 || bubbleRect.height === 0) return false;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    // No mark found → center the bubble in the viewport so the teacher
-    // always has somewhere to type. Without this fallback the bubble
-    // would stay at (-9999, -9999) and look like the button did nothing.
+    
+    // No mark found → center the bubble in the viewport
     if (!(mark instanceof HTMLElement)) {
+      const containerRect = container.getBoundingClientRect();
+      const viewportTop = -containerRect.top;
+      const viewportLeft = -containerRect.left;
       setPos({
-        left: Math.max(8, (vw - bubbleRect.width) / 2),
-        top: Math.max(8, (vh - bubbleRect.height) / 2),
+        left: viewportLeft + Math.max(8, (vw - bubbleRect.width) / 2),
+        top: viewportTop + Math.max(8, (vh - bubbleRect.height) / 2),
       });
       setArrowPos({ leftOrTop: 0, placement: "top" });
       return true;
     }
+    const containerRect = container.getBoundingClientRect();
     const markRect = mark.getBoundingClientRect();
     const bubbleWidth = bubbleRect.width;
     const bubbleHeight = bubbleRect.height;
+    
+    // Viewport boundaries in container coordinates
+    const viewportTop = -containerRect.top;
+    const viewportBottom = -containerRect.top + vh;
+    
+    const localMarkTop = markRect.top - containerRect.top;
+    const localMarkLeft = markRect.left - containerRect.left;
+    const localMarkRight = markRect.right - containerRect.left;
     
     let left = -9999;
     let top = -9999;
     let placement: "top" | "bottom" | "left" | "right" = "top";
     let leftOrTop = 0;
 
+    // Check if the highlight itself is visible in the viewport
+    const isHighlightVisible = markRect.bottom > 0 && markRect.top < vh;
+
     // 1. Try RIGHT placement: Card on the right of highlighted mark (arrow on the left of bubble pointing left)
     if (markRect.right + 8 + bubbleWidth < vw - 12) {
-      left = markRect.right + 8;
-      top = markRect.top + markRect.height / 2 - bubbleHeight / 2;
-      top = Math.max(8, Math.min(vh - bubbleHeight - 8, top));
+      left = localMarkRight + 8;
+      top = localMarkTop + markRect.height / 2 - bubbleHeight / 2;
+      
+      if (isHighlightVisible) {
+        const minTop = viewportTop + 8;
+        const maxTop = viewportBottom - bubbleHeight - 8;
+        top = Math.max(minTop, Math.min(maxTop, top));
+      }
       placement = "left"; // Arrow on the left edge of the bubble
 
-      const markCenterY = markRect.top + markRect.height / 2;
+      const markCenterY = localMarkTop + markRect.height / 2;
       const arrowTop = markCenterY - top;
       leftOrTop = Math.max(16, Math.min(bubbleHeight - 16, arrowTop));
     }
     // 2. Try LEFT placement: Card on the left of highlighted mark (arrow on the right of bubble pointing right)
     else if (markRect.left - 8 - bubbleWidth > 12) {
-      left = markRect.left - 8 - bubbleWidth;
-      top = markRect.top + markRect.height / 2 - bubbleHeight / 2;
-      top = Math.max(8, Math.min(vh - bubbleHeight - 8, top));
+      left = localMarkLeft - 8 - bubbleWidth;
+      top = localMarkTop + markRect.height / 2 - bubbleHeight / 2;
+      
+      if (isHighlightVisible) {
+        const minTop = viewportTop + 8;
+        const maxTop = viewportBottom - bubbleHeight - 8;
+        top = Math.max(minTop, Math.min(maxTop, top));
+      }
       placement = "right"; // Arrow on the right edge of the bubble
 
-      const markCenterY = markRect.top + markRect.height / 2;
+      const markCenterY = localMarkTop + markRect.height / 2;
       const arrowTop = markCenterY - top;
       leftOrTop = Math.max(16, Math.min(bubbleHeight - 16, arrowTop));
     }
     // 3. Fallback to BOTTOM / TOP placement (classic tooltip style under/above)
     else {
-      left = markRect.left + markRect.width / 2 - bubbleWidth / 2;
-      left = Math.max(8, Math.min(vw - bubbleWidth - 8, left));
-      top = markRect.bottom + 8;
+      left = localMarkLeft + markRect.width / 2 - bubbleWidth / 2;
+      const localMinLeft = -containerRect.left + 8;
+      const localMaxLeft = -containerRect.left + vw - bubbleWidth - 8;
+      left = Math.max(localMinLeft, Math.min(localMaxLeft, left));
+      
+      top = localMarkTop + markRect.height + 8;
       placement = "top"; // Arrow on the top edge of the bubble
       
-      if (top + bubbleHeight > vh - 8) {
-        const above = markRect.top - bubbleHeight - 8;
-        if (above >= 8) {
+      if (top + bubbleHeight > viewportBottom - 8) {
+        const above = localMarkTop - bubbleHeight - 8;
+        if (above >= viewportTop + 8) {
           top = above;
           placement = "bottom"; // Arrow on the bottom edge of the bubble
         } else {
-          top = Math.max(8, vh - bubbleHeight - 8);
+          if (isHighlightVisible) {
+            top = Math.max(viewportTop + 8, viewportBottom - bubbleHeight - 8);
+          }
           placement = "top";
         }
       }
       
-      const markCenterX = markRect.left + markRect.width / 2;
+      const markCenterX = localMarkLeft + markRect.width / 2;
       const arrowLeft = markCenterX - left;
       leftOrTop = Math.max(16, Math.min(bubbleWidth - 16, arrowLeft));
     }
@@ -1396,7 +1427,7 @@ function AnnotationBubble({
     setPos({ left, top });
     setArrowPos({ leftOrTop, placement });
     return true;
-  }, [ann.id]);
+  }, [ann.id, containerRef]);
 
   // Position after each commit. If the first attempt fails (bubble not
   // yet measured), schedule a retry on the next animation frame. Mark
@@ -1419,13 +1450,26 @@ function AnnotationBubble({
     };
   }, [reposition]);
 
+  // Reposition whenever the bubble's dimensions change (e.g., expanding AI analysis details)
+  useEffect(() => {
+    const bubble = bubbleRef.current;
+    if (!bubble) return;
+    const observer = new ResizeObserver(() => {
+      reposition();
+    });
+    observer.observe(bubble);
+    return () => {
+      observer.disconnect();
+    };
+  }, [reposition]);
+
   return (
     <div
       id="step3-annotation-bubble"
       ref={bubbleRef}
       onMouseDown={(e) => e.stopPropagation()}
       style={{
-        position: "fixed",
+        position: "absolute",
         left: pos.left,
         top: pos.top,
         width: "min(420px, calc(100vw - 32px))",

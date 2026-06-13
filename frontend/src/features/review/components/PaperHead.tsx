@@ -53,6 +53,8 @@ export function PaperHead({ review }: { review: ReviewPayload }) {
         padding: "32px clamp(24px, 5vw, 64px) 20px",
         background: T.paper,
         borderBottom: `1px solid ${T.borderLight}`,
+        borderTopLeftRadius: 4,
+        borderTopRightRadius: 4,
       }}
     >
       <div

@@ -10,12 +10,72 @@ import type { CommentVerdict, I18nStrings } from "../../../types";
 // mislabel the transcript. Indigo reads as "contested — review this".
 const VERDICT_TONE: Record<
   CommentVerdict,
-  { color: string; bg: string; label: string }
+  {
+    color: string;
+    bg: string;
+    border: string;
+    bgHover: string;
+    glow: string;
+    label: string;
+    bgBox: string;
+    borderBox: string;
+  }
 > = {
-  agree: { color: "#1F7A4C", bg: "#E3F4EA", label: "AI đồng ý" },
-  partial: { color: "#A8770A", bg: "#FCF1D8", label: "AI đồng ý một phần" },
-  dispute: { color: "#2A3B6B", bg: "#E5E8F2", label: "AI phản biện" },
+  agree: {
+    color: "#1F7A4C",
+    bg: "rgba(31, 122, 76, 0.05)",
+    border: "rgba(31, 122, 76, 0.15)",
+    bgHover: "rgba(31, 122, 76, 0.1)",
+    glow: "rgba(31, 122, 76, 0.1)",
+    label: "AI đồng ý",
+    bgBox: "rgba(31, 122, 76, 0.02)",
+    borderBox: "rgba(31, 122, 76, 0.08)",
+  },
+  partial: {
+    color: "#A8770A",
+    bg: "rgba(168, 119, 10, 0.05)",
+    border: "rgba(168, 119, 10, 0.15)",
+    bgHover: "rgba(168, 119, 10, 0.1)",
+    glow: "rgba(168, 119, 10, 0.1)",
+    label: "AI đồng ý một phần",
+    bgBox: "rgba(168, 119, 10, 0.02)",
+    borderBox: "rgba(168, 119, 10, 0.08)",
+  },
+  dispute: {
+    color: "#2A3B6B",
+    bg: "rgba(42, 59, 107, 0.05)",
+    border: "rgba(42, 59, 107, 0.15)",
+    bgHover: "rgba(42, 59, 107, 0.1)",
+    glow: "rgba(42, 59, 107, 0.1)",
+    label: "AI phản biện",
+    bgBox: "rgba(42, 59, 107, 0.02)",
+    borderBox: "rgba(42, 59, 107, 0.08)",
+  },
 };
+
+const RESOLVED_TONE = {
+  color: "#64748B", // Slate gray for resolved states
+  bg: "rgba(100, 116, 139, 0.05)",
+  border: "rgba(100, 116, 139, 0.15)",
+  bgHover: "rgba(100, 116, 139, 0.08)",
+  glow: "rgba(100, 116, 139, 0.05)",
+  label: "AI phản biện",
+  bgBox: "rgba(100, 116, 139, 0.02)",
+  borderBox: "rgba(100, 116, 139, 0.08)",
+};
+
+function getVerdictIcon(verdict: CommentVerdict, color: string, isResolved?: boolean) {
+  if (isResolved) {
+    return <Icon.Check size={10} color={color} style={{ flexShrink: 0 }} />;
+  }
+  if (verdict === "agree") {
+    return <Icon.Check size={10} color={color} style={{ flexShrink: 0 }} />;
+  }
+  if (verdict === "partial") {
+    return <Icon.HelpCircle size={11} color={color} style={{ flexShrink: 0 }} />;
+  }
+  return <Icon.AlertTriangle size={11} color={color} style={{ flexShrink: 0 }} />;
+}
 
 // VerdictRow — surfaces /api/analyze-comment's judgment under each
 // annotation card. At rest only the pill is visible (verdict label +
@@ -38,7 +98,10 @@ export function VerdictRow({
   t: I18nStrings;
 }) {
   const needsDecision = verdict === "dispute" && disputeDecision === undefined;
+  const isResolved = verdict === "dispute" && disputeDecision !== undefined;
   const [expanded, setExpanded] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+
   // Reset to collapsed when the verdict changes (re-edit a comment ⇒
   // fresh analysis ⇒ don't leak the previous analysis text into view).
   useEffect(() => {
@@ -53,10 +116,10 @@ export function VerdictRow({
           display: "inline-flex",
           alignItems: "center",
           gap: 6,
-          padding: "3px 8px",
+          padding: "4px 10px",
           background: T.bgMuted,
           border: `1px solid ${T.borderLight}`,
-          borderRadius: 999,
+          borderRadius: 8,
           fontSize: T.fontSize.xxs,
           color: T.textMute,
           fontStyle: "italic",
@@ -69,7 +132,7 @@ export function VerdictRow({
     );
   }
   if (!verdict) return null;
-  const tone = VERDICT_TONE[verdict];
+  const tone = isResolved ? RESOLVED_TONE : VERDICT_TONE[verdict];
   const bodyOpen = expanded || needsDecision;
 
   return (
@@ -79,6 +142,8 @@ export function VerdictRow({
     >
       <button
         type="button"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
         onClick={(e) => {
           e.stopPropagation();
           setExpanded((v) => !v);
@@ -89,40 +154,38 @@ export function VerdictRow({
           display: "inline-flex",
           alignItems: "center",
           gap: 6,
-          padding: "3px 9px",
-          background: tone.bg,
-          border: `1px solid ${tone.color}`,
-          borderRadius: 999,
+          padding: "4px 10px",
+          background: isHovered ? tone.bgHover : tone.bg,
+          border: `1px solid ${isHovered ? tone.color : tone.border}`,
+          borderRadius: 8,
           fontSize: T.fontSize.xxs,
           color: tone.color,
           fontWeight: 600,
           alignSelf: "flex-start",
           cursor: "pointer",
           fontFamily: T.font,
+          boxShadow: isHovered
+            ? `0 4px 12px ${tone.glow}`
+            : "0 1px 2px rgba(0, 0, 0, 0.02)",
+          transform: isHovered ? "translateY(-1px)" : "translateY(0)",
+          transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+          outline: "none",
         }}
       >
-        <span
-          style={{
-            display: "inline-block",
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: tone.color,
-          }}
-        />
-        {tone.label}
+        {getVerdictIcon(verdict, tone.color, isResolved)}
+        <span>{tone.label}</span>
         {verdict !== "dispute" && (
-          <span style={{ fontWeight: 400, color: tone.color }}>
+          <span style={{ fontWeight: 400, opacity: 0.8 }}>
             · sẽ học vào bộ nhớ
           </span>
         )}
         {verdict === "dispute" && disputeDecision === "apply" && (
-          <span style={{ fontWeight: 400, color: tone.color }}>
+          <span style={{ fontWeight: 400, opacity: 0.8 }}>
             · {String(t.appliedLabel ?? "đã áp dụng")}
           </span>
         )}
         {verdict === "dispute" && disputeDecision === "skip" && (
-          <span style={{ fontWeight: 400, color: tone.color }}>
+          <span style={{ fontWeight: 400, opacity: 0.8 }}>
             · {String(t.skippedLabel ?? "đã bỏ qua")}
           </span>
         )}
@@ -155,24 +218,39 @@ export function VerdictRow({
           </span>
         )}
       </button>
+
       {bodyOpen && analysis && (
         <div
           style={{
             fontSize: 13,
             color: T.textSoft,
             lineHeight: 1.55,
-            background: "rgba(192, 139, 48, 0.05)",
-            border: "1px solid #FAF0D9",
+            background: tone.bgBox,
+            border: `1px solid ${tone.borderBox}`,
             borderRadius: 8,
-            padding: "10px 14px",
-            fontStyle: "italic",
+            padding: "12px 14px",
             marginTop: 6,
             fontFamily: T.font,
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
           }}
         >
-          "{analysis}"
+          <span
+            style={{
+              fontSize: 10.5,
+              fontWeight: 700,
+              color: tone.color,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
+            Phân tích của AI
+          </span>
+          <span style={{ fontStyle: "italic" }}>"{analysis}"</span>
         </div>
       )}
+
       {bodyOpen && needsDecision && (
         <div style={{ display: "inline-flex", gap: 8, marginTop: 8 }}>
           <button
@@ -183,7 +261,7 @@ export function VerdictRow({
               fontSize: 13,
               fontWeight: 600,
               color: "#fff",
-              background: T.green,
+              background: `linear-gradient(135deg, ${T.green} 0%, #226b48 100%)`,
               border: "none",
               borderRadius: 8,
               cursor: "pointer",
@@ -193,6 +271,12 @@ export function VerdictRow({
               gap: 6,
               boxShadow: "0 2px 6px rgba(46, 125, 91, 0.15)",
               transition: "opacity 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = "0.9";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = "1";
             }}
           >
             <span>✓</span> {String(t.verdictDisputeApply ?? "Áp dụng góp ý")}
@@ -204,13 +288,19 @@ export function VerdictRow({
               padding: "8px 16px",
               fontSize: 13,
               fontWeight: 600,
-              color: T.textSoft,
-              background: "#EBE7DF",
-              border: "none",
+              color: T.text,
+              background: "linear-gradient(135deg, #f4f2ee 0%, #e1ded8 100%)",
+              border: `1px solid ${T.border}`,
               borderRadius: 8,
               cursor: "pointer",
               fontFamily: T.font,
-              transition: "background-color 0.15s ease",
+              transition: "opacity 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = "0.9";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = "1";
             }}
           >
             {String(t.verdictDisputeSkipShort ?? "Bỏ qua")}
@@ -220,3 +310,4 @@ export function VerdictRow({
     </div>
   );
 }
+
