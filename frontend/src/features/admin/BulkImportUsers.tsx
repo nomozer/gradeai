@@ -110,11 +110,8 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <div style={cardStyle}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ fontSize: T.fontSize.base, fontWeight: 600, color: T.text }}>
-          Nhập hàng loạt từ Excel
-        </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: T.space[3] }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12, flexWrap: "wrap" }}>
         <button type="button" onClick={downloadTemplate} style={ghostBtn}>
           ⬇ Tải file mẫu (.xlsx)
         </button>
@@ -234,16 +231,6 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
     </div>
   );
 }
-
-const cardStyle: React.CSSProperties = {
-  background: T.bgCard,
-  border: `1px solid ${T.border}`,
-  borderRadius: 12,
-  padding: T.space[5],
-  display: "flex",
-  flexDirection: "column",
-  gap: T.space[3],
-};
 
 function primaryBtn(enabled: boolean): React.CSSProperties {
   return {

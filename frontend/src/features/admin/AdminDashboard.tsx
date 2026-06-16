@@ -7,7 +7,7 @@
  * grading surface here by design. Teachers never see this page.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { T } from "../../theme/tokens";
 import { GlobalStyles } from "../../theme/GlobalStyles";
 import {
@@ -146,104 +146,6 @@ function TableRow({ children, isEven }: { children: React.ReactNode; isEven?: bo
     >
       {children}
     </tr>
-  );
-}
-
-function ActionButton({
-  label,
-  iconType,
-  onClick,
-  disabled,
-  title,
-  variant = "accent",
-}: {
-  label: string;
-  iconType: "password" | "lock" | "unlock" | "delete" | "quota";
-  onClick: () => void;
-  disabled?: boolean;
-  title?: string;
-  variant?: "accent" | "amber" | "red";
-}) {
-  const [hovered, setHovered] = useState(false);
-
-  const colors = {
-    accent: { text: T.accent, bg: "rgba(59, 79, 138, 0.05)", border: "rgba(59, 79, 138, 0.15)", hoverBg: "rgba(59, 79, 138, 0.10)" },
-    amber: { text: T.amber, bg: "rgba(192, 139, 48, 0.05)", border: "rgba(192, 139, 48, 0.15)", hoverBg: "rgba(192, 139, 48, 0.10)" },
-    red: { text: T.red, bg: "rgba(184, 66, 58, 0.05)", border: "rgba(184, 66, 58, 0.15)", hoverBg: "rgba(184, 66, 58, 0.10)" },
-  };
-
-  const current = colors[variant];
-
-  const renderIcon = () => {
-    switch (iconType) {
-      case "password":
-        return (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", flexShrink: 0, width: 12, height: 12 }}>
-            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
-          </svg>
-        );
-      case "lock":
-        return (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", flexShrink: 0, width: 12, height: 12 }}>
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
-        );
-      case "unlock":
-        return (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", flexShrink: 0, width: 12, height: 12 }}>
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-          </svg>
-        );
-      case "delete":
-        return (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", flexShrink: 0, width: 12, height: 12 }}>
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            <line x1="10" y1="11" x2="10" y2="17" />
-            <line x1="14" y1="11" x2="14" y2="17" />
-          </svg>
-        );
-      case "quota":
-        return (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", flexShrink: 0, width: 12, height: 12 }}>
-            <path d="M3 13a9 9 0 0 1 18 0" />
-            <line x1="12" y1="13" x2="16" y2="9" />
-            <line x1="3" y1="13" x2="3" y2="13" />
-            <line x1="21" y1="13" x2="21" y2="13" />
-          </svg>
-        );
-    }
-  };
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      onMouseEnter={() => !disabled && setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "6px 12px",
-        borderRadius: 8,
-        border: `1px solid ${disabled ? T.borderLight : current.border}`,
-        background: disabled ? "transparent" : hovered ? current.hoverBg : current.bg,
-        color: disabled ? T.textFaint : current.text,
-        fontSize: 12,
-        fontWeight: 600,
-        cursor: disabled ? "not-allowed" : "pointer",
-        transition: "all 0.15s ease",
-        fontFamily: T.font,
-        opacity: disabled ? 0.6 : 1,
-      }}
-    >
-      {renderIcon()}
-      <span>{label}</span>
-    </button>
   );
 }
 
@@ -725,7 +627,7 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
     void refresh();
   }, [refresh]);
 
-  const onCreate = async (e: React.FormEvent) => {
+  const onCreate = async (e: React.FormEvent, onSuccess?: () => void) => {
     e.preventDefault();
     if (!newUsername.trim() || newPassword.length < 4) return;
     setCreating(true);
@@ -742,6 +644,7 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
       setNewRole("user");
       setNewQuota("");
       await refresh();
+      onSuccess?.();
     } catch (err) {
       setError(errText(err, "Tạo tài khoản thất bại."));
     } finally {
@@ -806,57 +709,42 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
     }
   };
 
+  const [query, setQuery] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? users.filter((u) => u.username.toLowerCase().includes(q))
+    : users;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: T.space[5] }}>
       <h1 style={titleStyle}>Quản lý tài khoản</h1>
       {error && <Banner text={error} />}
 
-      <form onSubmit={onCreate} style={cardStyle}>
-        <div style={{ ...sectionTitleStyle, fontSize: T.fontSize.base, color: T.text, marginBottom: 4 }}>Tạo tài khoản mới</div>
-        <div style={{ display: "flex", gap: T.space[3], flexWrap: "wrap", alignItems: "flex-end" }}>
-          <Field label="Tên đăng nhập">
-            <FormInput
-              value={newUsername}
-              onChange={(e) => setNewUsername(e.target.value)}
-              placeholder="vd: gv_toan_a"
-            />
-          </Field>
-          <Field label="Mật khẩu">
-            <FormInput
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="≥ 4 ký tự"
-            />
-          </Field>
-          <Field label="Vai trò">
-            <FormSelect value={newRole} onChange={(e) => setNewRole(e.target.value)}>
-              <option value="user">Giáo viên</option>
-              <option value="admin">Admin</option>
-            </FormSelect>
-          </Field>
-          <Field label="Hạn mức token (0 = ∞)">
-            <FormInput
-              type="number"
-              value={newQuota}
-              onChange={(e) => setNewQuota(e.target.value)}
-              placeholder="vd: 1000000"
-              style={{ minWidth: 140 }}
-            />
-          </Field>
-          <SubmitButton
-            enabled={!!newUsername.trim() && newPassword.length >= 4}
-            loading={creating}
-            label="Tạo"
-            loadingLabel="Đang tạo…"
-          />
-        </div>
-      </form>
-
-      <BulkImportUsers onDone={refresh} />
-
       <div style={cardStyle}>
-        <div style={{ ...sectionTitleStyle, fontSize: T.fontSize.base, color: T.text, marginBottom: 4 }}>Danh sách tài khoản ({users.length})</div>
+        {/* Toolbar: title + actions, then search */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: T.space[3], flexWrap: "wrap" }}>
+          <div style={{ ...sectionTitleStyle, fontSize: T.fontSize.base, color: T.text }}>
+            Danh sách tài khoản ({users.length})
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button type="button" onClick={() => setShowCreate(true)} style={toolbarPrimaryBtn}>
+              + Tạo tài khoản
+            </button>
+            <button type="button" onClick={() => setShowBulk(true)} style={toolbarGhostBtn}>
+              ⬆ Nhập Excel
+            </button>
+          </div>
+        </div>
+        <FormInput
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Tìm theo tên đăng nhập…"
+          style={{ minWidth: 0, width: "100%", maxWidth: 360 }}
+        />
+
         {loading ? (
           <p style={mutedStyle}>Đang tải…</p>
         ) : (
@@ -868,80 +756,375 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
                   <th style={thStyle}>Vai trò</th>
                   <th style={thStyle}>Trạng thái</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>Hạn mức token</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Thao tác</th>
+                  <th style={{ ...thStyle, textAlign: "right", width: 64 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {users.map((u, idx) => {
-                  const isSelf = me?.id === u.id;
-                  return (
-                    <TableRow key={u.id} isEven={idx % 2 === 0}>
-                      <td style={{ ...tdStyle, fontWeight: 600, color: T.text }}>
-                        {u.username}
-                        {isSelf && (
-                          <span
-                            style={{
-                              marginLeft: 8,
-                              fontSize: 11,
-                              padding: "2px 6px",
-                              borderRadius: 4,
-                              background: T.accentSoft,
-                              color: T.accent,
-                              fontWeight: 500,
-                            }}
-                          >
-                            bạn
-                          </span>
-                        )}
-                      </td>
-                      <td style={tdStyle}>{u.role === "admin" ? "Admin" : "Giáo viên"}</td>
-                      <td style={tdStyle}>
-                        <StatusBadge active={!!u.is_active} />
-                      </td>
-                      <td style={{ ...tdStyle, textAlign: "right", color: T.textMute }}>
-                        {fmtQuota(u.token_quota)}
-                      </td>
-                      <td style={{ ...tdStyle, textAlign: "right", whiteSpace: "nowrap" }}>
-                        <div style={{ display: "inline-flex", gap: 8 }}>
-                          <ActionButton
-                            label="Hạn mức"
-                            iconType="quota"
-                            onClick={() => onSetQuota(u)}
-                            variant="accent"
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ ...tdStyle, textAlign: "center", color: T.textMute }}>
+                      {q ? `Không có tài khoản khớp “${query.trim()}”.` : "Chưa có tài khoản nào."}
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((u, idx) => {
+                    const isSelf = me?.id === u.id;
+                    return (
+                      <TableRow key={u.id} isEven={idx % 2 === 0}>
+                        <td style={{ ...tdStyle, fontWeight: 600, color: T.text }}>
+                          {u.username}
+                          {isSelf && (
+                            <span
+                              style={{
+                                marginLeft: 8,
+                                fontSize: 11,
+                                padding: "2px 6px",
+                                borderRadius: 4,
+                                background: T.accentSoft,
+                                color: T.accent,
+                                fontWeight: 500,
+                              }}
+                            >
+                              bạn
+                            </span>
+                          )}
+                        </td>
+                        <td style={tdStyle}>{u.role === "admin" ? "Admin" : "Giáo viên"}</td>
+                        <td style={tdStyle}>
+                          <StatusBadge active={!!u.is_active} />
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right", color: T.textMute }}>
+                          {fmtQuota(u.token_quota)}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>
+                          <RowActions
+                            user={u}
+                            isSelf={isSelf}
+                            onSetQuota={() => onSetQuota(u)}
+                            onResetPassword={() => onResetPassword(u)}
+                            onToggleActive={() => onToggleActive(u)}
+                            onDelete={() => onDelete(u)}
                           />
-                          <ActionButton
-                            label="Đổi mật khẩu"
-                            iconType="password"
-                            onClick={() => onResetPassword(u)}
-                            variant="accent"
-                          />
-                          <ActionButton
-                            label={u.is_active ? "Khóa" : "Mở khóa"}
-                            iconType={u.is_active ? "lock" : "unlock"}
-                            onClick={() => onToggleActive(u)}
-                            disabled={isSelf}
-                            title={isSelf ? "Không thể tự khóa" : undefined}
-                            variant="amber"
-                          />
-                          <ActionButton
-                            label="Xóa"
-                            iconType="delete"
-                            onClick={() => onDelete(u)}
-                            disabled={isSelf}
-                            title={isSelf ? "Không thể tự xóa" : undefined}
-                            variant="red"
-                          />
-                        </div>
-                      </td>
-                    </TableRow>
-                  );
-                })}
+                        </td>
+                      </TableRow>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {/* Create modal */}
+      {showCreate && (
+        <Modal title="Tạo tài khoản mới" onClose={() => setShowCreate(false)}>
+          <form
+            onSubmit={(e) => onCreate(e, () => setShowCreate(false))}
+            style={{ display: "flex", flexDirection: "column", gap: T.space[4] }}
+          >
+            <Field label="Tên đăng nhập">
+              <FormInput
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+                placeholder="vd: gv_toan_a"
+                style={{ width: "100%" }}
+              />
+            </Field>
+            <Field label="Mật khẩu">
+              <FormInput
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="≥ 4 ký tự"
+                style={{ width: "100%" }}
+              />
+            </Field>
+            <div style={{ display: "flex", gap: T.space[3], flexWrap: "wrap" }}>
+              <Field label="Vai trò">
+                <FormSelect value={newRole} onChange={(e) => setNewRole(e.target.value)}>
+                  <option value="user">Giáo viên</option>
+                  <option value="admin">Admin</option>
+                </FormSelect>
+              </Field>
+              <Field label="Hạn mức token (0 = ∞)">
+                <FormInput
+                  type="number"
+                  value={newQuota}
+                  onChange={(e) => setNewQuota(e.target.value)}
+                  placeholder="vd: 1000000"
+                  style={{ minWidth: 140 }}
+                />
+              </Field>
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+              <button type="button" onClick={() => setShowCreate(false)} style={toolbarGhostBtn}>
+                Hủy
+              </button>
+              <SubmitButton
+                enabled={!!newUsername.trim() && newPassword.length >= 4}
+                loading={creating}
+                label="Tạo"
+                loadingLabel="Đang tạo…"
+              />
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Bulk import modal */}
+      {showBulk && (
+        <Modal title="Nhập hàng loạt từ Excel" width={640} onClose={() => setShowBulk(false)}>
+          <BulkImportUsers onDone={refresh} />
+        </Modal>
+      )}
     </div>
+  );
+}
+
+// Centered modal dialog — backdrop click + ESC close; body scrolls if tall.
+function Modal({
+  title,
+  onClose,
+  children,
+  width = 480,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  width?: number;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(28, 30, 42, 0.45)",
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        padding: "56px 16px",
+        zIndex: 300,
+        overflowY: "auto",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: width,
+          background: T.bgCard,
+          border: `1px solid ${T.border}`,
+          borderRadius: 14,
+          boxShadow: T.shadowStrong,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "14px 18px",
+            borderBottom: `1px solid ${T.borderLight}`,
+          }}
+        >
+          <span style={{ fontSize: T.fontSize.base, fontWeight: 600, color: T.text }}>{title}</span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Đóng"
+            style={{
+              border: "none",
+              background: "transparent",
+              color: T.textMute,
+              cursor: "pointer",
+              fontSize: 20,
+              lineHeight: 1,
+              padding: 4,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+        <div style={{ padding: 18 }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// Per-row overflow (⋯) menu. Fixed-positioned to the kebab button so it
+// isn't clipped by the table's horizontal scroll container.
+function RowActions({
+  user,
+  isSelf,
+  onSetQuota,
+  onResetPassword,
+  onToggleActive,
+  onDelete,
+}: {
+  user: SessionUser;
+  isSelf: boolean;
+  onSetQuota: () => void;
+  onResetPassword: () => void;
+  onToggleActive: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    // Fixed menu would drift on scroll — close it instead.
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+    }
+    setOpen((v) => !v);
+  };
+  const run = (fn: () => void) => () => {
+    setOpen(false);
+    fn();
+  };
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggle}
+        aria-label="Thao tác"
+        aria-haspopup="menu"
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 8,
+          border: `1px solid ${open ? T.accent : T.borderLight}`,
+          background: open ? "rgba(59, 79, 138, 0.06)" : "transparent",
+          color: T.textSoft,
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ display: "block" }}>
+          <circle cx="12" cy="5" r="1.7" />
+          <circle cx="12" cy="12" r="1.7" />
+          <circle cx="12" cy="19" r="1.7" />
+        </svg>
+      </button>
+
+      {open && pos && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 300 }} />
+          <div
+            role="menu"
+            style={{
+              position: "fixed",
+              top: pos.top,
+              right: pos.right,
+              zIndex: 310,
+              width: 200,
+              background: T.bgCard,
+              border: `1px solid ${T.border}`,
+              borderRadius: 10,
+              boxShadow: T.shadowStrong,
+              overflow: "hidden",
+              padding: 6,
+              animation: "fadeUp 0.14s ease-out",
+            }}
+          >
+            <RowMenuItem label="Đặt hạn mức token" onClick={run(onSetQuota)} />
+            <RowMenuItem label="Đổi mật khẩu" onClick={run(onResetPassword)} />
+            <RowMenuItem
+              label={user.is_active ? "Khóa tài khoản" : "Mở khóa"}
+              disabled={isSelf}
+              title={isSelf ? "Không thể tự khóa" : undefined}
+              onClick={run(onToggleActive)}
+            />
+            <RowMenuItem
+              label="Xóa tài khoản"
+              danger
+              disabled={isSelf}
+              title={isSelf ? "Không thể tự xóa" : undefined}
+              onClick={run(onDelete)}
+            />
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+function RowMenuItem({
+  label,
+  onClick,
+  danger,
+  disabled,
+  title,
+}: {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+  title?: string;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const color = disabled ? T.textFaint : danger ? T.red : T.textSoft;
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      title={title}
+      onMouseEnter={() => !disabled && setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        width: "100%",
+        textAlign: "left",
+        padding: "8px 10px",
+        borderRadius: 7,
+        border: "none",
+        background: hovered ? (danger ? "rgba(184, 66, 58, 0.08)" : "rgba(59, 79, 138, 0.06)") : "transparent",
+        color,
+        cursor: disabled ? "not-allowed" : "pointer",
+        fontSize: T.fontSize.sm,
+        fontFamily: T.font,
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -1031,5 +1214,29 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 8,
   outline: "none",
   minWidth: 160,
+};
+
+const toolbarPrimaryBtn: React.CSSProperties = {
+  padding: "9px 16px",
+  fontSize: T.fontSize.sm,
+  fontWeight: 600,
+  color: "#fff",
+  background: T.accent,
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontFamily: T.font,
+};
+
+const toolbarGhostBtn: React.CSSProperties = {
+  padding: "9px 14px",
+  fontSize: T.fontSize.sm,
+  fontWeight: 600,
+  color: T.accent,
+  background: "rgba(59, 79, 138, 0.05)",
+  border: `1px solid rgba(59, 79, 138, 0.15)`,
+  borderRadius: 8,
+  cursor: "pointer",
+  fontFamily: T.font,
 };
 
