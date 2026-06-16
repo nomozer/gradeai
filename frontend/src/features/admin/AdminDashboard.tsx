@@ -840,9 +840,13 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
                 style={{ width: "100%" }}
               />
             </Field>
-            <div style={{ display: "flex", gap: T.space[3], flexWrap: "wrap" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: T.space[3] }}>
               <Field label="Vai trò">
-                <FormSelect value={newRole} onChange={(e) => setNewRole(e.target.value)}>
+                <FormSelect
+                  value={newRole}
+                  onChange={(e) => setNewRole(e.target.value)}
+                  style={{ width: "100%", minWidth: 0 }}
+                >
                   <option value="user">Giáo viên</option>
                   <option value="admin">Admin</option>
                 </FormSelect>
@@ -853,7 +857,7 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
                   value={newQuota}
                   onChange={(e) => setNewQuota(e.target.value)}
                   placeholder="vd: 1000000"
-                  style={{ minWidth: 140 }}
+                  style={{ width: "100%", minWidth: 0 }}
                 />
               </Field>
             </div>
