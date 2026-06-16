@@ -34,7 +34,7 @@ import { Toast } from "./components/ui/Toast";
 import { MobileHint } from "./components/ui/MobileHint";
 import { LoginPage } from "./features/auth/LoginPage";
 import { AdminDashboard } from "./features/admin/AdminDashboard";
-import { getToken, clearSession, isAdmin, AUTH_REQUIRED_EVENT } from "./api/session";
+import { getToken, getUser, clearSession, isAdmin, AUTH_REQUIRED_EVENT } from "./api/session";
 import { logout as logoutApi } from "./api/authApi";
 import type { GradeHistoryEntry } from "./types";
 
@@ -405,6 +405,7 @@ function WorkspacePage() {
         tabs={tabs}
         activeId={activeId}
         onSelectTab={setActive}
+        username={getUser()?.username}
         onLogout={handleLogout}
       />
 

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
 import { Icon } from "../ui/Icon";
 import { T } from "../../theme/tokens";
@@ -19,9 +19,8 @@ interface AppHeaderProps {
   tabs?: Tab[];
   activeId?: string;
   onSelectTab?: (id: string) => void;
-  // Auth controls. ``onOpenAdmin`` only renders its link when ``isAdmin``.
-  isAdmin?: boolean;
-  onOpenAdmin?: () => void;
+  // Logged-in user shown in the avatar account-menu.
+  username?: string;
   onLogout?: () => void;
 }
 
@@ -40,63 +39,31 @@ function initialsOf(label: string): string {
   return (second[0] + last[0]).toUpperCase();
 }
 
-// Two nav idioms — keeps the top bar legible at all widths and follows
-// the convention used by Notion / Linear / Vercel:
-//   • "text"  — primary destinations carry a written label, no icon. The
-//               label IS the affordance; an icon would only crowd it.
-//   • "icon"  — utility actions (help, settings, share-like) collapse to
-//               a single recognisable glyph. Tooltip carries the name.
-type NavKind = "text" | "icon";
-
-interface NavItem {
-  id: string;
-  kind: NavKind;
-  /** Full label — used by `text` kind at laptop+, and by every kind as
-   *  the aria-label / tooltip. */
-  label: string;
-  /** Shortened label for `text` kind at mobile / tablet. */
-  labelShort?: string;
-  /** Required when `kind === "icon"`. Ignored otherwise. */
-  icon?: ReactNode;
-  active: boolean;
-  onClick: () => void;
-  buttonRef?: React.Ref<HTMLButtonElement>;
-}
-
 /**
  * Top app bar — global navigation.
  *
- *   Desktop  : [MIRROR]                  Bài đã chấm   Bộ nhớ AI   (?)
- *   Laptop   : [☰]                       Bài đã chấm   Bộ nhớ AI   (?)
- *   Tablet   : [☰]                       Lịch sử       Bộ nhớ      (?)
- *   Mobile   : [☰]                       Lịch sử       Bộ nhớ      (?)
+ *   [☰ (mobile)]  [MIRROR]   …student navigator…   [ avatar ▾ ]
  *
- * The Help icon's round shape (vs the rounded-square text buttons)
- * already signals "different category" — no separator needed. If we
- * later add 2–3 more utility icons, reintroduce a separator then.
- *
- * To add a new top-level destination or utility, append an entry to the
- * `navItems` array — `kind` determines styling, no other code changes
- * are needed.
+ * All workspace actions — Bài đã chấm / Bộ nhớ AI / Hướng dẫn / Đăng xuất —
+ * live in the avatar account-menu at the far right (see ``AccountMenu``),
+ * keeping the bar uncluttered. The avatar's own rect anchors the history
+ * popover, which clamps itself on-screen.
  */
 export function AppHeader({
   brand,
   onOpenMemory,
   onOpenHelp,
-  memoryActive,
   onToggleHistory,
   historyActive,
   onOpenSidebar,
   tabs,
   activeId,
   onSelectTab,
-  isAdmin,
-  onOpenAdmin,
+  username,
   onLogout,
 }: AppHeaderProps) {
   const bp = useBreakpoint();
   const [hamburgerHovered, setHamburgerHovered] = useState(false);
-  const historyBtnRef = useRef<HTMLButtonElement | null>(null);
 
   // Student navigator — derived state. Only renders when the parent
   // wires up tabs + activeId + onSelectTab (single source of truth: the
@@ -116,75 +83,6 @@ export function AppHeader({
     if (!showNav || activeIndex < 0 || activeIndex >= total - 1) return;
     onSelectTab!(tabs![activeIndex + 1].id);
   };
-
-  const navItems = useMemo<NavItem[]>(() => {
-    const items: NavItem[] = [
-      {
-        id: "history",
-        kind: "text",
-        label: "Bài đã chấm",
-        labelShort: "Lịch sử",
-        active: historyActive,
-        buttonRef: historyBtnRef,
-        onClick: () => {
-          const rect = historyBtnRef.current?.getBoundingClientRect() ?? null;
-          onToggleHistory(rect);
-        },
-      },
-      {
-        id: "memory",
-        kind: "text",
-        label: "Bộ nhớ AI",
-        labelShort: "Bộ nhớ",
-        active: memoryActive,
-        onClick: onOpenMemory,
-      },
-    ];
-    if (isAdmin && onOpenAdmin) {
-      items.push({
-        id: "admin",
-        kind: "text",
-        label: "Quản lý TK",
-        labelShort: "Tài khoản",
-        active: false,
-        onClick: onOpenAdmin,
-      });
-    }
-    items.push({
-      id: "help",
-      kind: "icon",
-      label: "Hướng dẫn",
-      icon: <Icon.HelpCircle size={16} />,
-      active: false,
-      onClick: onOpenHelp,
-    });
-    if (onLogout) {
-      items.push({
-        id: "logout",
-        kind: "text",
-        label: "Đăng xuất",
-        labelShort: "Thoát",
-        active: false,
-        onClick: onLogout,
-      });
-    }
-    return items;
-  }, [
-    historyActive,
-    memoryActive,
-    onOpenMemory,
-    onOpenHelp,
-    onToggleHistory,
-    isAdmin,
-    onOpenAdmin,
-    onLogout,
-  ]);
-
-  // Destinations vs utilities — preserve declaration order within each
-  // group so the array stays the source of truth for ordering.
-  const textItems = navItems.filter((it) => it.kind === "text");
-  const iconItems = navItems.filter((it) => it.kind === "icon");
-  const useShortLabel = bp === "mobile" || bp === "tablet";
 
   return (
     <header
@@ -253,102 +151,266 @@ export function AppHeader({
         />
       )}
 
-      <nav
-        className="header-nav"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: bp === "mobile" ? 2 : 4,
-          flexShrink: 0,
-        }}
-      >
-        {textItems.map((item) => (
-          <NavTextLink key={item.id} item={item} short={useShortLabel} />
-        ))}
-        {iconItems.map((item) => (
-          <NavIconButton key={item.id} item={item} />
-        ))}
-      </nav>
+      <AccountMenu
+        username={username}
+        historyActive={historyActive}
+        onToggleHistory={onToggleHistory}
+        onOpenMemory={onOpenMemory}
+        onOpenHelp={onOpenHelp}
+        onLogout={onLogout}
+      />
     </header>
   );
 }
 
-function NavTextLink({ item, short }: { item: NavItem; short: boolean }) {
-  const [hovered, setHovered] = useState(false);
-  const active = item.active;
-  const label = short && item.labelShort ? item.labelShort : item.label;
+// Avatar account-menu at the far right. Holds every workspace action
+// (history / memory / help / logout) so the bar stays a single chip. The
+// avatar's own rect anchors the history popover (which clamps on-screen).
+function AccountMenu({
+  username,
+  historyActive,
+  onToggleHistory,
+  onOpenMemory,
+  onOpenHelp,
+  onLogout,
+}: {
+  username?: string;
+  historyActive: boolean;
+  onToggleHistory: (anchorRect: DOMRect | null) => void;
+  onOpenMemory: () => void;
+  onOpenHelp: () => void;
+  onLogout?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  const color = active ? T.accentDark : hovered ? T.text : T.textSoft;
-  const background = active
-    ? "rgba(59, 79, 138, 0.10)"
-    : hovered
-      ? "rgba(44, 46, 58, 0.05)"
-      : "transparent";
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const initials = (username || "GV").slice(0, 2).toUpperCase();
+  const run = (fn?: () => void) => () => {
+    setOpen(false);
+    fn?.();
+  };
+  // History is a separate popover anchored under the avatar; close the menu
+  // first, then hand its rect to the parent so the popover hangs beneath.
+  const openHistory = () => {
+    const rect = btnRef.current?.getBoundingClientRect() ?? null;
+    setOpen(false);
+    onToggleHistory(rect);
+  };
 
   return (
-    <button
-      ref={item.buttonRef}
-      type="button"
-      onClick={item.onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      aria-label={item.label}
-      title={item.label}
-      aria-current={active ? "page" : undefined}
-      style={{
-        background,
-        color,
-        border: "none",
-        borderRadius: 8,
-        padding: "8px 12px",
-        fontSize: T.fontSize.sm,
-        fontFamily: T.font,
-        fontWeight: active ? 600 : 500,
-        whiteSpace: "nowrap",
-        cursor: "pointer",
-        transition: "background-color 0.15s ease, color 0.15s ease",
-      }}
-    >
-      {label}
-    </button>
+    <div ref={wrapRef} style={{ position: "relative", flexShrink: 0 }}>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Tài khoản"
+        title={username || "Tài khoản"}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 38,
+          height: 38,
+          borderRadius: "50%",
+          border: `1px solid ${open || historyActive ? T.accent : "rgba(59, 79, 138, 0.18)"}`,
+          background: T.accentSoft,
+          color: T.accentDark,
+          fontWeight: 700,
+          fontSize: 13,
+          fontFamily: T.display,
+          letterSpacing: 0.3,
+          cursor: "pointer",
+          transition: "border-color 0.15s ease, box-shadow 0.15s ease",
+          boxShadow: open ? "0 0 0 3px rgba(59, 79, 138, 0.12)" : "none",
+        }}
+      >
+        {initials}
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          style={{
+            position: "absolute",
+            top: 46,
+            right: 0,
+            width: 224,
+            background: T.bgCard,
+            border: `1px solid ${T.border}`,
+            borderRadius: 10,
+            boxShadow: T.shadowStrong,
+            zIndex: 90,
+            overflow: "hidden",
+            animation: "fadeUp 0.16s ease-out",
+          }}
+        >
+          <div
+            style={{
+              padding: "12px 14px",
+              borderBottom: `1px solid ${T.borderLight}`,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <span
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                background: T.accentSoft,
+                color: T.accentDark,
+                fontWeight: 700,
+                fontSize: 12,
+                fontFamily: T.display,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              {initials}
+            </span>
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: T.fontSize.sm,
+                  fontWeight: 600,
+                  color: T.text,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {username || "Giáo viên"}
+              </div>
+              <div
+                style={{
+                  fontSize: T.fontSize.xxs,
+                  color: T.textMute,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  fontWeight: 600,
+                }}
+              >
+                Giáo viên
+              </div>
+            </div>
+          </div>
+
+          <div style={{ padding: 6 }}>
+            <MenuItem
+              label="Bài đã chấm"
+              icon={<Icon.FileText size={16} />}
+              active={historyActive}
+              onClick={openHistory}
+            />
+            <MenuItem label="Bộ nhớ AI" icon={<Icon.Lightbulb size={16} />} onClick={run(onOpenMemory)} />
+            <MenuItem label="Hướng dẫn" icon={<Icon.HelpCircle size={16} />} onClick={run(onOpenHelp)} />
+          </div>
+
+          {onLogout && (
+            <div style={{ padding: 6, borderTop: `1px solid ${T.borderLight}` }}>
+              <MenuItem
+                label="Đăng xuất"
+                danger
+                icon={
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ display: "block", flexShrink: 0, width: 16, height: 16 }}
+                  >
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                }
+                onClick={run(onLogout)}
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
-function NavIconButton({ item }: { item: NavItem }) {
+function MenuItem({
+  label,
+  icon,
+  onClick,
+  active,
+  danger,
+}: {
+  label: string;
+  icon: ReactNode;
+  onClick: () => void;
+  active?: boolean;
+  danger?: boolean;
+}) {
   const [hovered, setHovered] = useState(false);
-  const active = item.active;
-  const color = active ? T.accentDark : hovered ? T.text : T.textSoft;
-  const background = active
-    ? "rgba(59, 79, 138, 0.10)"
-    : hovered
-      ? "rgba(44, 46, 58, 0.05)"
+  const color = danger ? T.red : active ? T.accentDark : T.textSoft;
+  const background = hovered
+    ? danger
+      ? "rgba(184, 66, 58, 0.08)"
+      : "rgba(59, 79, 138, 0.06)"
+    : active
+      ? "rgba(59, 79, 138, 0.06)"
       : "transparent";
-
   return (
     <button
-      ref={item.buttonRef}
       type="button"
-      onClick={item.onClick}
+      role="menuitem"
+      onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      aria-label={item.label}
-      title={item.label}
-      aria-current={active ? "page" : undefined}
       style={{
-        width: 36,
-        height: 36,
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "9px 10px",
+        borderRadius: 8,
+        border: "none",
         background,
         color,
-        border: "none",
-        borderRadius: "50%",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
         cursor: "pointer",
-        transition: "background-color 0.15s ease, color 0.15s ease",
+        fontSize: T.fontSize.sm,
+        fontWeight: active ? 600 : 500,
+        fontFamily: T.font,
+        textAlign: "left",
+        transition: "background-color 0.12s ease, color 0.12s ease",
       }}
     >
-      {item.icon}
+      <span style={{ display: "inline-flex", flexShrink: 0 }}>{icon}</span>
+      <span>{label}</span>
     </button>
   );
 }
