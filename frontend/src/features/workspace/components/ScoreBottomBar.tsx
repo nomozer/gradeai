@@ -67,98 +67,18 @@ export function ScoreInline({
   }, [grade]);
 
   const teacherDiffsAI = Math.abs(teacherTotal - aiOverall) >= 0.05;
+  const delta = teacherTotal - aiOverall;
+  const deltaText = teacherDiffsAI
+    ? `lệch ${delta > 0 ? "+" : "−"}${fmt(Math.abs(delta))}`
+    : null;
+  // Hero colour: green once finalized, indigo when the teacher diverged from
+  // the AI (signals "you changed it"), plain ink otherwise.
+  const heroColor = finalized ? T.green : teacherDiffsAI ? T.accentDark : T.text;
 
   return (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "clamp(10px, 2.5vw, 16px)",
-        flexWrap: "wrap",
-      }}
-    >
-      <ScoreBlock
-        label="Tổng điểm GV"
-        value={fmt(teacherTotal)}
-        unit={`/ ${fmt(totalMax || 10)}`}
-        tone={finalized ? "green" : teacherDiffsAI ? "accent" : "neutral"}
-        emphasis
-      />
-      <Divider />
-      <ScoreBlock
-        label="AI đề xuất"
-        value={fmt(aiOverall)}
-        unit="/ 10"
-        tone="muted"
-        badge={confidence ? <ConfidenceChip level={confidence} /> : undefined}
-      />
-      {showCounter && perCauCount > 0 && (
-        <>
-          <Divider />
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              fontSize: 12,
-              color: T.textMute,
-              fontFamily: T.font,
-              whiteSpace: "nowrap",
-              fontWeight: 500,
-            }}
-          >
-            <Icon.Check size={12} color={T.textMute} />
-            <span>{perCauCount} câu</span>
-            {adjustedCount > 0 && (
-              <span style={{ color: T.amber, fontWeight: 700 }}>
-                · {adjustedCount} đã chỉnh
-              </span>
-            )}
-          </span>
-        </>
-      )}
-    </div>
-  );
-}
-
-type BlockTone = "neutral" | "accent" | "muted" | "green";
-
-function ScoreBlock({
-  label,
-  value,
-  unit,
-  tone,
-  hint,
-  emphasis,
-  badge,
-}: {
-  label: string;
-  value: string;
-  unit: string;
-  tone: BlockTone;
-  hint?: string;
-  emphasis?: boolean;
-  badge?: React.ReactNode;
-}) {
-  const fg =
-    tone === "green"
-      ? T.green
-      : tone === "accent"
-        ? T.accentDark
-        : tone === "muted"
-          ? T.textSoft
-          : T.text;
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "flex-start",
-        gap: 2,
-        minWidth: 0,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+    <div style={{ display: "inline-flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+      {/* Hero — the teacher's final total is THE number to commit. */}
+      <div style={{ display: "inline-flex", alignItems: "baseline", gap: 7, flexWrap: "wrap" }}>
         <span
           style={{
             fontSize: 10,
@@ -167,53 +87,48 @@ function ScoreBlock({
             color: T.textMute,
             letterSpacing: "0.08em",
             textTransform: "uppercase",
-            lineHeight: 1.2,
           }}
         >
-          {label}
+          Tổng điểm GV
         </span>
-        {badge}
+        <span style={{ fontFamily: T.font, color: heroColor, fontSize: 26, fontWeight: 800, lineHeight: 1 }}>
+          {fmt(teacherTotal)}
+        </span>
+        <span style={{ fontSize: 13, color: T.textMute, fontWeight: 600 }}>
+          / {fmt(totalMax || 10)}
+        </span>
       </div>
-      <span
+
+      {/* Quiet reference line: AI suggestion + divergence + confidence + progress. */}
+      <div
         style={{
           display: "inline-flex",
-          alignItems: "baseline",
-          gap: 4,
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+          fontSize: 12,
           fontFamily: T.font,
-          color: fg,
-          lineHeight: 1.1,
+          fontWeight: 500,
+          color: T.textMute,
         }}
       >
-        <span
-          style={{
-            fontSize: emphasis ? 20 : 15,
-            fontWeight: 700,
-          }}
-        >
-          {value}
+        <span>
+          AI {fmt(aiOverall)}
+          {deltaText && (
+            <span style={{ color: T.amber, fontWeight: 700 }}> · {deltaText}</span>
+          )}
         </span>
-        <span
-          style={{
-            fontSize: T.fontSize.xs,
-            color: T.textMute,
-            fontWeight: 500,
-          }}
-        >
-          {unit}
-        </span>
-        {hint && (
-          <span
-            style={{
-              fontSize: T.fontSize.xs,
-              color: T.textFaint,
-              fontWeight: 500,
-              marginLeft: 4,
-            }}
-          >
-            ({hint})
+        {confidence && <ConfidenceChip level={confidence} />}
+        {showCounter && perCauCount > 0 && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <Icon.Check size={12} color={T.textMute} />
+            {perCauCount} câu
+            {adjustedCount > 0 && (
+              <span style={{ color: T.amber, fontWeight: 700 }}>· {adjustedCount} đã chỉnh</span>
+            )}
           </span>
         )}
-      </span>
+      </div>
     </div>
   );
 }
@@ -275,21 +190,6 @@ function ConfidenceChip({ level }: { level: GradeConfidence }) {
       />
       {p.label}
     </span>
-  );
-}
-
-function Divider() {
-  return (
-    <span
-      aria-hidden
-      style={{
-        width: 1,
-        height: 24,
-        background: T.border,
-        opacity: 0.6,
-        flex: "0 0 auto",
-      }}
-    />
   );
 }
 
