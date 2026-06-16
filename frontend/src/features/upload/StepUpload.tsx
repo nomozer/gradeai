@@ -345,35 +345,10 @@ export function StepUpload({
                   color: T.textSoft,
                   fontWeight: 600,
                   lineHeight: 1.4,
-                  marginBottom: 12,
                 }}
               >
                 {dragOverTask ? "Thả file để tải lên!" : String(t.promptDrop ?? "Thả file PDF đề bài vào đây")}
               </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openFilePicker(taskInputRef);
-                }}
-                style={{
-                  display: "inline-block",
-                  padding: "6px 16px",
-                  borderRadius: 999,
-                  background: hoveredZone === "task" ? T.accent : "transparent",
-                  border: `1px solid ${hoveredZone === "task" ? T.accent : T.border}`,
-                  color: hoveredZone === "task" ? "#FFFFFF" : T.textSoft,
-                  fontFamily: T.font,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: "0.03em",
-                  textTransform: "uppercase",
-                  transition: "all 0.2s",
-                  cursor: "pointer",
-                }}
-              >
-                Chọn tệp
-              </button>
             </div>
           ) : (
             <div
@@ -681,35 +656,10 @@ export function StepUpload({
                   color: T.textSoft,
                   fontWeight: 600,
                   lineHeight: 1.4,
-                  marginBottom: 12,
                 }}
               >
                 {dragOverEssay ? "Thả file để tải lên!" : String(t.imageDrop ?? "Thả ảnh hoặc PDF bài làm vào đây")}
               </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openFilePicker(essayInputRef);
-                }}
-                style={{
-                  display: "inline-block",
-                  padding: "6px 16px",
-                  borderRadius: 999,
-                  background: hoveredZone === "essay" ? T.green : "transparent",
-                  border: `1px solid ${hoveredZone === "essay" ? T.green : T.border}`,
-                  color: hoveredZone === "essay" ? "#FFFFFF" : T.textSoft,
-                  fontFamily: T.font,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: "0.03em",
-                  textTransform: "uppercase",
-                  transition: "all 0.2s",
-                  cursor: "pointer",
-                }}
-              >
-                Chọn tệp
-              </button>
             </div>
           ) : (
             <div
