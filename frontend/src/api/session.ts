@@ -13,6 +13,7 @@ export interface SessionUser {
   username: string;
   role: string;
   is_active?: boolean;
+  token_quota?: number;
   created_at?: string | null;
 }
 

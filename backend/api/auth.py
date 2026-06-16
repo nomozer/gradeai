@@ -96,6 +96,7 @@ class UserOut(BaseModel):
     username: str
     role: str
     is_active: bool
+    token_quota: int = 0
     created_at: str | None = None
 
 
@@ -113,12 +114,14 @@ class CreateUserRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=4, max_length=256)
     role: str = ROLE_USER
+    token_quota: int = Field(default=0, ge=0)
 
 
 class UpdateUserRequest(BaseModel):
     password: str | None = Field(default=None, min_length=4, max_length=256)
     is_active: bool | None = None
     role: str | None = None
+    token_quota: int | None = Field(default=None, ge=0)
 
 
 class UsersResponse(BaseModel):
@@ -130,9 +133,11 @@ class OverviewUserRow(BaseModel):
     username: str
     role: str
     is_active: bool
+    token_quota: int = 0
     created_at: str | None = None
     lessons: int = 0
     graded: int = 0
+    tokens_used: int = 0
 
 
 class OverviewResponse(BaseModel):
@@ -193,13 +198,16 @@ async def overview(_admin: dict = Depends(require_admin)):
         u_usage = usage.get(u["id"], {})
         lessons = int(u_usage.get("lessons", 0))
         graded = int(u_usage.get("graded", 0))
+        tokens = int(u_usage.get("tokens", 0))
         total_lessons += lessons
         total_graded += graded
         if u["role"] == ROLE_ADMIN:
             admins += 1
         else:
             teachers += 1
-        rows.append(OverviewUserRow(**u, lessons=lessons, graded=graded))
+        rows.append(
+            OverviewUserRow(**u, lessons=lessons, graded=graded, tokens_used=tokens)
+        )
     return OverviewResponse(
         total_accounts=len(rows),
         total_teachers=teachers,
@@ -221,7 +229,7 @@ async def create_user(req: CreateUserRequest, _admin: dict = Depends(require_adm
     store = _require_store()
     role = req.role if req.role in (ROLE_ADMIN, ROLE_USER) else ROLE_USER
     try:
-        user = store.create_user(req.username, req.password, role)
+        user = store.create_user(req.username, req.password, role, req.token_quota)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     logger.info("Admin %s created user %s (role=%s)", _admin["username"], user["username"], role)
@@ -251,6 +259,8 @@ async def update_user(
         store.set_password(user_id, req.password)
     if req.role is not None and req.role in (ROLE_ADMIN, ROLE_USER):
         store.set_role(user_id, req.role)
+    if req.token_quota is not None:
+        store.set_token_quota(user_id, req.token_quota)
     if req.is_active is not None:
         store.set_active(user_id, req.is_active)
 

@@ -889,27 +889,53 @@ class MemoryManager:
         }
 
     def usage_by_user(self) -> dict[int, dict[str, int]]:
-        """Per-user counts of lessons + graded runs (ADMIN aggregate).
+        """Per-user counts of lessons + graded runs + tokens (ADMIN aggregate).
 
         Deliberately NOT scoped by the current-user ContextVar — this powers
         the admin dashboard's system-wide overview, which must see every
-        teacher's totals. Returns ``{user_id: {"lessons": n, "graded": m}}``.
+        teacher's totals. Returns
+        ``{user_id: {"lessons": n, "graded": m, "tokens": t}}``.
         """
         out: dict[int, dict[str, int]] = {}
+
+        def _row(uid: int) -> dict[str, int]:
+            return out.setdefault(int(uid), {"lessons": 0, "graded": 0, "tokens": 0})
+
         with self._get_session() as session:
             for uid, cnt in (
                 session.query(Lesson.user_id, func.count(Lesson.id))
                 .group_by(Lesson.user_id)
                 .all()
             ):
-                out.setdefault(int(uid), {"lessons": 0, "graded": 0})["lessons"] = int(cnt)
-            for uid, cnt in (
-                session.query(PipelineRun.user_id, func.count(PipelineRun.id))
+                _row(uid)["lessons"] = int(cnt)
+            for uid, cnt, tok in (
+                session.query(
+                    PipelineRun.user_id,
+                    func.count(PipelineRun.id),
+                    func.coalesce(func.sum(PipelineRun.total_tokens), 0),
+                )
                 .group_by(PipelineRun.user_id)
                 .all()
             ):
-                out.setdefault(int(uid), {"lessons": 0, "graded": 0})["graded"] = int(cnt)
+                row = _row(uid)
+                row["graded"] = int(cnt)
+                row["tokens"] = int(tok or 0)
         return out
+
+    def tokens_used(self, user_id: int) -> int:
+        """Total Gemini tokens this user has spent across all grading runs.
+
+        Used by the grading endpoints to enforce a per-teacher token quota.
+        Explicit ``user_id`` (not the ContextVar) so the quota check reads the
+        same id the auth dependency resolved, without ordering assumptions.
+        """
+        with self._get_session() as session:
+            total = (
+                session.query(func.coalesce(func.sum(PipelineRun.total_tokens), 0))
+                .filter(PipelineRun.user_id == user_id)
+                .scalar()
+            )
+        return int(total or 0)
 
     def find_recent_lesson(
         self,

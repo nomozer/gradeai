@@ -101,20 +101,42 @@ def _pipeline_http_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=status_code, detail=safe_detail)
 
 
+def _enforce_token_quota(user: dict, memory: MemoryManager) -> None:
+    """Block grading once a teacher has spent their Gemini token quota.
+
+    ``token_quota == 0`` means unlimited. The check is BEFORE the pipeline
+    try-block in each handler so the 403 propagates as-is (HTTPException is an
+    Exception subclass — inside the try it would be reclassified as 502).
+    """
+    quota = int(user.get("token_quota") or 0)
+    if quota <= 0:
+        return
+    used = memory.tokens_used(int(user["id"]))
+    if used >= quota:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Đã dùng hết hạn mức token ({used:,}/{quota:,}). "
+                "Liên hệ admin để được cấp thêm."
+            ),
+        )
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
 
 @router.post("/api/generate", response_model=GenerateResponse)
-async def generate(req: GenerateRequest, _user: dict = Depends(get_current_user)):
+async def generate(req: GenerateRequest, user: dict = Depends(get_current_user)):
     """Run the Gemini VLM Grader pipeline for a given essay.
 
     Despite the legacy URL ``/api/generate``, this is a multimodal grading
     endpoint. Provide ``image_b64`` to enable true VLM grading; omit it to
     fall back to topic-only grading.
     """
-    _, _, orchestrator = _require_deps()
+    memory, _, orchestrator = _require_deps()
+    _enforce_token_quota(user, memory)
     try:
         answer_key = None
         if req.answer_key_pdf_b64:
@@ -143,14 +165,14 @@ async def generate(req: GenerateRequest, _user: dict = Depends(get_current_user)
 
 
 @router.post("/api/regrade", response_model=RegradeResponse)
-async def regrade(req: RegradeRequest, _user: dict = Depends(get_current_user)):
+async def regrade(req: RegradeRequest, user: dict = Depends(get_current_user)):
     """Atomic HITL re-grade: save feedback → re-run pipeline.
 
     Primary endpoint for the revise/reject path.  Guarantees the teacher's
     correction is persisted as a lesson BEFORE the pipeline re-runs, so
     the Grader always sees the latest feedback.
     """
-    _, prompt_orch, orchestrator = _require_deps()
+    memory, prompt_orch, orchestrator = _require_deps()
     action = req.action.lower().strip()
     if action not in {"revise", "reject"}:
         raise HTTPException(
@@ -163,6 +185,9 @@ async def regrade(req: RegradeRequest, _user: dict = Depends(get_current_user)):
             status_code=400,
             detail='"comment" is required for regrade.',
         )
+
+    # Quota gate before any work (re-grade re-runs the Gemini pipeline).
+    _enforce_token_quota(user, memory)
 
     # 1 — Persist lesson (reject=5.0 > revise=4.0, per retrieval ordering)
     score = 5.0 if action == "reject" else 4.0

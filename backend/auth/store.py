@@ -30,6 +30,8 @@ from sqlalchemy import (
     Text,
     create_engine,
     event,
+    inspect,
+    text,
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import (
@@ -65,6 +67,9 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     role: Mapped[str] = mapped_column(Text, nullable=False, default=ROLE_USER)
     is_active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # Max total Gemini tokens this user may spend on grading. 0 = unlimited.
+    # Enforced in the grading endpoints against the sum of their pipeline runs.
+    token_quota: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -75,6 +80,7 @@ class User(Base):
             "username": self.username,
             "role": self.role,
             "is_active": bool(self.is_active),
+            "token_quota": int(self.token_quota or 0),
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
         if include_hash:
@@ -120,7 +126,29 @@ class UserStore:
             cur.close()
 
         Base.metadata.create_all(self._engine)
+        self._migrate()
         self._SessionLocal = sessionmaker(bind=self._engine, expire_on_commit=False)
+
+    def _migrate(self) -> None:
+        """Add columns introduced after the initial users schema on legacy DBs.
+
+        ``create_all`` only creates MISSING tables — it never alters an
+        existing one. ``token_quota`` was added after the first users table
+        shipped, so probe + ``ALTER TABLE`` if absent (cheap on SQLite).
+        """
+        inspector = inspect(self._engine)
+        if not inspector.has_table("users"):
+            return
+        cols = {c["name"] for c in inspector.get_columns("users")}
+        if "token_quota" not in cols:
+            with self._engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE users "
+                        "ADD COLUMN token_quota INTEGER NOT NULL DEFAULT 0"
+                    )
+                )
+            logger.info("Migrated 'users' table: added 'token_quota' column")
 
     def _session(self) -> Session:
         return self._SessionLocal()
@@ -128,7 +156,11 @@ class UserStore:
     # ---- users ------------------------------------------------------------
 
     def create_user(
-        self, username: str, password: str, role: str = ROLE_USER
+        self,
+        username: str,
+        password: str,
+        role: str = ROLE_USER,
+        token_quota: int = 0,
     ) -> dict[str, Any]:
         """Create a user. Raises ValueError if the username already exists."""
         username = (username or "").strip()
@@ -141,6 +173,7 @@ class UserStore:
             password_hash=hash_password(password),
             role=role,
             is_active=1,
+            token_quota=max(0, int(token_quota or 0)),
         )
         with self._session() as session:
             session.add(user)
@@ -197,6 +230,15 @@ class UserStore:
             session.commit()
         # Force re-login everywhere after a password change.
         self.delete_sessions_for_user(user_id)
+        return True
+
+    def set_token_quota(self, user_id: int, quota: int) -> bool:
+        with self._session() as session:
+            user = session.get(User, user_id)
+            if user is None:
+                return False
+            user.token_quota = max(0, int(quota or 0))
+            session.commit()
         return True
 
     def set_role(self, user_id: int, role: str) -> bool:

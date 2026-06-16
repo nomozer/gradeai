@@ -34,6 +34,7 @@ export function getMe(): Promise<SessionUser> {
 export interface OverviewUserRow extends SessionUser {
   lessons: number;
   graded: number;
+  tokens_used: number;
 }
 
 export interface Overview {
@@ -57,13 +58,14 @@ export function createUser(body: {
   username: string;
   password: string;
   role: string;
+  token_quota?: number;
 }): Promise<SessionUser> {
   return apiPost<typeof body, SessionUser>("/auth/users", body);
 }
 
 export function updateUser(
   id: number,
-  body: { password?: string; is_active?: boolean; role?: string },
+  body: { password?: string; is_active?: boolean; role?: string; token_quota?: number },
 ): Promise<SessionUser> {
   return apiPatch<typeof body, SessionUser>(`/auth/users/${id}`, body);
 }
