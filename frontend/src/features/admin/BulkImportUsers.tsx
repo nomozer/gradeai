@@ -52,6 +52,7 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<BulkCreateResult | null>(null);
+  const [dragOver, setDragOver] = useState(false);
 
   const reset = () => {
     setRows([]);
@@ -61,9 +62,7 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const parseFile = async (file: File) => {
     setError("");
     setResult(null);
     try {
@@ -92,6 +91,18 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
     }
   };
 
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) void parseFile(file);
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) void parseFile(file);
+  };
+
   const invalidCount = rows.filter((r) => !r.username || r.password.length < 4).length;
 
   const onSubmit = async () => {
@@ -110,36 +121,110 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: T.space[3] }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12, flexWrap: "wrap" }}>
-        <button type="button" onClick={downloadTemplate} style={ghostBtn}>
-          ⬇ Tải file mẫu (.xlsx)
-        </button>
+    <div style={{ display: "flex", flexDirection: "column", gap: T.space[4] }}>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        onChange={onFile}
+        style={{ display: "none" }}
+      />
+
+      {/* Step 1 — template + column spec */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <StepLabel n={1} text="Tải mẫu rồi điền dữ liệu trong Excel" />
+          <button type="button" onClick={downloadTemplate} style={ghostBtn}>
+            ⬇ File mẫu (.xlsx)
+          </button>
+        </div>
+        <div
+          style={{
+            border: `1px solid ${T.borderLight}`,
+            borderRadius: 8,
+            overflow: "hidden",
+            fontSize: T.fontSize.xs,
+          }}
+        >
+          {[
+            ["username", "Bắt buộc"],
+            ["password", "Tối thiểu 4 ký tự"],
+            ["role", "user / admin · để trống = giáo viên"],
+            ["token_quota", "0 = không giới hạn"],
+          ].map(([col, desc], i) => (
+            <div
+              key={col}
+              style={{
+                display: "flex",
+                gap: 12,
+                padding: "6px 12px",
+                background: i % 2 ? "transparent" : "rgba(59, 79, 138, 0.03)",
+              }}
+            >
+              <code style={{ minWidth: 96, color: T.accent, fontWeight: 600, fontFamily: T.mono }}>{col}</code>
+              <span style={{ color: T.textMute }}>{desc}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <div style={{ fontSize: T.fontSize.xs, color: T.textMute }}>
-        Cột: <b>username</b>, <b>password</b> (≥4 ký tự), <b>role</b> (user/admin, trống = giáo viên),{" "}
-        <b>token_quota</b> (0 = không giới hạn).
-      </div>
-
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".xlsx,.xls,.csv"
-          onChange={onFile}
-          style={{ display: "none" }}
-        />
-        <button type="button" onClick={() => fileRef.current?.click()} style={primaryBtn(true)}>
-          Chọn file Excel
-        </button>
+      {/* Step 2 — dropzone */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <StepLabel n={2} text="Tải file đã điền lên" />
+        <div
+          onClick={() => fileRef.current?.click()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={onDrop}
+          role="button"
+          tabIndex={0}
+          style={{
+            border: `2px dashed ${dragOver ? T.accent : T.border}`,
+            borderRadius: 12,
+            background: dragOver ? "rgba(59, 79, 138, 0.05)" : T.bgMuted,
+            padding: "28px 16px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 8,
+            cursor: "pointer",
+            transition: "border-color 0.15s ease, background 0.15s ease",
+            textAlign: "center",
+          }}
+        >
+          <span
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              background: T.accentSoft,
+              color: T.accent,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+          </span>
+          <div style={{ fontSize: T.fontSize.sm, fontWeight: 600, color: T.text }}>
+            Kéo thả file Excel vào đây, hoặc bấm để chọn
+          </div>
+          <div style={{ fontSize: T.fontSize.xs, color: T.textMute }}>Hỗ trợ .xlsx · .xls · .csv</div>
+        </div>
         {fileName && (
-          <span style={{ fontSize: T.fontSize.sm, color: T.textSoft }}>
-            {fileName} — <b>{rows.length}</b> dòng
+          <div style={{ fontSize: T.fontSize.sm, color: T.textSoft }}>
+            Đã chọn: <b>{fileName}</b> — {rows.length} dòng
             {invalidCount > 0 && (
               <span style={{ color: T.red }}> ({invalidCount} dòng thiếu/sai sẽ bị bỏ qua)</span>
             )}
-          </span>
+          </div>
         )}
       </div>
 
@@ -228,6 +313,31 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function StepLabel({ n, text }: { n: number; text: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: "50%",
+          background: T.accent,
+          color: "#fff",
+          fontSize: 12,
+          fontWeight: 700,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        {n}
+      </span>
+      <span style={{ fontSize: T.fontSize.sm, fontWeight: 600, color: T.text }}>{text}</span>
     </div>
   );
 }
