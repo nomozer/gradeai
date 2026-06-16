@@ -215,14 +215,18 @@ export function OriginalImageModal({
                 {openNewTabLabel}
               </a>
             </div>
-            {/* <object> renders blob PDFs where some browsers leave an
-                <iframe> blank; the nested <iframe> is the fallback when
-                <object> itself can't render. If both fail, the strip above
-                still offers "open in new tab". */}
-            <object
-              data={viewerUrl}
-              type="application/pdf"
-              aria-label={originalImageLabel}
+            {/* key={viewerUrl} forces a fresh <iframe> whenever the blob URL
+                changes. This matters under React StrictMode (dev), which runs
+                the blob effect twice — create A → revoke A → create B. Without
+                the key the element could stay bound to the now-revoked A and
+                render blank; remounting on the new URL guarantees it loads the
+                live blob. <iframe> reloads on src change far more reliably than
+                <object> reloads on data change. */}
+            <iframe
+              key={viewerUrl}
+              src={viewerUrl}
+              title={originalImageLabel}
+              loading="eager"
               style={{
                 display: "block",
                 width: "100%",
@@ -230,20 +234,7 @@ export function OriginalImageModal({
                 border: "none",
                 background: "#fff",
               }}
-            >
-              <iframe
-                src={viewerUrl}
-                title={originalImageLabel}
-                loading="eager"
-                style={{
-                  display: "block",
-                  width: "100%",
-                  height: "100%",
-                  border: "none",
-                  background: "#fff",
-                }}
-              />
-            </object>
+            />
           </div>
         ) : (
           <img
