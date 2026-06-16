@@ -184,7 +184,10 @@ export function OriginalImageModal({
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
-                padding: "8px 12px",
+                // Reserve room on the right so the absolute ✕ close button
+                // (top:10 / right:10, 32px) doesn't sit on top of the
+                // "Mở ở tab mới" link.
+                padding: "8px 52px 8px 12px",
                 background: T.bgElevated,
                 borderBottom: `1px solid ${T.border}`,
                 fontSize: 13,
@@ -212,10 +215,14 @@ export function OriginalImageModal({
                 {openNewTabLabel}
               </a>
             </div>
-            <iframe
-              src={viewerUrl}
-              title={originalImageLabel}
-              loading="eager"
+            {/* <object> renders blob PDFs where some browsers leave an
+                <iframe> blank; the nested <iframe> is the fallback when
+                <object> itself can't render. If both fail, the strip above
+                still offers "open in new tab". */}
+            <object
+              data={viewerUrl}
+              type="application/pdf"
+              aria-label={originalImageLabel}
               style={{
                 display: "block",
                 width: "100%",
@@ -223,7 +230,20 @@ export function OriginalImageModal({
                 border: "none",
                 background: "#fff",
               }}
-            />
+            >
+              <iframe
+                src={viewerUrl}
+                title={originalImageLabel}
+                loading="eager"
+                style={{
+                  display: "block",
+                  width: "100%",
+                  height: "100%",
+                  border: "none",
+                  background: "#fff",
+                }}
+              />
+            </object>
           </div>
         ) : (
           <img
