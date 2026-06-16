@@ -32,6 +32,7 @@ import { HelpModal } from "./features/help/HelpModal";
 import { GradeHistoryDropdown } from "./features/history/GradeHistoryDropdown";
 import { Toast } from "./components/ui/Toast";
 import { MobileHint } from "./components/ui/MobileHint";
+import { AccessGate } from "./features/auth/AccessGate";
 import type { GradeHistoryEntry } from "./types";
 
 const MEMORY_HASH = "#memory";
@@ -47,7 +48,9 @@ export default function App() {
   // state on the memory page.
   const [memoryRoute] = useState<boolean>(isMemoryRoute);
 
-  return memoryRoute ? <MemoryPage /> : <WorkspacePage />;
+  return (
+    <AccessGate>{memoryRoute ? <MemoryPage /> : <WorkspacePage />}</AccessGate>
+  );
 }
 
 // ---------------------------------------------------------------------------

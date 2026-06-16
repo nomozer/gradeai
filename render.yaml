@@ -1,0 +1,60 @@
+# Render Blueprint — backend (FastAPI) for GradeAI / HITL Mirror.
+# Deploy: Render Dashboard → New → Blueprint → connect this repo → Apply.
+# Render reads this file and provisions the service.
+#
+# Plan choice: `starter` (~$7/mo) + the persistent disk below is the OPTIMAL
+# config and the default here, because the whole HITL thesis is "teacher
+# feedback becomes retrievable lessons". On the FREE tier there is NO disk and
+# the service sleeps after ~15 min idle, which RESETS the lessons corpus
+# (SQLite + ChromaDB) on every restart — defeating that feature. For a
+# throwaway demo only, set `plan: free` and delete the `disk:` block.
+
+services:
+  - type: web
+    name: gradeai-backend
+    runtime: python
+    rootDir: backend
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    # Single worker: the in-process singletons (MemoryManager, Chroma client,
+    # file-part LRU cache) are per-process and must not be duplicated/raced.
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
+    # Persistent disk so the lessons corpus (SQLite + ChromaDB under
+    # backend/data) survives restarts and redeploys. Requires a paid plan.
+    disk:
+      name: gradeai-data
+      mountPath: /opt/render/project/src/backend/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      # Disable the heartbeat watchdog. Without this the backend self-exits
+      # ~90s after the last browser ping (it is a dev-only auto-shutdown).
+      - key: DEV_MODE
+        value: "1"
+      # The backend's own public hostname (TrustedHostMiddleware rejects others
+      # with HTTP 400). UPDATE if Render assigns a different subdomain or you
+      # attach a custom domain.
+      - key: ALLOWED_HOSTS
+        value: gradeai-backend-xag2.onrender.com
+      # Your Vercel site URL(s), comma-separated, no trailing slash. Drives
+      # both CORS and the CSRF origin check (the Vercel /api proxy forwards the
+      # browser's Origin = your Vercel domain). UPDATE to your real Vercel URL.
+      - key: CORS_ORIGINS
+        value: https://gradeai.vercel.app
+      - key: CSRF_TRUSTED_ORIGINS
+        value: https://gradeai.vercel.app
+      # Shared access token — the anti-abuse gate. The frontend sends it as the
+      # X-Access-Token header on every /api/* request; a missing/wrong token is
+      # rejected with 401 before it can spend the Gemini key. Secret — set the
+      # real value in the Render dashboard (Environment tab). `sync: false`
+      # tells Render to prompt for it instead of reading it from git.
+      - key: ACCESS_TOKEN
+        sync: false
+      # Secret — set the real value in the Render dashboard, never in git.
+      - key: GOOGLE_API_KEY
+        sync: false
+      # Optional: pin a Gemini model. Leave unset to use the built-in fallback
+      # chain (gemini-3-flash-preview → gemini-2.5-flash).
+      - key: GEMINI_MODEL
+        sync: false

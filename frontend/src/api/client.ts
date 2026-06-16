@@ -12,7 +12,18 @@
  * route through `apiPost` here.
  */
 
+import { getAccessToken, clearAccessToken, AUTH_REQUIRED_EVENT } from "./accessToken";
+
 export const API_BASE = "/api";
+
+/** Merge the access-token header onto any outgoing request's headers. */
+function withAuth(headers?: HeadersInit): Record<string, string> {
+  const token = getAccessToken();
+  return {
+    ...(headers as Record<string, string> | undefined),
+    ...(token ? { "X-Access-Token": token } : {}),
+  };
+}
 
 export class ApiError extends Error {
   readonly status: number;
@@ -36,7 +47,16 @@ async function _request<TRes>(
   init: RequestInit,
   options: RequestOptions,
 ): Promise<TRes> {
-  const res = await fetch(`${API_BASE}${path}`, { ...init, signal: options.signal });
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: withAuth(init.headers),
+    signal: options.signal,
+  });
+  if (res.status === 401) {
+    // Missing/expired access token — drop it and let the gate re-prompt.
+    clearAccessToken();
+    window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
+  }
   if (!res.ok) {
     const detail = await res
       .json()
@@ -91,9 +111,9 @@ export function apiDelete<TRes>(
 export function apiPostQuiet(path: string, body?: any): Promise<void> {
   const init: RequestInit = { method: "POST" };
   if (body !== undefined) {
-    init.headers = { "Content-Type": "application/json" };
     init.body = JSON.stringify(body);
   }
+  init.headers = withAuth(body !== undefined ? { "Content-Type": "application/json" } : undefined);
   return fetch(`${API_BASE}${path}`, init)
     .then(() => undefined)
     .catch(() => undefined);

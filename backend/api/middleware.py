@@ -8,6 +8,7 @@ during app bootstrap.
 
 from __future__ import annotations
 
+import hmac
 import logging
 from collections.abc import Iterable, Awaitable, Callable
 from urllib.parse import urlparse
@@ -77,6 +78,53 @@ def make_csrf_origin_guard(
     return csrf_origin_guard
 
 
+def make_access_token_guard(
+    token: str,
+    *,
+    enabled: bool = True,
+) -> Callable[[Request, Callable[[Request], Awaitable]], Awaitable]:
+    """Build a shared-access-token gate for every ``/api/*`` request.
+
+    This is a coarse anti-abuse gate for a fixed group of users — NOT
+    per-user auth. Its only job is to stop the public internet from spending
+    the Gemini API key once the backend is reachable on the open web: every
+    ``/api/*`` request must carry a matching ``X-Access-Token`` header.
+
+    ``OPTIONS`` is exempt so CORS preflight still succeeds. When ``enabled``
+    is False (no ``ACCESS_TOKEN`` configured) the guard is a no-op, so local
+    dev and the test suite keep running unauthenticated.
+
+    Returns an async function suitable for ``app.middleware("http")``.
+    """
+    expected = token or ""
+
+    async def access_token_guard(request: Request, call_next):
+        if (
+            enabled
+            and request.url.path.startswith("/api/")
+            and request.method.upper() != "OPTIONS"
+        ):
+            provided = request.headers.get("x-access-token", "")
+            # Constant-time compare so a wrong token can't be brute-forced
+            # by timing the response.
+            if not (provided and hmac.compare_digest(provided, expected)):
+                logger.warning(
+                    "Blocked API request with missing/invalid access token "
+                    "method=%s path=%s",
+                    request.method,
+                    request.url.path,
+                )
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "detail": "Truy cập bị từ chối: thiếu hoặc sai mã truy cập."
+                    },
+                )
+        return await call_next(request)
+
+    return access_token_guard
+
+
 def make_request_size_guard(
     max_bytes: int,
 ) -> Callable[[Request, Callable[[Request], Awaitable]], Awaitable]:
@@ -138,6 +186,7 @@ __all__ = [
     "CSRF_UNSAFE_METHODS",
     "normalize_origin",
     "make_csrf_origin_guard",
+    "make_access_token_guard",
     "make_request_size_guard",
     "make_security_headers_middleware",
 ]

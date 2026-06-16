@@ -47,6 +47,7 @@ from api.heartbeat import router as heartbeat_router, start_watchdog
 from api.history import router as history_router, attach_history_memory
 from api.memory import router as memory_router, attach_memory
 from api.middleware import (
+    make_access_token_guard,
     make_csrf_origin_guard,
     make_request_size_guard,
     make_security_headers_middleware,
@@ -99,6 +100,11 @@ CSRF_ORIGIN_CHECK_ENABLED = _env_flag("CSRF_ORIGIN_CHECK", "1")
 CORS_ALLOW_CREDENTIALS = _env_flag("CORS_ALLOW_CREDENTIALS", "0")
 MAX_REQUEST_BODY_BYTES = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(40 * 1024 * 1024)))
 PROMPT_LOGS_ENABLED = _env_flag("HITL_PROMPT_LOGS", "0")
+# Shared anti-abuse gate. UNSET locally ⇒ guard disabled (dev + tests run
+# unauthenticated). Set to a secret on a public deploy so a missing/wrong
+# X-Access-Token header on any /api/* request is rejected before it can
+# spend the Gemini key.
+ACCESS_TOKEN = os.getenv("ACCESS_TOKEN", "").strip()
 
 
 @asynccontextmanager
@@ -122,13 +128,19 @@ app.middleware("http")(
         enabled=CSRF_ORIGIN_CHECK_ENABLED,
     )
 )
+# Added after the CSRF guard so it sits just inside CORS: preflight OPTIONS
+# still gets CORS headers, and a 401 from a blocked request still carries
+# them so the browser can read the rejection.
+app.middleware("http")(
+    make_access_token_guard(ACCESS_TOKEN, enabled=bool(ACCESS_TOKEN))
+)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=CORS_ALLOW_CREDENTIALS,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "X-Access-Token"],
 )
 
 # ---------------------------------------------------------------------------
