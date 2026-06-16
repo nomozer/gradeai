@@ -42,17 +42,19 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 # uvicorn is launched from backend/, so direct imports (no "backend." prefix).
+from api.auth import router as auth_router, attach_auth
 from api.grading import router as grading_router, attach_grading
 from api.heartbeat import router as heartbeat_router, start_watchdog
 from api.history import router as history_router, attach_history_memory
 from api.memory import router as memory_router, attach_memory
 from api.middleware import (
-    make_access_token_guard,
+    make_auth_guard,
     make_csrf_origin_guard,
     make_request_size_guard,
     make_security_headers_middleware,
     normalize_origin,
 )
+from auth import UserStore
 from grading import AgentOrchestrator, PromptOrchestrator
 from memory import MemoryManager
 
@@ -100,15 +102,20 @@ CSRF_ORIGIN_CHECK_ENABLED = _env_flag("CSRF_ORIGIN_CHECK", "1")
 CORS_ALLOW_CREDENTIALS = _env_flag("CORS_ALLOW_CREDENTIALS", "0")
 MAX_REQUEST_BODY_BYTES = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(40 * 1024 * 1024)))
 PROMPT_LOGS_ENABLED = _env_flag("HITL_PROMPT_LOGS", "0")
-# Shared anti-abuse gate. UNSET locally ⇒ guard disabled (dev + tests run
-# unauthenticated). Set to a secret on a public deploy so a missing/wrong
-# X-Access-Token header on any /api/* request is rejected before it can
-# spend the Gemini key.
-ACCESS_TOKEN = os.getenv("ACCESS_TOKEN", "").strip()
+# Login/auth. The admin account is seeded from these on startup (idempotent —
+# only created if missing). Set them on any public deploy. ``AUTH_ENABLED``
+# defaults ON; set AUTH_ENABLED=0 to run fully open (local dev convenience).
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "").strip()
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+AUTH_ENABLED = _env_flag("AUTH_ENABLED", "1")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Seed the admin account from env (idempotent — only if missing) so the
+    # first login exists on a fresh deploy.
+    if AUTH_ENABLED:
+        user_store.ensure_admin(ADMIN_USERNAME, ADMIN_PASSWORD)
     yield
 
 
@@ -119,6 +126,10 @@ app = FastAPI(
     description="Backend for the Human-in-the-Loop multimodal essay-grading system",
 )
 
+# User/session store — built early because the auth-guard middleware needs its
+# token validator. Opens its own engine on the shared SQLite file.
+user_store = UserStore()
+
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 app.middleware("http")(make_security_headers_middleware())
 app.middleware("http")(make_request_size_guard(MAX_REQUEST_BODY_BYTES))
@@ -128,19 +139,24 @@ app.middleware("http")(
         enabled=CSRF_ORIGIN_CHECK_ENABLED,
     )
 )
-# Added after the CSRF guard so it sits just inside CORS: preflight OPTIONS
-# still gets CORS headers, and a 401 from a blocked request still carries
-# them so the browser can read the rejection.
+# Session-auth gate — sits just inside CORS so preflight OPTIONS still gets
+# CORS headers and a 401 from a blocked request still carries them. ``/api/
+# auth/login`` is public; everything else under /api needs a valid bearer
+# token. Disabled wholesale via AUTH_ENABLED=0 for an open local run.
 app.middleware("http")(
-    make_access_token_guard(ACCESS_TOKEN, enabled=bool(ACCESS_TOKEN))
+    make_auth_guard(
+        user_store.get_user_for_token,
+        enabled=AUTH_ENABLED,
+        public_paths={"/api/auth/login"},
+    )
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=CORS_ALLOW_CREDENTIALS,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "X-Access-Token"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Access-Token"],
 )
 
 # ---------------------------------------------------------------------------
@@ -165,7 +181,9 @@ orchestrator = AgentOrchestrator(memory=memory, prompt_orchestrator=prompt_orch)
 attach_grading(memory, prompt_orch, orchestrator)
 attach_memory(memory)
 attach_history_memory(memory)
+attach_auth(user_store)
 
+app.include_router(auth_router)
 app.include_router(grading_router)
 app.include_router(heartbeat_router)
 app.include_router(memory_router)

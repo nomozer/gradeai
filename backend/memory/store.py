@@ -38,6 +38,8 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker, mapped_column, Mapped
 
+from request_context import get_current_user_id
+
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,9 @@ class Lesson(Base):
     # Previously the code mixed bare Column() with type annotations which caused
     # ArgumentError in SQLAlchemy 2.x.
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # Owning teacher (multi-tenant scope). 0 = legacy/system bucket. Indexed
+    # because every read filters on it.
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
     task: Mapped[str] = mapped_column(Text, nullable=False)
     wrong_code: Mapped[str] = mapped_column(Text, nullable=False)
     correct_code: Mapped[str] = mapped_column(Text, nullable=False)
@@ -97,6 +102,8 @@ class PipelineRun(Base):
 
     # BUG-1 FIX: Use Mapped[type] + mapped_column()
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # Owning teacher (multi-tenant scope). 0 = legacy/system bucket.
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
     # BUG-2 FIX: timezone-aware default
     timestamp: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -137,6 +144,8 @@ class ApprovedGrade(Base):
     __tablename__ = "approved_grades"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # Owning teacher (multi-tenant scope). 0 = legacy/system bucket.
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
     timestamp: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
@@ -301,10 +310,32 @@ class MemoryManager:
                     )
                 )
             logger.info("Migrated legacy 'lessons' table: added 'subject' column")
+        if "user_id" not in existing:
+            with self._engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE lessons "
+                        "ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0"
+                    )
+                )
+            logger.info("Migrated legacy 'lessons' table: added 'user_id' column")
+
+        if inspector.has_table("approved_grades"):
+            ag_columns = {c["name"] for c in inspector.get_columns("approved_grades")}
+            if "user_id" not in ag_columns:
+                with self._engine.begin() as conn:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE approved_grades "
+                            "ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0"
+                        )
+                    )
+                logger.info("Migrated legacy 'approved_grades' table: added 'user_id' column")
 
         if inspector.has_table("pipeline_runs"):
             run_columns = {c["name"] for c in inspector.get_columns("pipeline_runs")}
             run_migrations = {
+                "user_id": "ALTER TABLE pipeline_runs ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0",
                 "grade_json": "ALTER TABLE pipeline_runs ADD COLUMN grade_json TEXT NOT NULL DEFAULT ''",
                 "subject": "ALTER TABLE pipeline_runs ADD COLUMN subject TEXT NOT NULL DEFAULT ''",
                 "lessons_used_json": "ALTER TABLE pipeline_runs ADD COLUMN lessons_used_json TEXT NOT NULL DEFAULT '[]'",
@@ -336,8 +367,8 @@ class MemoryManager:
                 conn.execute(
                     text(
                         "CREATE UNIQUE INDEX IF NOT EXISTS "
-                        "uq_approved_task_grade_run ON approved_grades("
-                        "task, grade_json, COALESCE(run_id, -1))"
+                        "uq_approved_user_task_grade_run ON approved_grades("
+                        "user_id, task, grade_json, COALESCE(run_id, -1))"
                     )
                 )
         except Exception:
@@ -360,6 +391,21 @@ class MemoryManager:
             raise
         finally:
             session.close()
+
+    @staticmethod
+    def _scoped_where(
+        user_id: int, extra: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Build a ChromaDB ``where`` filter scoped to ``user_id``.
+
+        Chroma needs ``$and`` to combine conditions, so this returns either a
+        bare ``{"user_id": ...}`` or ``{"$and": [{"user_id": ...}, extra]}``.
+        Every retrieval leg routes through here so no user ever sees another
+        teacher's lessons.
+        """
+        if extra:
+            return {"$and": [{"user_id": user_id}, extra]}
+        return {"user_id": user_id}
 
     # ---- public API -------------------------------------------------------
 
@@ -387,8 +433,10 @@ class MemoryManager:
         Returns:
             The auto-generated lesson ID.
         """
+        user_id = get_current_user_id()
         with self._get_session() as session:
             lesson = Lesson(
+                user_id=user_id,
                 task=task,
                 wrong_code=wrong_code,
                 correct_code=correct_code,
@@ -405,7 +453,13 @@ class MemoryManager:
             # future-task retrieval works even when the teacher's note is terse
             # (e.g. "[Câu 1] sai ý a") — the topic context still anchors the vector.
             embed_text = f"{task}\n{lesson_text}".strip() or lesson_text
-            meta: dict[str, Any] = {"lesson_id": lesson_id, "task": task}
+            # ``user_id`` in metadata is what lets retrieval filter to the owning
+            # teacher (see ``_scoped_where``).
+            meta: dict[str, Any] = {
+                "lesson_id": lesson_id,
+                "task": task,
+                "user_id": user_id,
+            }
             if subject:
                 meta["subject"] = subject
             self._collection.upsert(
@@ -512,13 +566,14 @@ class MemoryManager:
         if total == 0 or not (task_description or "").strip():
             return []
 
+        user_id = get_current_user_id()
         seen: set[int] = set()
         ordered_ids: list[int] = []
 
-        # Leg 1 — exact task metadata match.
+        # Leg 1 — exact task metadata match (scoped to this teacher).
         try:
             exact = self._collection.get(
-                where={"task": task_description},
+                where=self._scoped_where(user_id, {"task": task_description}),
                 limit=top_k,
             )
             for lid in exact.get("ids", []) or []:
@@ -536,14 +591,16 @@ class MemoryManager:
         if subject:
             self._semantic_leg(
                 task_description, total, top_k, seen, ordered_ids,
-                where={"subject": subject},
+                where=self._scoped_where(user_id, {"subject": subject}),
                 label="Subject-scoped semantic",
             )
 
-        # Leg 3 — global fallback semantic search.
+        # Leg 3 — fallback semantic search across this teacher's lessons
+        # (still scoped to user_id — "global" means all of THEIR subjects).
         self._semantic_leg(
             task_description, total, top_k, seen, ordered_ids,
-            label="Global semantic",
+            where=self._scoped_where(user_id),
+            label="User-global semantic",
         )
 
         if not ordered_ids:
@@ -551,7 +608,9 @@ class MemoryManager:
 
         with self._get_session() as session:
             lessons = (
-                session.query(Lesson).filter(Lesson.id.in_(ordered_ids)).all()
+                session.query(Lesson)
+                .filter(Lesson.id.in_(ordered_ids), Lesson.user_id == user_id)
+                .all()
             )
             by_id = {les.id: les.to_dict() for les in lessons}
 
@@ -586,6 +645,7 @@ class MemoryManager:
         meta = meta or {}
         with self._get_session() as session:
             run = PipelineRun(
+                user_id=get_current_user_id(),
                 task=task,
                 iterations=iterations,
                 auto_fixed=int(auto_fixed),
@@ -611,9 +671,11 @@ class MemoryManager:
         makes SQLite the source of truth and lets finalized teacher scores
         survive browser/cache clears.
         """
+        user_id = get_current_user_id()
         with self._get_session() as session:
             runs = (
                 session.query(PipelineRun)
+                .filter(PipelineRun.user_id == user_id)
                 .order_by(PipelineRun.timestamp.desc())
                 .limit(max(1, min(limit, 100)))
                 .all()
@@ -677,9 +739,10 @@ class MemoryManager:
         had a classic check-then-act race (both requests passed the find,
         both inserted).
         """
+        user_id = get_current_user_id()
         with self._get_session() as session:
             record = ApprovedGrade(
-                task=task, grade_json=grade_json, run_id=run_id,
+                user_id=user_id, task=task, grade_json=grade_json, run_id=run_id,
             )
             session.add(record)
             try:
@@ -688,6 +751,7 @@ class MemoryManager:
             except IntegrityError:
                 session.rollback()
                 query = session.query(ApprovedGrade.id).filter(
+                    ApprovedGrade.user_id == user_id,
                     ApprovedGrade.task == task,
                     ApprovedGrade.grade_json == grade_json,
                 )
@@ -714,7 +778,7 @@ class MemoryManager:
         teacher sees here is the same order Gemini sees in the prompt block.
         """
         with self._get_session() as session:
-            q = session.query(Lesson)
+            q = session.query(Lesson).filter(Lesson.user_id == get_current_user_id())
             if subject:
                 q = q.filter(Lesson.subject == subject)
             if search:
@@ -729,20 +793,20 @@ class MemoryManager:
     def delete_lesson(self, lesson_id: int) -> bool:
         """Remove a lesson from BOTH stores. Returns True if found and deleted.
 
-        Deletes ChromaDB first (idempotent — missing IDs are silently
-        ignored) so a partial failure leaves the SQL row intact rather than
-        the other way round; orphaned vectors would silently re-surface in
-        retrieval, but an orphaned SQL row with no vector is harmless.
+        Ownership-checked: a teacher can only delete their OWN lessons —
+        ``delete_lesson`` on another user's id (or a missing id) returns False
+        and touches nothing. The SQL ownership check runs FIRST so we never
+        drop another user's Chroma vector.
         """
-        try:
-            self._collection.delete(ids=[str(lesson_id)])
-        except Exception:
-            logger.exception("Chroma delete failed for lesson %s", lesson_id)
-
+        user_id = get_current_user_id()
         with self._get_session() as session:
             lesson = session.get(Lesson, lesson_id)
-            if lesson is None:
+            if lesson is None or lesson.user_id != user_id:
                 return False
+            try:
+                self._collection.delete(ids=[str(lesson_id)])
+            except Exception:
+                logger.exception("Chroma delete failed for lesson %s", lesson_id)
             session.delete(lesson)
             return True
 
@@ -775,13 +839,23 @@ class MemoryManager:
         aggregate 3.0). Useful for showing the teacher how the AI's
         learning corpus is composed without forcing them to scroll.
         """
+        user_id = get_current_user_id()
         with self._get_session() as session:
-            total = session.query(Lesson).count()
-            approved = session.query(ApprovedGrade).count()
-            runs = session.query(PipelineRun).count()
+            total = session.query(Lesson).filter(Lesson.user_id == user_id).count()
+            approved = (
+                session.query(ApprovedGrade)
+                .filter(ApprovedGrade.user_id == user_id)
+                .count()
+            )
+            runs = (
+                session.query(PipelineRun)
+                .filter(PipelineRun.user_id == user_id)
+                .count()
+            )
             by_subject: dict[str, int] = {}
             for sub, cnt in (
                 session.query(Lesson.subject, Lesson.id)
+                .filter(Lesson.user_id == user_id)
                 .all()
             ):
                 key = sub or "unknown"
@@ -790,7 +864,11 @@ class MemoryManager:
             # can show "5 reject lessons, 12 revise, 8 staged" without
             # hard-coding the score → label map on the frontend.
             tiers = {"reject": 0, "revise": 0, "staged": 0, "aggregate": 0, "other": 0}
-            for (score,) in session.query(Lesson.feedback_score).all():
+            for (score,) in (
+                session.query(Lesson.feedback_score)
+                .filter(Lesson.user_id == user_id)
+                .all()
+            ):
                 if score >= 5.0:
                     tiers["reject"] += 1
                 elif score >= 4.0:
@@ -837,6 +915,7 @@ class MemoryManager:
             return (
                 session.query(Lesson.id)
                 .filter(
+                    Lesson.user_id == get_current_user_id(),
                     Lesson.task == task,
                     Lesson.lesson_text == lesson_text,
                     Lesson.feedback_score == feedback_score,
@@ -861,7 +940,11 @@ class MemoryManager:
         with self._get_session() as session:
             lessons = (
                 session.query(Lesson)
-                .filter(Lesson.task == task, Lesson.correct_code == "")
+                .filter(
+                    Lesson.user_id == get_current_user_id(),
+                    Lesson.task == task,
+                    Lesson.correct_code == "",
+                )
                 .all()
             )
             for les in lessons:

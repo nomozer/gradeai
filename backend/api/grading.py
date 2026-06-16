@@ -19,8 +19,9 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from api.auth import get_current_user
 from api.schemas import (
     AnalyzeCommentRequest,
     AnalyzeCommentResponse,
@@ -106,7 +107,7 @@ def _pipeline_http_error(exc: Exception) -> HTTPException:
 
 
 @router.post("/api/generate", response_model=GenerateResponse)
-async def generate(req: GenerateRequest):
+async def generate(req: GenerateRequest, _user: dict = Depends(get_current_user)):
     """Run the Gemini VLM Grader pipeline for a given essay.
 
     Despite the legacy URL ``/api/generate``, this is a multimodal grading
@@ -142,7 +143,7 @@ async def generate(req: GenerateRequest):
 
 
 @router.post("/api/regrade", response_model=RegradeResponse)
-async def regrade(req: RegradeRequest):
+async def regrade(req: RegradeRequest, _user: dict = Depends(get_current_user)):
     """Atomic HITL re-grade: save feedback → re-run pipeline.
 
     Primary endpoint for the revise/reject path.  Guarantees the teacher's
@@ -214,7 +215,7 @@ async def regrade(req: RegradeRequest):
 
 
 @router.post("/api/feedback", response_model=FeedbackResponse)
-async def feedback(req: FeedbackRequest):
+async def feedback(req: FeedbackRequest, _user: dict = Depends(get_current_user)):
     """Ingest structured teacher feedback from the right-side review panel.
 
     Routing rules:
@@ -348,7 +349,7 @@ async def _handle_approve(req: FeedbackRequest) -> FeedbackResponse:
 
 
 @router.post("/api/finalize-grade", response_model=FinalizeGradeResponse)
-async def finalize_grade(req: FinalizeGradeRequest):
+async def finalize_grade(req: FinalizeGradeRequest, _user: dict = Depends(get_current_user)):
     """Persist a teacher-finalized grade and capture numeric score deltas.
 
     Strongest HITL signal the UI captures — a concrete rubric-level
@@ -529,7 +530,9 @@ async def finalize_grade(req: FinalizeGradeRequest):
 
 
 @router.post("/api/detect-subject", response_model=DetectSubjectResponse)
-async def detect_subject_endpoint(req: DetectSubjectRequest):
+async def detect_subject_endpoint(
+    req: DetectSubjectRequest, _user: dict = Depends(get_current_user)
+):
     """Auto-classify the subject of an uploaded exam PDF.
 
     Pipeline: decode PDF → extract text from first ``_DETECT_MAX_PAGES``
@@ -584,7 +587,9 @@ async def detect_subject_endpoint(req: DetectSubjectRequest):
 
 
 @router.post("/api/analyze-comment", response_model=AnalyzeCommentResponse)
-async def analyze_comment(req: AnalyzeCommentRequest):
+async def analyze_comment(
+    req: AnalyzeCommentRequest, _user: dict = Depends(get_current_user)
+):
     """Analyze a teacher's annotation on a specific question.
 
     Returns three views of the same correction:

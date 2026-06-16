@@ -12,16 +12,16 @@
  * route through `apiPost` here.
  */
 
-import { getAccessToken, clearAccessToken, AUTH_REQUIRED_EVENT } from "./accessToken";
+import { getToken, clearSession, AUTH_REQUIRED_EVENT } from "./session";
 
 export const API_BASE = "/api";
 
-/** Merge the access-token header onto any outgoing request's headers. */
+/** Merge the bearer-token header onto any outgoing request's headers. */
 function withAuth(headers?: HeadersInit): Record<string, string> {
-  const token = getAccessToken();
+  const token = getToken();
   return {
     ...(headers as Record<string, string> | undefined),
-    ...(token ? { "X-Access-Token": token } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
 
@@ -53,8 +53,8 @@ async function _request<TRes>(
     signal: options.signal,
   });
   if (res.status === 401) {
-    // Missing/expired access token — drop it and let the gate re-prompt.
-    clearAccessToken();
+    // Session gone (expired / revoked) — drop it and let the gate re-prompt.
+    clearSession();
     window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
   }
   if (!res.ok) {
@@ -95,6 +95,22 @@ export function apiGet<TRes>(
   }
   const qs = params.toString();
   return _request<TRes>(qs ? `${path}?${qs}` : path, { method: "GET" }, options);
+}
+
+export function apiPatch<TReq, TRes>(
+  path: string,
+  body: TReq,
+  options: RequestOptions = {},
+): Promise<TRes> {
+  return _request<TRes>(
+    path,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    options,
+  );
 }
 
 export function apiDelete<TRes>(

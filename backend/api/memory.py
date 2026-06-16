@@ -15,9 +15,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from api.auth import get_current_user
 from memory import MemoryManager, log_event as log_hitl_event
 
 
@@ -83,6 +84,7 @@ def list_lessons(
     subject: str = Query(default="", description='Subject filter ("cs"|"math"|"phys"|"")'),
     search: str = Query(default="", description="Substring filter on lesson_text/task"),
     limit: int = Query(default=200, ge=1, le=500),
+    _user: dict = Depends(get_current_user),
 ):
     """Return lessons sorted by feedback_score DESC then timestamp DESC."""
     manager = _require_memory()
@@ -98,13 +100,13 @@ def list_lessons(
 
 
 @router.get("/stats", response_model=MemoryStatsResponse)
-def memory_stats():
+def memory_stats(_user: dict = Depends(get_current_user)):
     manager = _require_memory()
     return MemoryStatsResponse(**manager.get_memory_stats())
 
 
 @router.delete("/lessons/{lesson_id}", response_model=DeleteLessonResponse)
-def delete_lesson(lesson_id: int):
+def delete_lesson(lesson_id: int, _user: dict = Depends(get_current_user)):
     """Hard-delete a lesson from both SQLite and ChromaDB.
 
     Used by the Memory inspector when the teacher decides a lesson was

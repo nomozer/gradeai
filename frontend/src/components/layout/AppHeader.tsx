@@ -19,6 +19,10 @@ interface AppHeaderProps {
   tabs?: Tab[];
   activeId?: string;
   onSelectTab?: (id: string) => void;
+  // Auth controls. ``onOpenAdmin`` only renders its link when ``isAdmin``.
+  isAdmin?: boolean;
+  onOpenAdmin?: () => void;
+  onLogout?: () => void;
 }
 
 // Two-letter initials from a label — used by the avatar circle. Falls
@@ -86,6 +90,9 @@ export function AppHeader({
   tabs,
   activeId,
   onSelectTab,
+  isAdmin,
+  onOpenAdmin,
+  onLogout,
 }: AppHeaderProps) {
   const bp = useBreakpoint();
   const [hamburgerHovered, setHamburgerHovered] = useState(false);
@@ -110,8 +117,8 @@ export function AppHeader({
     onSelectTab!(tabs![activeIndex + 1].id);
   };
 
-  const navItems = useMemo<NavItem[]>(
-    () => [
+  const navItems = useMemo<NavItem[]>(() => {
+    const items: NavItem[] = [
       {
         id: "history",
         kind: "text",
@@ -132,17 +139,46 @@ export function AppHeader({
         active: memoryActive,
         onClick: onOpenMemory,
       },
-      {
-        id: "help",
-        kind: "icon",
-        label: "Hướng dẫn",
-        icon: <Icon.HelpCircle size={16} />,
+    ];
+    if (isAdmin && onOpenAdmin) {
+      items.push({
+        id: "admin",
+        kind: "text",
+        label: "Quản lý TK",
+        labelShort: "Tài khoản",
         active: false,
-        onClick: onOpenHelp,
-      },
-    ],
-    [historyActive, memoryActive, onOpenMemory, onOpenHelp, onToggleHistory],
-  );
+        onClick: onOpenAdmin,
+      });
+    }
+    items.push({
+      id: "help",
+      kind: "icon",
+      label: "Hướng dẫn",
+      icon: <Icon.HelpCircle size={16} />,
+      active: false,
+      onClick: onOpenHelp,
+    });
+    if (onLogout) {
+      items.push({
+        id: "logout",
+        kind: "text",
+        label: "Đăng xuất",
+        labelShort: "Thoát",
+        active: false,
+        onClick: onLogout,
+      });
+    }
+    return items;
+  }, [
+    historyActive,
+    memoryActive,
+    onOpenMemory,
+    onOpenHelp,
+    onToggleHistory,
+    isAdmin,
+    onOpenAdmin,
+    onLogout,
+  ]);
 
   // Destinations vs utilities — preserve declaration order within each
   // group so the array stays the source of truth for ordering.

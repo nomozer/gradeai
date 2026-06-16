@@ -44,13 +44,19 @@ services:
         value: https://gradeai.vercel.app
       - key: CSRF_TRUSTED_ORIGINS
         value: https://gradeai.vercel.app
-      # Shared access token — the anti-abuse gate. The frontend sends it as the
-      # X-Access-Token header on every /api/* request; a missing/wrong token is
-      # rejected with 401 before it can spend the Gemini key. Secret — set the
-      # real value in the Render dashboard (Environment tab). `sync: false`
-      # tells Render to prompt for it instead of reading it from git.
-      - key: ACCESS_TOKEN
+      # Login system. The admin account is seeded from these on first startup
+      # (idempotent — only created if missing, so changing the admin password
+      # later won't be reset on redeploy). The admin then creates teacher
+      # accounts from the in-app "Quản lý TK" page. Secrets — set real values
+      # in the Render dashboard (Environment tab); `sync: false` prompts for them.
+      - key: ADMIN_USERNAME
         sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      # Auth gate is ON by default. Set AUTH_ENABLED=0 ONLY for a throwaway
+      # fully-open demo (no login at all). Leave unset in production.
+      # - key: AUTH_ENABLED
+      #   value: "1"
       # Secret — set the real value in the Render dashboard, never in git.
       - key: GOOGLE_API_KEY
         sync: false

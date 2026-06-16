@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from api.auth import get_current_user
 from memory import MemoryManager
 
 
@@ -53,6 +54,9 @@ class GradeHistoryResponse(BaseModel):
 
 
 @router.get("/grades", response_model=GradeHistoryResponse)
-def list_grade_history(limit: int = Query(default=50, ge=1, le=100)):
+def list_grade_history(
+    limit: int = Query(default=50, ge=1, le=100),
+    _user: dict = Depends(get_current_user),
+):
     manager = _require_memory()
     return GradeHistoryResponse(items=manager.list_grade_history(limit=limit))

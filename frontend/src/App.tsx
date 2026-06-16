@@ -18,7 +18,7 @@
  * because it's purely display metadata (not used by any grading prompt).
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { vi as t } from "./i18n/vi";
 import { T } from "./theme/tokens";
 import { GlobalStyles } from "./theme/GlobalStyles";
@@ -32,25 +32,66 @@ import { HelpModal } from "./features/help/HelpModal";
 import { GradeHistoryDropdown } from "./features/history/GradeHistoryDropdown";
 import { Toast } from "./components/ui/Toast";
 import { MobileHint } from "./components/ui/MobileHint";
-import { AccessGate } from "./features/auth/AccessGate";
+import { LoginPage } from "./features/auth/LoginPage";
+import { AdminPanel } from "./features/auth/AdminPanel";
+import { getToken, clearSession, isAdmin, AUTH_REQUIRED_EVENT } from "./api/session";
+import { logout as logoutApi } from "./api/authApi";
 import type { GradeHistoryEntry } from "./types";
 
 const MEMORY_HASH = "#memory";
+const ADMIN_HASH = "#admin";
 
-function isMemoryRoute(): boolean {
-  return typeof window !== "undefined" && window.location.hash === MEMORY_HASH;
+type Route = "workspace" | "memory" | "admin";
+
+function detectRoute(): Route {
+  if (typeof window === "undefined") return "workspace";
+  if (window.location.hash === MEMORY_HASH) return "memory";
+  if (window.location.hash === ADMIN_HASH) return "admin";
+  return "workspace";
 }
 
 export default function App() {
-  // Decide which page to mount ONCE — the workspace tab never navigates
-  // to memory in-place (memory always opens in a new browser tab), so a
-  // single render-time check is enough and skips loading useTabs / file
-  // state on the memory page.
-  const [memoryRoute] = useState<boolean>(isMemoryRoute);
+  // Decide which page to mount ONCE — sub-pages (memory / admin) always open
+  // in a new browser tab, so a single render-time check is enough.
+  const [route] = useState<Route>(detectRoute);
 
   return (
-    <AccessGate>{memoryRoute ? <MemoryPage /> : <WorkspacePage />}</AccessGate>
+    <AuthGate>
+      {route === "memory" ? (
+        <MemoryPage />
+      ) : route === "admin" ? (
+        <AdminPage />
+      ) : (
+        <WorkspacePage />
+      )}
+    </AuthGate>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Auth gate — login wall in front of every page. Flips back to login on any
+// 401 (session expired / revoked), broadcast via AUTH_REQUIRED_EVENT.
+// ---------------------------------------------------------------------------
+
+function AuthGate({ children }: { children: ReactNode }) {
+  const [authed, setAuthed] = useState<boolean>(() => !!getToken());
+  useEffect(() => {
+    const onAuthRequired = () => setAuthed(false);
+    window.addEventListener(AUTH_REQUIRED_EVENT, onAuthRequired);
+    return () => window.removeEventListener(AUTH_REQUIRED_EVENT, onAuthRequired);
+  }, []);
+
+  if (!authed) return <LoginPage onAuthed={() => setAuthed(true)} />;
+  return <>{children}</>;
+}
+
+// ---------------------------------------------------------------------------
+// Admin page — standalone user-management surface (#admin in a new tab).
+// ---------------------------------------------------------------------------
+
+function AdminPage() {
+  useHeartbeat();
+  return <AdminPanel />;
 }
 
 // ---------------------------------------------------------------------------
@@ -96,6 +137,25 @@ function WorkspacePage() {
   const openMemoryTab = useCallback(() => {
     const url = window.location.origin + window.location.pathname + MEMORY_HASH;
     window.open(url, "_blank", "noopener,noreferrer");
+  }, []);
+
+  // Admin user-management page — new browser tab, same idiom as memory.
+  const openAdminTab = useCallback(() => {
+    const url = window.location.origin + window.location.pathname + ADMIN_HASH;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, []);
+
+  // Logout — revoke server-side, drop the session, hard-reload so no other
+  // teacher's in-memory tab state can bleed into the next login on this
+  // browser.
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutApi();
+    } catch {
+      /* revoke is best-effort; clearing the local session is what matters */
+    }
+    clearSession();
+    window.location.reload();
   }, []);
 
   const { tabs, activeId, addTab, closeTab, clearAll, setActive, updateMeta } = useTabs();
@@ -357,6 +417,9 @@ function WorkspacePage() {
         tabs={tabs}
         activeId={activeId}
         onSelectTab={setActive}
+        isAdmin={isAdmin()}
+        onOpenAdmin={openAdminTab}
+        onLogout={handleLogout}
       />
 
       <TabBar

@@ -8,9 +8,9 @@ during app bootstrap.
 
 from __future__ import annotations
 
-import hmac
 import logging
 from collections.abc import Iterable, Awaitable, Callable
+from typing import Any, Optional
 from urllib.parse import urlparse
 
 from fastapi import Request
@@ -78,51 +78,61 @@ def make_csrf_origin_guard(
     return csrf_origin_guard
 
 
-def make_access_token_guard(
-    token: str,
+def _bearer_token(request: Request) -> str:
+    """Extract a session token from ``Authorization: Bearer`` (or X-Access-Token)."""
+    header = request.headers.get("authorization", "")
+    if header.lower().startswith("bearer "):
+        return header[7:].strip()
+    return request.headers.get("x-access-token", "").strip()
+
+
+def make_auth_guard(
+    token_validator: Callable[[str], Optional[dict[str, Any]]],
     *,
     enabled: bool = True,
+    public_paths: Iterable[str] = (),
 ) -> Callable[[Request, Callable[[Request], Awaitable]], Awaitable]:
-    """Build a shared-access-token gate for every ``/api/*`` request.
+    """Build the session-auth gate for every ``/api/*`` request.
 
-    This is a coarse anti-abuse gate for a fixed group of users — NOT
-    per-user auth. Its only job is to stop the public internet from spending
-    the Gemini API key once the backend is reachable on the open web: every
-    ``/api/*`` request must carry a matching ``X-Access-Token`` header.
+    A request must carry a valid session token (``Authorization: Bearer``)
+    that ``token_validator`` resolves to a user, otherwise it is rejected with
+    401 before reaching any handler. This is the uniform gate — defence in
+    depth on top of the per-endpoint ``get_current_user`` dependency — so an
+    endpoint that forgets the dependency is still not publicly reachable.
 
-    ``OPTIONS`` is exempt so CORS preflight still succeeds. When ``enabled``
-    is False (no ``ACCESS_TOKEN`` configured) the guard is a no-op, so local
-    dev and the test suite keep running unauthenticated.
+    ``OPTIONS`` is exempt (CORS preflight) and ``public_paths`` lists routes
+    that must work unauthenticated (e.g. ``/api/auth/login``). When ``enabled``
+    is False (no auth store wired) the guard is a no-op so the test suite and
+    any auth-less local run keep working.
 
-    Returns an async function suitable for ``app.middleware("http")``.
+    ``token_validator`` is a plain callable (``UserStore.get_user_for_token``)
+    so this module stays decoupled from the ``auth`` package.
     """
-    expected = token or ""
+    public = frozenset(public_paths)
 
-    async def access_token_guard(request: Request, call_next):
+    async def auth_guard(request: Request, call_next):
         if (
             enabled
             and request.url.path.startswith("/api/")
             and request.method.upper() != "OPTIONS"
+            and request.url.path not in public
         ):
-            provided = request.headers.get("x-access-token", "")
-            # Constant-time compare so a wrong token can't be brute-forced
-            # by timing the response.
-            if not (provided and hmac.compare_digest(provided, expected)):
+            token = _bearer_token(request)
+            if not token or token_validator(token) is None:
                 logger.warning(
-                    "Blocked API request with missing/invalid access token "
-                    "method=%s path=%s",
+                    "Blocked unauthenticated API request method=%s path=%s",
                     request.method,
                     request.url.path,
                 )
                 return JSONResponse(
                     status_code=401,
                     content={
-                        "detail": "Truy cập bị từ chối: thiếu hoặc sai mã truy cập."
+                        "detail": "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
                     },
                 )
         return await call_next(request)
 
-    return access_token_guard
+    return auth_guard
 
 
 def make_request_size_guard(
@@ -186,7 +196,7 @@ __all__ = [
     "CSRF_UNSAFE_METHODS",
     "normalize_origin",
     "make_csrf_origin_guard",
-    "make_access_token_guard",
+    "make_auth_guard",
     "make_request_size_guard",
     "make_security_headers_middleware",
 ]
