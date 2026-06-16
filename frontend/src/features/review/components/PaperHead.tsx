@@ -116,7 +116,7 @@ export function PaperHead({ review }: { review: ReviewPayload }) {
           )}
           {totalGood > 0 && (
             <Chip
-              tone="green-soft"
+              tone="green"
               icon={<Icon.Star size={13} />}
               label={`${totalGood} điểm sáng`}
             />
@@ -135,7 +135,7 @@ function formatScore(score: number, max: number): string {
   return `${fmt(score)}/${fmt(max)}`;
 }
 
-type ChipTone = "green" | "amber" | "accent" | "green-soft" | "red" | "memory";
+type ChipTone = "green" | "amber" | "accent" | "red" | "memory";
 
 function Chip({
   tone,
@@ -187,8 +187,6 @@ function chipPalette(tone: ChipTone): {
   switch (tone) {
     case "green":
       return { bg: T.greenSoft, fg: T.green, border: "transparent" };
-    case "green-soft":
-      return { bg: T.bgElevated, fg: T.green, border: T.borderLight };
     case "amber":
       return { bg: T.amberSoft, fg: T.amber, border: "transparent" };
     case "red":
