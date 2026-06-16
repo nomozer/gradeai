@@ -31,6 +31,24 @@ export function getMe(): Promise<SessionUser> {
 
 // ---- admin user management ------------------------------------------------
 
+export interface OverviewUserRow extends SessionUser {
+  lessons: number;
+  graded: number;
+}
+
+export interface Overview {
+  total_accounts: number;
+  total_teachers: number;
+  total_admins: number;
+  total_graded: number;
+  total_lessons: number;
+  users: OverviewUserRow[];
+}
+
+export function getOverview(): Promise<Overview> {
+  return apiGet<Overview>("/auth/overview");
+}
+
 export function listUsers(): Promise<{ items: SessionUser[] }> {
   return apiGet<{ items: SessionUser[] }>("/auth/users");
 }

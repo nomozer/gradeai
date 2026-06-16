@@ -33,39 +33,42 @@ import { GradeHistoryDropdown } from "./features/history/GradeHistoryDropdown";
 import { Toast } from "./components/ui/Toast";
 import { MobileHint } from "./components/ui/MobileHint";
 import { LoginPage } from "./features/auth/LoginPage";
-import { AdminPanel } from "./features/auth/AdminPanel";
+import { AdminDashboard } from "./features/admin/AdminDashboard";
 import { getToken, clearSession, isAdmin, AUTH_REQUIRED_EVENT } from "./api/session";
 import { logout as logoutApi } from "./api/authApi";
 import type { GradeHistoryEntry } from "./types";
 
 const MEMORY_HASH = "#memory";
-const ADMIN_HASH = "#admin";
 
-type Route = "workspace" | "memory" | "admin";
+type Route = "workspace" | "memory";
 
 function detectRoute(): Route {
-  if (typeof window === "undefined") return "workspace";
-  if (window.location.hash === MEMORY_HASH) return "memory";
-  if (window.location.hash === ADMIN_HASH) return "admin";
+  if (typeof window !== "undefined" && window.location.hash === MEMORY_HASH) {
+    return "memory";
+  }
   return "workspace";
 }
 
 export default function App() {
-  // Decide which page to mount ONCE — sub-pages (memory / admin) always open
-  // in a new browser tab, so a single render-time check is enough.
+  // Decide which page to mount ONCE — the memory sub-page always opens in a
+  // new browser tab, so a single render-time check is enough.
   const [route] = useState<Route>(detectRoute);
 
   return (
     <AuthGate>
-      {route === "memory" ? (
-        <MemoryPage />
-      ) : route === "admin" ? (
-        <AdminPage />
-      ) : (
-        <WorkspacePage />
-      )}
+      <RoleRouter route={route} />
     </AuthGate>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Role-based landing — admins get the management dashboard (never the grading
+// workspace); teachers go straight to grading (or the memory sub-window).
+// ---------------------------------------------------------------------------
+
+function RoleRouter({ route }: { route: Route }) {
+  if (isAdmin()) return <AdminDashboard />;
+  return route === "memory" ? <MemoryPage /> : <WorkspacePage />;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,15 +86,6 @@ function AuthGate({ children }: { children: ReactNode }) {
 
   if (!authed) return <LoginPage onAuthed={() => setAuthed(true)} />;
   return <>{children}</>;
-}
-
-// ---------------------------------------------------------------------------
-// Admin page — standalone user-management surface (#admin in a new tab).
-// ---------------------------------------------------------------------------
-
-function AdminPage() {
-  useHeartbeat();
-  return <AdminPanel />;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,12 +130,6 @@ function WorkspacePage() {
   // position) stays exactly as the user left it.
   const openMemoryTab = useCallback(() => {
     const url = window.location.origin + window.location.pathname + MEMORY_HASH;
-    window.open(url, "_blank", "noopener,noreferrer");
-  }, []);
-
-  // Admin user-management page — new browser tab, same idiom as memory.
-  const openAdminTab = useCallback(() => {
-    const url = window.location.origin + window.location.pathname + ADMIN_HASH;
     window.open(url, "_blank", "noopener,noreferrer");
   }, []);
 
@@ -417,8 +405,6 @@ function WorkspacePage() {
         tabs={tabs}
         activeId={activeId}
         onSelectTab={setActive}
-        isAdmin={isAdmin()}
-        onOpenAdmin={openAdminTab}
         onLogout={handleLogout}
       />
 

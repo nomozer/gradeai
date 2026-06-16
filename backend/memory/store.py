@@ -32,6 +32,7 @@ from sqlalchemy import (
     Text,
     create_engine,
     event,
+    func,
     inspect,
     text,
 )
@@ -886,6 +887,29 @@ class MemoryManager:
             "by_subject": by_subject,
             "by_tier": tiers,
         }
+
+    def usage_by_user(self) -> dict[int, dict[str, int]]:
+        """Per-user counts of lessons + graded runs (ADMIN aggregate).
+
+        Deliberately NOT scoped by the current-user ContextVar — this powers
+        the admin dashboard's system-wide overview, which must see every
+        teacher's totals. Returns ``{user_id: {"lessons": n, "graded": m}}``.
+        """
+        out: dict[int, dict[str, int]] = {}
+        with self._get_session() as session:
+            for uid, cnt in (
+                session.query(Lesson.user_id, func.count(Lesson.id))
+                .group_by(Lesson.user_id)
+                .all()
+            ):
+                out.setdefault(int(uid), {"lessons": 0, "graded": 0})["lessons"] = int(cnt)
+            for uid, cnt in (
+                session.query(PipelineRun.user_id, func.count(PipelineRun.id))
+                .group_by(PipelineRun.user_id)
+                .all()
+            ):
+                out.setdefault(int(uid), {"lessons": 0, "graded": 0})["graded"] = int(cnt)
+        return out
 
     def find_recent_lesson(
         self,

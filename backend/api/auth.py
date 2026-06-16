@@ -24,23 +24,32 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from auth import ROLE_ADMIN, ROLE_USER, UserStore
+from memory import MemoryManager
 from request_context import set_current_user_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 _users: UserStore | None = None
+_memory: MemoryManager | None = None
 
 
-def attach_auth(store: UserStore) -> None:
-    global _users
+def attach_auth(store: UserStore, memory: MemoryManager) -> None:
+    global _users, _memory
     _users = store
+    _memory = memory
 
 
 def _require_store() -> UserStore:
     if _users is None:
         raise HTTPException(status_code=500, detail="Auth store not attached")
     return _users
+
+
+def _require_memory() -> MemoryManager:
+    if _memory is None:
+        raise HTTPException(status_code=500, detail="Memory manager not attached")
+    return _memory
 
 
 def extract_bearer_token(request: Request) -> str:
@@ -116,6 +125,25 @@ class UsersResponse(BaseModel):
     items: list[UserOut]
 
 
+class OverviewUserRow(BaseModel):
+    id: int
+    username: str
+    role: str
+    is_active: bool
+    created_at: str | None = None
+    lessons: int = 0
+    graded: int = 0
+
+
+class OverviewResponse(BaseModel):
+    total_accounts: int
+    total_teachers: int
+    total_admins: int
+    total_graded: int
+    total_lessons: int
+    users: list[OverviewUserRow]
+
+
 # ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
@@ -149,6 +177,37 @@ async def me(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # Admin user management
 # ---------------------------------------------------------------------------
+
+
+@router.get("/overview", response_model=OverviewResponse)
+async def overview(_admin: dict = Depends(require_admin)):
+    """System-wide stats for the admin dashboard — accounts + per-teacher usage."""
+    store = _require_store()
+    usage = _require_memory().usage_by_user()
+    rows: list[OverviewUserRow] = []
+    total_graded = 0
+    total_lessons = 0
+    teachers = 0
+    admins = 0
+    for u in store.list_users():
+        u_usage = usage.get(u["id"], {})
+        lessons = int(u_usage.get("lessons", 0))
+        graded = int(u_usage.get("graded", 0))
+        total_lessons += lessons
+        total_graded += graded
+        if u["role"] == ROLE_ADMIN:
+            admins += 1
+        else:
+            teachers += 1
+        rows.append(OverviewUserRow(**u, lessons=lessons, graded=graded))
+    return OverviewResponse(
+        total_accounts=len(rows),
+        total_teachers=teachers,
+        total_admins=admins,
+        total_graded=total_graded,
+        total_lessons=total_lessons,
+        users=rows,
+    )
 
 
 @router.get("/users", response_model=UsersResponse)

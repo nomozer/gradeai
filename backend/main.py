@@ -181,7 +181,7 @@ orchestrator = AgentOrchestrator(memory=memory, prompt_orchestrator=prompt_orch)
 attach_grading(memory, prompt_orch, orchestrator)
 attach_memory(memory)
 attach_history_memory(memory)
-attach_auth(user_store)
+attach_auth(user_store, memory)
 
 app.include_router(auth_router)
 app.include_router(grading_router)
