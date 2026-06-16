@@ -203,6 +203,16 @@ function FormSelect({
       style={{
         ...inputStyle,
         minWidth: 140,
+        // Drop the inconsistent native caret and draw our own chevron so it
+        // sits at a fixed inset, vertically centred, inside the rounded box.
+        appearance: "none",
+        WebkitAppearance: "none",
+        MozAppearance: "none",
+        paddingRight: 34,
+        backgroundImage: SELECT_CHEVRON,
+        backgroundRepeat: "no-repeat",
+        backgroundPosition: "right 12px center",
+        backgroundSize: "16px",
         borderColor: focused ? T.accent : T.border,
         boxShadow: focused ? "0 0 0 3px rgba(59, 79, 138, 0.12)" : T.shadowSoft,
         transition: "all 0.2s ease-in-out",
@@ -214,6 +224,10 @@ function FormSelect({
     </select>
   );
 }
+
+// Down-chevron as an inline SVG data URI (stroke = T.textMute #7A7C8A).
+const SELECT_CHEVRON =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%237A7C8A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")";
 
 function SubmitButton({
   enabled,
