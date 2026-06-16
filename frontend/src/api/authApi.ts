@@ -63,6 +63,31 @@ export function createUser(body: {
   return apiPost<typeof body, SessionUser>("/auth/users", body);
 }
 
+export interface BulkUserItem {
+  username: string;
+  password: string;
+  role?: string;
+  token_quota?: number;
+}
+
+export interface BulkResultRow {
+  username: string;
+  status: "created" | "skipped" | "error";
+  detail: string;
+}
+
+export interface BulkCreateResult {
+  created: number;
+  failed: number;
+  results: BulkResultRow[];
+}
+
+export function createUsersBulk(users: BulkUserItem[]): Promise<BulkCreateResult> {
+  return apiPost<{ users: BulkUserItem[] }, BulkCreateResult>("/auth/users/bulk", {
+    users,
+  });
+}
+
 export function updateUser(
   id: number,
   body: { password?: string; is_active?: boolean; role?: string; token_quota?: number },

@@ -128,6 +128,29 @@ class UsersResponse(BaseModel):
     items: list[UserOut]
 
 
+class BulkUserItem(BaseModel):
+    username: str = ""
+    password: str = ""
+    role: str = ROLE_USER
+    token_quota: int = 0
+
+
+class BulkCreateRequest(BaseModel):
+    users: list[BulkUserItem]
+
+
+class BulkResultRow(BaseModel):
+    username: str
+    status: str  # "created" | "skipped" | "error"
+    detail: str = ""
+
+
+class BulkCreateResponse(BaseModel):
+    created: int
+    failed: int
+    results: list[BulkResultRow]
+
+
 class OverviewUserRow(BaseModel):
     id: int
     username: str
@@ -234,6 +257,45 @@ async def create_user(req: CreateUserRequest, _admin: dict = Depends(require_adm
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     logger.info("Admin %s created user %s (role=%s)", _admin["username"], user["username"], role)
     return UserOut(**user)
+
+
+@router.post("/users/bulk", response_model=BulkCreateResponse)
+async def create_users_bulk(req: BulkCreateRequest, admin: dict = Depends(require_admin)):
+    """Create many accounts at once (Excel/CSV import).
+
+    Per-row outcome so a few bad rows don't abort the whole batch:
+      • created — account made
+      • skipped — username already exists
+      • error   — missing username or password < 4 chars
+    """
+    if len(req.users) > 1000:
+        raise HTTPException(status_code=400, detail="Tối đa 1000 tài khoản mỗi lần.")
+    store = _require_store()
+    results: list[BulkResultRow] = []
+    created = 0
+    failed = 0
+    for item in req.users:
+        uname = (item.username or "").strip()
+        if not uname or len(item.password or "") < 4:
+            failed += 1
+            results.append(
+                BulkResultRow(
+                    username=uname or "(trống)",
+                    status="error",
+                    detail="Thiếu tên đăng nhập hoặc mật khẩu dưới 4 ký tự.",
+                )
+            )
+            continue
+        role = item.role if item.role in (ROLE_ADMIN, ROLE_USER) else ROLE_USER
+        try:
+            store.create_user(uname, item.password, role, item.token_quota)
+            created += 1
+            results.append(BulkResultRow(username=uname, status="created"))
+        except ValueError as exc:
+            failed += 1
+            results.append(BulkResultRow(username=uname, status="skipped", detail=str(exc)))
+    logger.info("Admin %s bulk-created %d users (%d failed)", admin["username"], created, failed)
+    return BulkCreateResponse(created=created, failed=failed, results=results)
 
 
 @router.patch("/users/{user_id}", response_model=UserOut)

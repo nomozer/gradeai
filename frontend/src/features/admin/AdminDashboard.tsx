@@ -22,6 +22,7 @@ import {
 import { getUser, clearSession, type SessionUser } from "../../api/session";
 import { ApiError } from "../../api/client";
 import { Icon } from "../../components/ui/Icon";
+import { BulkImportUsers } from "./BulkImportUsers";
 
 type Section = "overview" | "accounts";
 
@@ -851,6 +852,8 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
           />
         </div>
       </form>
+
+      <BulkImportUsers onDone={refresh} />
 
       <div style={cardStyle}>
         <div style={{ ...sectionTitleStyle, fontSize: T.fontSize.base, color: T.text, marginBottom: 4 }}>Danh sách tài khoản ({users.length})</div>
