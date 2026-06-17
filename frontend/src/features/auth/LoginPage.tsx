@@ -18,8 +18,10 @@ import { login } from "../../api/authApi";
 import { setSession } from "../../api/session";
 import { ApiError } from "../../api/client";
 import { MirrorLogo } from "../../components/ui/MirrorLogo";
+import { useBreakpoint } from "../../hooks/useBreakpoint";
 
 export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
+  const bp = useBreakpoint();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -196,6 +198,114 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
           Quên mật khẩu? Liên hệ quản trị viên để được cấp lại.
         </div>
       </form>
+
+      {/* Decorative climbing stick figure at the bottom-right (hidden on mobile) */}
+      {bp !== "mobile" && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 40,
+            right: 60,
+            color: T.text,
+            opacity: 0.85,
+          }}
+        >
+          <svg
+            width="160"
+            height="200"
+            viewBox="0 0 160 200"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            {/* Base line */}
+            <path
+              d="M 0 198 Q 80 196 160 198"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
+
+            {/* Stairs */}
+            {/* Step 0 */}
+            <path
+              d="M 0 198 Q 8 198 16 198 M 16 198 Q 15 190 16 183 Q 32 184 48 183 M 48 183 L 48 198"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {/* Step 1 */}
+            <path
+              d="M 48 183 Q 47 166 48 148 Q 66 147 84 148 L 84 198"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {/* Step 2 */}
+            <path
+              d="M 84 148 Q 83 131 84 113 Q 102 114 120 113 L 120 198"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {/* Step 3 */}
+            <path
+              d="M 120 113 Q 119 96 120 78 Q 136 79 152 78 L 152 198"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+
+            {/* Stick Figure */}
+            {/* Head */}
+            <circle
+              cx="84"
+              cy="28"
+              r="11"
+              stroke="currentColor"
+              strokeWidth="2.5"
+            />
+            
+            {/* Neck */}
+            <path
+              d="M 84 39 L 83 52"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
+
+            {/* Torso & Legs (Single continuous hand-drawn outline for body + thick legs) */}
+            <path
+              d="M 83 52 Q 90 70 80 96 Q 92 90 96 88 Q 102 100 106 113 L 98 113 Q 92 102 82 98 Q 75 124 72 148 L 62 148 Q 66 124 70 96 Q 73 75 83 52 Z"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+
+            {/* Left arm */}
+            <path
+              d="M 76 60 Q 64 80 58 102"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+
+            {/* Right arm */}
+            <path
+              d="M 85 58 Q 96 68 108 70"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
+      )}
     </div>
   );
 }
