@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://gradeai-backend-xag2.onrender.com/api/:path*"
+      "destination": "https://gradeai-backend-0hy6.onrender.com/api/:path*"
     },
     {
       "source": "/:path*",
