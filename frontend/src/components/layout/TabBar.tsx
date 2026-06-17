@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { T } from "../../theme/tokens";
 import type { I18nStrings, Tab } from "../../types";
 import { Icon } from "../ui/Icon";
+import { MirrorLogo } from "../ui/MirrorLogo";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
 
 interface TabBarProps {
@@ -374,18 +375,20 @@ export function TabBar({
                 }}
               >
                 <div style={{ minWidth: 0 }}>
-                  <span
-                    style={{
-                      fontFamily: T.display,
-                      fontSize: 18,
-                      fontWeight: 700,
-                      color: T.accentDark,
-                      letterSpacing: 0,
-                      lineHeight: 1,
-                    }}
-                  >
-                    MIRROR
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <MirrorLogo size={24} />
+                    <span
+                      style={{
+                        fontFamily: T.display,
+                        fontSize: 16,
+                        fontWeight: 800,
+                        color: T.accentDark,
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      MIRROR
+                    </span>
+                  </div>
                   <div
                     style={{
                       fontSize: 11,

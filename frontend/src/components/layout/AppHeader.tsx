@@ -3,6 +3,7 @@ import { useBreakpoint } from "../../hooks/useBreakpoint";
 import { Icon } from "../ui/Icon";
 import { T } from "../../theme/tokens";
 import type { Tab } from "../../types";
+import { MirrorLogo } from "../ui/MirrorLogo";
 
 interface AppHeaderProps {
   brand: string;
@@ -50,7 +51,7 @@ function initialsOf(label: string): string {
  * popover, which clamps itself on-screen.
  */
 export function AppHeader({
-  brand,
+  brand: _brand,
   onOpenMemory,
   onOpenHelp,
   onToggleHistory,
@@ -124,21 +125,29 @@ export function AppHeader({
           <Icon.Menu size={20} />
         </button>
       )}
-      <span
+      <div
         className="header-brand"
         style={{
-          fontFamily: T.display,
-          fontSize: T.fontSize.xl,
-          fontWeight: 700,
-          color: T.accentDark,
-          letterSpacing: 0,
-          lineHeight: 1,
+          display: bp === "desktop" ? "flex" : "none",
+          alignItems: "center",
+          gap: 8,
           flex: "0 0 auto",
-          display: bp === "desktop" ? undefined : "none",
         }}
       >
-        {brand}
-      </span>
+        <MirrorLogo size={28} />
+        <span
+          style={{
+            fontFamily: T.display,
+            fontSize: T.fontSize.xl,
+            fontWeight: 800,
+            color: T.accentDark,
+            letterSpacing: 0.5,
+            lineHeight: 1,
+          }}
+        >
+          MIRROR
+        </span>
+      </div>
 
       {showNav && activeTab && bp !== "mobile" && (
         <StudentNavigator

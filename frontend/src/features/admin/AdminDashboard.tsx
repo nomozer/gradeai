@@ -22,6 +22,7 @@ import {
 import { getUser, clearSession, type SessionUser } from "../../api/session";
 import { ApiError } from "../../api/client";
 import { Icon } from "../../components/ui/Icon";
+import { MirrorLogo } from "../../components/ui/MirrorLogo";
 import { BulkImportUsers } from "./BulkImportUsers";
 
 type Section = "overview" | "accounts";
@@ -327,17 +328,36 @@ export function AdminDashboard() {
       >
         <div
           style={{
-            fontFamily: T.display,
-            fontSize: T.fontSize.xl,
-            fontWeight: 700,
-            color: T.accentDark,
-            letterSpacing: 1,
             padding: "4px 8px",
             marginBottom: T.space[5],
           }}
         >
-          MIRROR
-          <span style={{ display: "block", fontSize: T.fontSize.xs, color: T.textMute, fontWeight: 500, marginTop: 2 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <MirrorLogo size={28} />
+            <span
+              style={{
+                fontFamily: T.display,
+                fontSize: T.fontSize.lg,
+                fontWeight: 800,
+                color: T.accentDark,
+                letterSpacing: 0.5,
+              }}
+            >
+              MIRROR
+            </span>
+          </div>
+          <span
+            style={{
+              display: "block",
+              fontFamily: T.display,
+              fontSize: T.fontSize.xs,
+              color: T.textMute,
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+              marginTop: 4,
+            }}
+          >
             Quản trị
           </span>
         </div>

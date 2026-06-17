@@ -17,6 +17,7 @@ import { GlobalStyles } from "../../theme/GlobalStyles";
 import { login } from "../../api/authApi";
 import { setSession } from "../../api/session";
 import { ApiError } from "../../api/client";
+import { MirrorLogo } from "../../components/ui/MirrorLogo";
 
 export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
   const [username, setUsername] = useState("");
@@ -69,14 +70,9 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
           position: "absolute",
           top: 24,
           left: 28,
-          fontFamily: T.display,
-          fontSize: T.fontSize.xl,
-          fontWeight: 800,
-          color: T.accentDark,
-          letterSpacing: 1,
         }}
       >
-        MIRROR
+        <MirrorLogo size={40} />
       </div>
 
       <form
