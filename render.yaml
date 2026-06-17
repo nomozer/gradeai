@@ -43,9 +43,9 @@ services:
       # both CORS and the CSRF origin check (the Vercel /api proxy forwards the
       # browser's Origin = your Vercel domain). UPDATE to your real Vercel URL.
       - key: CORS_ORIGINS
-        value: https://gradeai.vercel.app,https://gradeai-pham-dung-s-projects.vercel.app
+        value: https://gradeai-pied.vercel.app
       - key: CSRF_TRUSTED_ORIGINS
-        value: https://gradeai.vercel.app,https://gradeai-pham-dung-s-projects.vercel.app
+        value: https://gradeai-pied.vercel.app
       # Login system. The admin account is seeded from these on first startup
       # (idempotent — only created if missing, so changing the admin password
       # later won't be reset on redeploy). The admin then creates teacher
