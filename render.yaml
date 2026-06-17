@@ -14,17 +14,19 @@ services:
     name: gradeai-backend
     runtime: python
     rootDir: backend
-    plan: starter
+    # FREE tier — no credit card required. Trade-off: NO persistent disk (the
+    # lessons corpus + login accounts in SQLite/ChromaDB RESET on every restart)
+    # and the service sleeps after ~15 min idle. FOR PRODUCTION/thesis defense:
+    # set `plan: starter` and UNCOMMENT the `disk:` block below (needs a card).
+    plan: free
     buildCommand: pip install -r requirements.txt
     # Single worker: the in-process singletons (MemoryManager, Chroma client,
     # file-part LRU cache) are per-process and must not be duplicated/raced.
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
-    # Persistent disk so the lessons corpus (SQLite + ChromaDB under
-    # backend/data) survives restarts and redeploys. Requires a paid plan.
-    disk:
-      name: gradeai-data
-      mountPath: /opt/render/project/src/backend/data
-      sizeGB: 1
+    # disk:                       # ← uncomment for production (needs a paid plan)
+    #   name: gradeai-data
+    #   mountPath: /opt/render/project/src/backend/data
+    #   sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
