@@ -49,8 +49,11 @@ export const T = {
   memorySoft: "#E8D5F6",
 
   // Typography — font families
-  font: `"Inter", "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`,
-  display: `"Outfit", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`,
+  font: `"Inter", "Be Vietnam Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`,
+  // Be Vietnam Pro — a Vietnamese-first display family with full diacritic
+  // coverage, replacing Outfit (whose missing dấu fell back per-glyph and
+  // made VN headings look unbalanced).
+  display: `"Be Vietnam Pro", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`,
   mono: `"JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace`,
 
   // Type scale — Tailwind-aligned, used for sizes that recur across the UI.
