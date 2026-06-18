@@ -26,6 +26,7 @@ import { getUser, clearSession, type SessionUser } from "../../api/session";
 import { ApiError } from "../../api/client";
 import { Icon } from "../../components/ui/Icon";
 import { MirrorLogo } from "../../components/ui/MirrorLogo";
+import { openInNewTab } from "../../lib/openInNewTab";
 import { BulkImportUsers } from "./BulkImportUsers";
 
 type Section = "overview" | "accounts" | "backup";
@@ -346,10 +347,10 @@ export function AdminDashboard() {
   }, []);
 
   // Admin can also grade: open the grading workspace (#grade) in a new tab so
-  // the dashboard stays put.
+  // the dashboard stays put. Uses an anchor click (not window.open with a
+  // features string) so the popup blocker doesn't eat it on the deployed site.
   const openGrading = useCallback(() => {
-    const url = window.location.origin + window.location.pathname + "#grade";
-    window.open(url, "_blank", "noopener,noreferrer");
+    openInNewTab(window.location.origin + window.location.pathname + "#grade");
   }, []);
 
   return (
@@ -765,56 +766,29 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
     }
   };
 
-  const onResetPassword = async (u: SessionUser) => {
-    const pw = window.prompt(`Mật khẩu mới cho "${u.username}" (tối thiểu 4 ký tự):`);
-    if (pw === null) return;
-    if (pw.length < 4) {
-      setError("Mật khẩu phải có ít nhất 4 ký tự.");
-      return;
-    }
-    setError("");
-    try {
-      await updateUser(u.id, { password: pw });
-      await refresh();
-    } catch (err) {
-      setError(errText(err, "Không đặt lại được mật khẩu."));
-    }
+  // Account actions open a styled dialog (below) instead of the browser's
+  // native window.prompt/confirm — those render as the ugly "localhost:3000
+  // says…" box that clashes with the rest of the admin UI. These helpers are
+  // the pure mutations; they throw on failure so the dialog shows the error.
+  const doResetPassword = async (u: SessionUser, pw: string) => {
+    await updateUser(u.id, { password: pw });
+    await refresh();
   };
-
-  const onSetQuota = async (u: SessionUser) => {
-    const raw = window.prompt(
-      `Hạn mức token / 30 ngày cho "${u.username}" (tự reset mỗi 30 ngày; 0 = không giới hạn):`,
-      String(u.token_quota ?? 0),
-    );
-    if (raw === null) return;
-    const quota = parseInt(raw, 10);
-    if (isNaN(quota) || quota < 0) {
-      setError("Hạn mức phải là số ≥ 0.");
-      return;
-    }
-    setError("");
-    try {
-      await updateUser(u.id, { token_quota: quota });
-      await refresh();
-    } catch (err) {
-      setError(errText(err, "Không đặt được hạn mức."));
-    }
+  const doSetQuota = async (u: SessionUser, quota: number) => {
+    await updateUser(u.id, { token_quota: quota });
+    await refresh();
   };
-
-  const onDelete = async (u: SessionUser) => {
-    if (!window.confirm(`Xóa tài khoản "${u.username}"? Hành động này không hoàn tác được.`)) return;
-    setError("");
-    try {
-      await deleteUser(u.id);
-      await refresh();
-    } catch (err) {
-      setError(errText(err, "Không xóa được tài khoản."));
-    }
+  const doDelete = async (u: SessionUser) => {
+    await deleteUser(u.id);
+    await refresh();
   };
 
   const [query, setQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
+  const [dialog, setDialog] = useState<
+    { kind: "password" | "quota" | "delete"; user: SessionUser } | null
+  >(null);
 
   const q = query.trim().toLowerCase();
   const filtered = q
@@ -891,10 +865,10 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
                           <RowActions
                             user={u}
                             isSelf={isSelf}
-                            onSetQuota={() => onSetQuota(u)}
-                            onResetPassword={() => onResetPassword(u)}
+                            onSetQuota={() => setDialog({ kind: "quota", user: u })}
+                            onResetPassword={() => setDialog({ kind: "password", user: u })}
                             onToggleActive={() => onToggleActive(u)}
-                            onDelete={() => onDelete(u)}
+                            onDelete={() => setDialog({ kind: "delete", user: u })}
                           />
                         </td>
                       </TableRow>
@@ -991,6 +965,46 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
           <BulkImportUsers onDone={refresh} />
         </Modal>
       )}
+
+      {/* Row-action dialogs (replace native window.prompt/confirm) */}
+      {dialog?.kind === "password" && (
+        <PromptModal
+          title={`Đổi mật khẩu — ${dialog.user.username}`}
+          label="Mật khẩu mới"
+          inputType="password"
+          placeholder="≥ 4 ký tự"
+          confirmLabel="Đổi mật khẩu"
+          validate={(v) => (v.length < 4 ? "Mật khẩu phải có ít nhất 4 ký tự." : null)}
+          onSubmit={(v) => doResetPassword(dialog.user, v)}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === "quota" && (
+        <PromptModal
+          title={`Hạn mức token — ${dialog.user.username}`}
+          label="Hạn mức token / 30 ngày (tự reset mỗi 30 ngày · 0 = không giới hạn)"
+          inputType="number"
+          initialValue={String(dialog.user.token_quota ?? 0)}
+          placeholder="vd: 1000000"
+          confirmLabel="Lưu hạn mức"
+          validate={(v) => {
+            const n = parseInt(v, 10);
+            return isNaN(n) || n < 0 ? "Hạn mức phải là số ≥ 0." : null;
+          }}
+          onSubmit={(v) => doSetQuota(dialog.user, Math.max(0, parseInt(v, 10) || 0))}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === "delete" && (
+        <ConfirmModal
+          title="Xóa tài khoản"
+          message={`Xóa tài khoản "${dialog.user.username}"? Hành động này không hoàn tác được.`}
+          confirmLabel="Xóa tài khoản"
+          danger
+          onConfirm={() => doDelete(dialog.user)}
+          onClose={() => setDialog(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1076,6 +1090,121 @@ function Modal({
         <div style={{ padding: 18 }}>{children}</div>
       </div>
     </div>
+  );
+}
+
+// Styled single-input dialog — the designed replacement for window.prompt.
+// `validate` returns an error string (or null when valid); it both gates the
+// submit button and is shown inline once the user has typed.
+function PromptModal({
+  title,
+  label,
+  inputType = "text",
+  initialValue = "",
+  placeholder,
+  confirmLabel = "Lưu",
+  validate,
+  onSubmit,
+  onClose,
+}: {
+  title: string;
+  label: string;
+  inputType?: string;
+  initialValue?: string;
+  placeholder?: string;
+  confirmLabel?: string;
+  validate?: (v: string) => string | null;
+  onSubmit: (v: string) => Promise<void> | void;
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState(initialValue);
+  const [serverErr, setServerErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fieldErr = validate ? validate(value.trim()) : null;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (fieldErr) return;
+    setBusy(true);
+    setServerErr(null);
+    try {
+      await onSubmit(value.trim());
+      onClose();
+    } catch (err) {
+      setServerErr(errText(err, "Thao tác thất bại."));
+      setBusy(false);
+    }
+  };
+
+  const shown = serverErr || (value.length > 0 ? fieldErr : null);
+  return (
+    <Modal title={title} onClose={onClose}>
+      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: T.space[4] }}>
+        <Field label={label}>
+          <FormInput
+            type={inputType}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={placeholder}
+            style={{ width: "100%" }}
+          />
+        </Field>
+        {shown && <span style={{ fontSize: T.fontSize.xs, color: T.red }}>{shown}</span>}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button type="button" onClick={onClose} style={toolbarGhostBtn}>
+            Hủy
+          </button>
+          <SubmitButton enabled={!fieldErr} loading={busy} label={confirmLabel} loadingLabel="Đang lưu…" />
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// Styled yes/no dialog — the designed replacement for window.confirm.
+function ConfirmModal({
+  title,
+  message,
+  confirmLabel = "Xác nhận",
+  danger,
+  onConfirm,
+  onClose,
+}: {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  danger?: boolean;
+  onConfirm: () => Promise<void> | void;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const go = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await onConfirm();
+      onClose();
+    } catch (e) {
+      setErr(errText(e, "Thao tác thất bại."));
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: T.space[4] }}>
+        <p style={{ margin: 0, color: T.textSoft, fontSize: T.fontSize.sm, lineHeight: 1.6 }}>{message}</p>
+        {err && <span style={{ fontSize: T.fontSize.xs, color: T.red }}>{err}</span>}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button type="button" onClick={onClose} style={toolbarGhostBtn}>
+            Hủy
+          </button>
+          <button type="button" onClick={go} disabled={busy} style={danger ? dangerBtn : toolbarPrimaryBtn}>
+            {busy ? "Đang xử lý…" : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -1250,6 +1379,7 @@ function BackupSection() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<RestoreResult | null>(null);
+  const [pendingRestore, setPendingRestore] = useState<unknown | null>(null);
 
   const onDownload = async () => {
     setBusy(true);
@@ -1280,27 +1410,17 @@ function BackupSection() {
     if (!file) return;
     setError("");
     setResult(null);
-    let data: unknown;
     try {
-      data = JSON.parse(await file.text());
+      setPendingRestore(JSON.parse(await file.text()));
     } catch {
       setError("File không hợp lệ — không phải file sao lưu (.json).");
-      return;
     }
-    if (
-      !window.confirm(
-        "Khôi phục sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại (tài khoản, lessons, điểm đã chấm). Không hoàn tác được. Tiếp tục?",
-      )
-    )
-      return;
-    setBusy(true);
-    try {
-      setResult(await restoreBackup(data));
-    } catch (err) {
-      setError(errText(err, "Khôi phục thất bại."));
-    } finally {
-      setBusy(false);
-    }
+  };
+
+  // The actual destructive restore — runs once the user confirms in the
+  // styled dialog. Throws on failure so the dialog surfaces the error.
+  const doRestore = async () => {
+    setResult(await restoreBackup(pendingRestore));
   };
 
   return (
@@ -1374,6 +1494,17 @@ function BackupSection() {
         )}
       </div>
       </div>
+
+      {pendingRestore !== null && (
+        <ConfirmModal
+          title="Khôi phục dữ liệu"
+          message="Khôi phục sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại (tài khoản, lessons, điểm đã chấm). Không hoàn tác được, và bạn có thể phải đăng nhập lại. Tiếp tục?"
+          confirmLabel="Ghi đè & khôi phục"
+          danger
+          onConfirm={doRestore}
+          onClose={() => setPendingRestore(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1485,6 +1616,18 @@ const toolbarGhostBtn: React.CSSProperties = {
   color: T.accent,
   background: "rgba(59, 79, 138, 0.05)",
   border: `1px solid rgba(59, 79, 138, 0.15)`,
+  borderRadius: 8,
+  cursor: "pointer",
+  fontFamily: T.font,
+};
+
+const dangerBtn: React.CSSProperties = {
+  padding: "9px 16px",
+  fontSize: T.fontSize.sm,
+  fontWeight: 600,
+  color: "#fff",
+  background: T.red,
+  border: "none",
   borderRadius: 8,
   cursor: "pointer",
   fontFamily: T.font,

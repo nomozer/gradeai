@@ -36,6 +36,7 @@ import { LoginPage } from "./features/auth/LoginPage";
 import { AdminDashboard } from "./features/admin/AdminDashboard";
 import { getToken, getUser, clearSession, isAdmin, AUTH_REQUIRED_EVENT } from "./api/session";
 import { logout as logoutApi } from "./api/authApi";
+import { openInNewTab } from "./lib/openInNewTab";
 import type { GradeHistoryEntry } from "./types";
 
 const MEMORY_HASH = "#memory";
@@ -134,16 +135,14 @@ function WorkspacePage() {
   // so the workspace tab (uploaded files, in-flight grades, scroll
   // position) stays exactly as the user left it.
   const openMemoryTab = useCallback(() => {
-    const url = window.location.origin + window.location.pathname + MEMORY_HASH;
-    window.open(url, "_blank", "noopener,noreferrer");
+    openInNewTab(window.location.origin + window.location.pathname + MEMORY_HASH);
   }, []);
 
   // Admin-only: jump back to the management dashboard (base URL with no hash ⇒
   // admins land on AdminDashboard). New tab, same idiom as memory, so the
   // in-progress grading tab here is preserved.
   const openAdminTab = useCallback(() => {
-    const url = window.location.origin + window.location.pathname;
-    window.open(url, "_blank", "noopener,noreferrer");
+    openInNewTab(window.location.origin + window.location.pathname);
   }, []);
 
   // Logout — revoke server-side, drop the session, hard-reload so no other
