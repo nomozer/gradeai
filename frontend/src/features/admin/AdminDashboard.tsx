@@ -27,6 +27,7 @@ import { ApiError } from "../../api/client";
 import { Icon } from "../../components/ui/Icon";
 import { MirrorLogo } from "../../components/ui/MirrorLogo";
 import { openInNewTab } from "../../lib/openInNewTab";
+import { useBreakpoint } from "../../hooks/useBreakpoint";
 import { BulkImportUsers } from "./BulkImportUsers";
 
 type Section = "overview" | "accounts" | "backup";
@@ -336,6 +337,34 @@ export function AdminDashboard() {
   const me = getUser();
   const [section, setSection] = useState<Section>("overview");
 
+  // Below the desktop tier the 240px fixed sidebar eats the horizontal space
+  // the account / overview tables need, so it collapses into an off-canvas ☰
+  // drawer — matching the workspace's "sidebar hidden < 1200px" convention
+  // (see useBreakpoint).
+  const bp = useBreakpoint();
+  const isNarrow = bp !== "desktop";
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const MenuIcon = Icon.Menu;
+
+  // Picking a section also dismisses the drawer (narrow mode only).
+  const selectSection = useCallback((s: Section) => {
+    setSection(s);
+    setDrawerOpen(false);
+  }, []);
+
+  // Close the drawer when the viewport grows back to desktop, and on ESC.
+  useEffect(() => {
+    if (!isNarrow) setDrawerOpen(false);
+  }, [isNarrow]);
+  useEffect(() => {
+    if (!isNarrow || !drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isNarrow, drawerOpen]);
+
   const handleLogout = useCallback(async () => {
     try {
       await logoutApi();
@@ -350,40 +379,98 @@ export function AdminDashboard() {
   // the dashboard stays put. Uses an anchor click (not window.open with a
   // features string) so the popup blocker doesn't eat it on the deployed site.
   const openGrading = useCallback(() => {
+    setDrawerOpen(false);
     openInNewTab(window.location.origin + window.location.pathname + "#grade");
   }, []);
 
+  const asideStyle: React.CSSProperties = isNarrow
+    ? {
+        width: 248,
+        maxWidth: "82vw",
+        background: T.bgCard,
+        borderRight: `1px solid ${T.border}`,
+        display: "flex",
+        flexDirection: "column",
+        padding: T.space[4],
+        position: "fixed",
+        top: 0,
+        left: 0,
+        height: "100vh",
+        zIndex: 340,
+        overflowY: "auto",
+        transform: drawerOpen ? "translateX(0)" : "translateX(-110%)",
+        transition: "transform 0.25s ease",
+        boxShadow: drawerOpen ? T.shadowStrong : "none",
+      }
+    : {
+        width: 240,
+        flex: "0 0 240px",
+        background: T.bgCard,
+        borderRight: `1px solid ${T.border}`,
+        display: "flex",
+        flexDirection: "column",
+        padding: T.space[4],
+        position: "sticky",
+        top: 0,
+        height: "100vh",
+      };
+
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: T.bg, fontFamily: T.font }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: isNarrow ? "column" : "row",
+        minHeight: "100vh",
+        background: T.bg,
+        fontFamily: T.font,
+      }}
+    >
       <GlobalStyles />
 
-      {/* Sidebar */}
-      <aside
-        style={{
-          width: 240,
-          flex: "0 0 240px",
-          background: T.bgCard,
-          borderRight: `1px solid ${T.border}`,
-          display: "flex",
-          flexDirection: "column",
-          padding: T.space[4],
-          position: "sticky",
-          top: 0,
-          height: "100vh",
-        }}
-      >
-        <div
+      {/* Narrow-mode top bar: the ☰ that opens the sidebar drawer */}
+      {isNarrow && (
+        <header
           style={{
-            padding: "4px 8px",
-            marginBottom: T.space[5],
+            position: "sticky",
+            top: 0,
+            zIndex: 40,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "10px 14px",
+            background: T.bgCard,
+            borderBottom: `1px solid ${T.border}`,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <MirrorLogo size={28} />
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            aria-label="Mở menu quản trị"
+            onMouseEnter={(e) => (e.currentTarget.style.background = T.bgHover)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 8,
+              border: "none",
+              background: "transparent",
+              color: T.textSoft,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              transition: "background 0.15s ease",
+            }}
+          >
+            <MenuIcon size={20} color="currentColor" style={{ display: "block" }} />
+          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <MirrorLogo size={24} />
             <span
               style={{
                 fontFamily: T.display,
-                fontSize: T.fontSize.lg,
+                fontSize: T.fontSize.base,
                 fontWeight: 800,
                 color: T.accentDark,
                 letterSpacing: 0.5,
@@ -391,6 +478,59 @@ export function AdminDashboard() {
             >
               MIRROR
             </span>
+          </div>
+        </header>
+      )}
+
+      {/* Drawer backdrop (narrow + open) */}
+      {isNarrow && drawerOpen && (
+        <div
+          onClick={() => setDrawerOpen(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(28, 30, 42, 0.45)", zIndex: 330 }}
+        />
+      )}
+
+      {/* Sidebar (sticky rail on desktop, off-canvas drawer below it) */}
+      <aside style={asideStyle}>
+        <div
+          style={{
+            padding: "4px 8px",
+            marginBottom: T.space[5],
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <MirrorLogo size={28} />
+              <span
+                style={{
+                  fontFamily: T.display,
+                  fontSize: T.fontSize.lg,
+                  fontWeight: 800,
+                  color: T.accentDark,
+                  letterSpacing: 0.5,
+                }}
+              >
+                MIRROR
+              </span>
+            </div>
+            {isNarrow && (
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(false)}
+                aria-label="Đóng menu"
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: T.textMute,
+                  cursor: "pointer",
+                  fontSize: 20,
+                  lineHeight: 1,
+                  padding: 4,
+                }}
+              >
+                ✕
+              </button>
+            )}
           </div>
           <span
             style={{
@@ -413,19 +553,19 @@ export function AdminDashboard() {
             label="Tổng quan hệ thống"
             active={section === "overview"}
             icon="Layout"
-            onClick={() => setSection("overview")}
+            onClick={() => selectSection("overview")}
           />
           <SideLink
             label="Quản lý tài khoản"
             active={section === "accounts"}
             icon="User"
-            onClick={() => setSection("accounts")}
+            onClick={() => selectSection("accounts")}
           />
           <SideLink
             label="Sao lưu dữ liệu"
             active={section === "backup"}
             icon="RefreshCw"
-            onClick={() => setSection("backup")}
+            onClick={() => selectSection("backup")}
           />
           <SideLink
             label="Chấm bài"
