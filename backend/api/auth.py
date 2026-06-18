@@ -98,6 +98,8 @@ class UserOut(BaseModel):
     role: str
     is_active: bool
     token_quota: int = 0
+    full_name: str | None = None
+    teacher_code: str | None = None
     created_at: str | None = None
 
 
@@ -116,6 +118,8 @@ class CreateUserRequest(BaseModel):
     password: str = Field(min_length=4, max_length=256)
     role: str = ROLE_USER
     token_quota: int = Field(default=0, ge=0)
+    full_name: str | None = Field(default=None, max_length=128)
+    teacher_code: str | None = Field(default=None, max_length=64)
 
 
 class UpdateUserRequest(BaseModel):
@@ -134,6 +138,8 @@ class BulkUserItem(BaseModel):
     password: str = ""
     role: str = ROLE_USER
     token_quota: int = 0
+    full_name: str = ""
+    teacher_code: str = ""
 
 
 class BulkCreateRequest(BaseModel):
@@ -165,6 +171,8 @@ class OverviewUserRow(BaseModel):
     role: str
     is_active: bool
     token_quota: int = 0
+    full_name: str | None = None
+    teacher_code: str | None = None
     created_at: str | None = None
     lessons: int = 0
     graded: int = 0
@@ -264,7 +272,10 @@ async def create_user(req: CreateUserRequest, _admin: dict = Depends(require_adm
     store = _require_store()
     role = req.role if req.role in (ROLE_ADMIN, ROLE_USER) else ROLE_USER
     try:
-        user = store.create_user(req.username, req.password, role, req.token_quota)
+        user = store.create_user(
+            req.username, req.password, role, req.token_quota,
+            full_name=req.full_name, teacher_code=req.teacher_code,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     logger.info("Admin %s created user %s (role=%s)", _admin["username"], user["username"], role)
@@ -300,7 +311,10 @@ async def create_users_bulk(req: BulkCreateRequest, admin: dict = Depends(requir
             continue
         role = item.role if item.role in (ROLE_ADMIN, ROLE_USER) else ROLE_USER
         try:
-            store.create_user(uname, item.password, role, item.token_quota)
+            store.create_user(
+                uname, item.password, role, item.token_quota,
+                full_name=item.full_name, teacher_code=item.teacher_code,
+            )
             created += 1
             results.append(BulkResultRow(username=uname, status="created"))
         except ValueError as exc:

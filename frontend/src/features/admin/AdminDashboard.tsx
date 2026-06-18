@@ -106,6 +106,41 @@ function StatCard({
   );
 }
 
+// Identity cell shared by the overview + accounts tables: shows the teacher's
+// display name (falling back to username) with @username + mã GV underneath,
+// so the admin reads a real name instead of a cryptic login.
+function UserIdentity({ user, isSelf }: { user: SessionUser; isSelf?: boolean }) {
+  const name = (user.full_name || "").trim();
+  const code = (user.teacher_code || "").trim();
+  const sub: string[] = [];
+  if (name) sub.push(`@${user.username}`);
+  if (code) sub.push(`Mã: ${code}`);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 600, color: T.text }}>
+        {name || user.username}
+        {isSelf && (
+          <span
+            style={{
+              fontSize: 11,
+              padding: "2px 6px",
+              borderRadius: 4,
+              background: T.accentSoft,
+              color: T.accent,
+              fontWeight: 500,
+            }}
+          >
+            bạn
+          </span>
+        )}
+      </span>
+      {sub.length > 0 && (
+        <span style={{ fontSize: T.fontSize.xxs, color: T.textMute }}>{sub.join(" · ")}</span>
+      )}
+    </div>
+  );
+}
+
 function StatusBadge({ active }: { active: boolean }) {
   return (
     <span
@@ -392,7 +427,7 @@ export function AdminDashboard() {
             onClick={() => setSection("backup")}
           />
           <SideLink
-            label="Chấm bài (mở tab mới)"
+            label="Chấm bài"
             active={false}
             icon="PenTool"
             onClick={openGrading}
@@ -632,7 +667,7 @@ function OverviewSection() {
                     const over = !!u.token_quota && u.token_quota > 0 && u.tokens_used >= u.token_quota;
                     return (
                     <TableRow key={u.id} isEven={idx % 2 === 0}>
-                      <td style={tdStyle}>{u.username}</td>
+                      <td style={tdStyle}><UserIdentity user={u} /></td>
                       <td style={tdStyle}>{u.role === "admin" ? "Admin" : "Giáo viên"}</td>
                       <td style={tdStyle}>
                         <StatusBadge active={!!u.is_active} />
@@ -671,6 +706,8 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState("user");
   const [newQuota, setNewQuota] = useState("");
+  const [newFullName, setNewFullName] = useState("");
+  const [newTeacherCode, setNewTeacherCode] = useState("");
   const [creating, setCreating] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -700,11 +737,15 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
         password: newPassword,
         role: newRole,
         token_quota: Math.max(0, parseInt(newQuota, 10) || 0),
+        full_name: newFullName.trim() || undefined,
+        teacher_code: newTeacherCode.trim() || undefined,
       });
       setNewUsername("");
       setNewPassword("");
       setNewRole("user");
       setNewQuota("");
+      setNewFullName("");
+      setNewTeacherCode("");
       await refresh();
       onSuccess?.();
     } catch (err) {
@@ -777,7 +818,10 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
 
   const q = query.trim().toLowerCase();
   const filtered = q
-    ? users.filter((u) => u.username.toLowerCase().includes(q))
+    ? users.filter((u) =>
+        [u.username, u.full_name, u.teacher_code]
+          .some((f) => (f || "").toLowerCase().includes(q)),
+      )
     : users;
 
   return (
@@ -803,7 +847,7 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
         <FormInput
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Tìm theo tên đăng nhập…"
+          placeholder="Tìm theo tên, mã GV, tên đăng nhập…"
           style={{ minWidth: 0, width: "100%", maxWidth: 360 }}
         />
 
@@ -814,7 +858,7 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
             <table style={tableStyle}>
               <thead>
                 <tr style={{ textAlign: "left", color: T.textMute }}>
-                  <th style={thStyle}>Tên đăng nhập</th>
+                  <th style={thStyle}>Tài khoản</th>
                   <th style={thStyle}>Vai trò</th>
                   <th style={thStyle}>Trạng thái</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>Hạn mức token</th>
@@ -833,23 +877,8 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
                     const isSelf = me?.id === u.id;
                     return (
                       <TableRow key={u.id} isEven={idx % 2 === 0}>
-                        <td style={{ ...tdStyle, fontWeight: 600, color: T.text }}>
-                          {u.username}
-                          {isSelf && (
-                            <span
-                              style={{
-                                marginLeft: 8,
-                                fontSize: 11,
-                                padding: "2px 6px",
-                                borderRadius: 4,
-                                background: T.accentSoft,
-                                color: T.accent,
-                                fontWeight: 500,
-                              }}
-                            >
-                              bạn
-                            </span>
-                          )}
+                        <td style={tdStyle}>
+                          <UserIdentity user={u} isSelf={isSelf} />
                         </td>
                         <td style={tdStyle}>{u.role === "admin" ? "Admin" : "Giáo viên"}</td>
                         <td style={tdStyle}>
@@ -902,6 +931,24 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
                 style={{ width: "100%" }}
               />
             </Field>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: T.space[3] }}>
+              <Field label="Tên giáo viên (không bắt buộc)">
+                <FormInput
+                  value={newFullName}
+                  onChange={(e) => setNewFullName(e.target.value)}
+                  placeholder="vd: Nguyễn Văn A"
+                  style={{ width: "100%", minWidth: 0 }}
+                />
+              </Field>
+              <Field label="Mã giáo viên (không bắt buộc)">
+                <FormInput
+                  value={newTeacherCode}
+                  onChange={(e) => setNewTeacherCode(e.target.value)}
+                  placeholder="vd: GV001"
+                  style={{ width: "100%", minWidth: 0 }}
+                />
+              </Field>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: T.space[3] }}>
               <Field label="Vai trò">
                 <FormSelect

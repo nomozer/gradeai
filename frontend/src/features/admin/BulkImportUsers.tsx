@@ -19,7 +19,14 @@ import {
 } from "../../api/authApi";
 import { ApiError } from "../../api/client";
 
-const TEMPLATE_COLUMNS = ["username", "password", "role", "token_quota"];
+const TEMPLATE_COLUMNS = [
+  "username",
+  "password",
+  "full_name",
+  "teacher_code",
+  "role",
+  "token_quota",
+];
 
 /** Pull a cell by header name, case-insensitive + trimmed. */
 function cell(row: Record<string, unknown>, key: string): string {
@@ -35,11 +42,18 @@ async function downloadTemplate() {
   const XLSX = await import("xlsx");
   const ws = XLSX.utils.aoa_to_sheet([
     TEMPLATE_COLUMNS,
-    ["gv_toan_a", "matkhau123", "user", 1000000],
-    ["gv_ly_b", "matkhau456", "user", 500000],
-    ["truong_ban", "matkhau789", "admin", 0],
+    ["gv_toan_a", "matkhau123", "Nguyễn Văn A", "GV001", "user", 1000000],
+    ["gv_ly_b", "matkhau456", "Trần Thị B", "GV002", "user", 500000],
+    ["truong_ban", "matkhau789", "Lê Văn C", "GV000", "admin", 0],
   ]);
-  ws["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 14 }];
+  ws["!cols"] = [
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 20 },
+    { wch: 12 },
+    { wch: 10 },
+    { wch: 14 },
+  ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "TaiKhoan");
   XLSX.writeFile(wb, "mau_tai_khoan.xlsx");
@@ -74,12 +88,14 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
         .map((r) => ({
           username: cell(r, "username"),
           password: cell(r, "password"),
+          full_name: cell(r, "full_name"),
+          teacher_code: cell(r, "teacher_code"),
           role: cell(r, "role").toLowerCase() === "admin" ? "admin" : "user",
           token_quota: parseInt(cell(r, "token_quota"), 10) || 0,
         }))
         .filter((r) => r.username || r.password); // drop fully-empty rows
       if (parsed.length === 0) {
-        setError("Không tìm thấy dòng nào. Kiểm tra tiêu đề cột: username, password, role, token_quota.");
+        setError("Không tìm thấy dòng nào. Kiểm tra tiêu đề cột: username, password, full_name, teacher_code, role, token_quota.");
         setRows([]);
         return;
       }
@@ -149,6 +165,8 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
           {[
             ["username", "Bắt buộc"],
             ["password", "Tối thiểu 4 ký tự"],
+            ["full_name", "Tên giáo viên · không bắt buộc"],
+            ["teacher_code", "Mã giáo viên · không trùng · không bắt buộc"],
             ["role", "user / admin · để trống = giáo viên"],
             ["token_quota", "0 = không giới hạn"],
           ].map(([col, desc], i) => (
@@ -244,6 +262,8 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
                   <th style={cellTh}>#</th>
                   <th style={cellTh}>username</th>
                   <th style={cellTh}>password</th>
+                  <th style={cellTh}>full_name</th>
+                  <th style={cellTh}>teacher_code</th>
                   <th style={cellTh}>role</th>
                   <th style={{ ...cellTh, textAlign: "right" }}>token_quota</th>
                 </tr>
@@ -256,6 +276,8 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
                       <td style={cellTd}>{i + 1}</td>
                       <td style={cellTd}>{r.username || "—"}</td>
                       <td style={cellTd}>{r.password ? "•".repeat(Math.min(8, r.password.length)) : "—"}</td>
+                      <td style={cellTd}>{r.full_name || "—"}</td>
+                      <td style={cellTd}>{r.teacher_code || "—"}</td>
                       <td style={cellTd}>{r.role === "admin" ? "Admin" : "Giáo viên"}</td>
                       <td style={{ ...cellTd, textAlign: "right" }}>
                         {r.token_quota ? r.token_quota.toLocaleString("vi-VN") : "∞"}

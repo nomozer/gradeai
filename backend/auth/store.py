@@ -70,6 +70,14 @@ class User(Base):
     # Max total Gemini tokens this user may spend on grading. 0 = unlimited.
     # Enforced in the grading endpoints against the sum of their pipeline runs.
     token_quota: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Human-readable display name + the school's own teacher code. Both
+    # OPTIONAL (nullable) so legacy accounts and topic-only bulk rows still
+    # work. ``teacher_code`` is unique WHEN PRESENT — enforced by a unique
+    # index built in ``_migrate`` (SQLite treats NULLs as distinct, so many
+    # rows may leave it blank). ``username`` stays the login credential;
+    # these are descriptive metadata for the admin dashboard.
+    full_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    teacher_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -81,6 +89,8 @@ class User(Base):
             "role": self.role,
             "is_active": bool(self.is_active),
             "token_quota": int(self.token_quota or 0),
+            "full_name": self.full_name,
+            "teacher_code": self.teacher_code,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
         if include_hash:
@@ -133,27 +143,50 @@ class UserStore:
         """Add columns introduced after the initial users schema on legacy DBs.
 
         ``create_all`` only creates MISSING tables — it never alters an
-        existing one. ``token_quota`` was added after the first users table
-        shipped, so probe + ``ALTER TABLE`` if absent (cheap on SQLite).
+        existing one. ``token_quota`` / ``full_name`` / ``teacher_code`` were
+        added after the first users table shipped, so probe + ``ALTER TABLE``
+        if absent (cheap on SQLite). The unique index on ``teacher_code`` is
+        (re)created unconditionally with ``IF NOT EXISTS`` so both fresh and
+        legacy DBs get the same uniqueness guard — SQLite allows many NULLs in
+        a unique index, which is exactly "unique only when a code is set".
         """
         inspector = inspect(self._engine)
         if not inspector.has_table("users"):
             return
         cols = {c["name"] for c in inspector.get_columns("users")}
-        if "token_quota" not in cols:
-            with self._engine.begin() as conn:
+        with self._engine.begin() as conn:
+            if "token_quota" not in cols:
                 conn.execute(
                     text(
                         "ALTER TABLE users "
                         "ADD COLUMN token_quota INTEGER NOT NULL DEFAULT 0"
                     )
                 )
-            logger.info("Migrated 'users' table: added 'token_quota' column")
+                logger.info("Migrated 'users' table: added 'token_quota' column")
+            if "full_name" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN full_name TEXT"))
+                logger.info("Migrated 'users' table: added 'full_name' column")
+            if "teacher_code" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN teacher_code TEXT"))
+                logger.info("Migrated 'users' table: added 'teacher_code' column")
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_users_teacher_code "
+                    "ON users(teacher_code)"
+                )
+            )
 
     def _session(self) -> Session:
         return self._SessionLocal()
 
     # ---- users ------------------------------------------------------------
+
+    @staticmethod
+    def _norm_optional(value: str | None) -> str | None:
+        """Trim + collapse empty to None so blank cells don't collide in the
+        UNIQUE index (many NULL teacher_codes are allowed; many '' would not)."""
+        value = (value or "").strip()
+        return value or None
 
     def create_user(
         self,
@@ -161,27 +194,49 @@ class UserStore:
         password: str,
         role: str = ROLE_USER,
         token_quota: int = 0,
+        full_name: str | None = None,
+        teacher_code: str | None = None,
     ) -> dict[str, Any]:
-        """Create a user. Raises ValueError if the username already exists."""
+        """Create a user. Raises ValueError on a duplicate username or code."""
         username = (username or "").strip()
         if not username:
             raise ValueError("Tên đăng nhập không được để trống.")
         if role not in (ROLE_ADMIN, ROLE_USER):
             role = ROLE_USER
-        user = User(
-            username=username,
-            password_hash=hash_password(password),
-            role=role,
-            is_active=1,
-            token_quota=max(0, int(token_quota or 0)),
-        )
+        full_name = self._norm_optional(full_name)
+        teacher_code = self._norm_optional(teacher_code)
         with self._session() as session:
+            # Friendly pre-checks for clear error messages; the UNIQUE index
+            # is still the real guard against a concurrent-insert race.
+            if (
+                session.query(User)
+                .filter(User.username == username)
+                .first()
+            ):
+                raise ValueError("Tên đăng nhập đã tồn tại.")
+            if teacher_code and (
+                session.query(User)
+                .filter(User.teacher_code == teacher_code)
+                .first()
+            ):
+                raise ValueError(f"Mã giáo viên '{teacher_code}' đã tồn tại.")
+            user = User(
+                username=username,
+                password_hash=hash_password(password),
+                role=role,
+                is_active=1,
+                token_quota=max(0, int(token_quota or 0)),
+                full_name=full_name,
+                teacher_code=teacher_code,
+            )
             session.add(user)
             try:
                 session.commit()
             except IntegrityError as exc:
                 session.rollback()
-                raise ValueError("Tên đăng nhập đã tồn tại.") from exc
+                raise ValueError(
+                    "Tên đăng nhập hoặc mã giáo viên đã tồn tại."
+                ) from exc
             session.refresh(user)
             return user.to_dict()
 
@@ -348,6 +403,8 @@ class UserStore:
                     "password_hash": u.password_hash, "role": u.role,
                     "is_active": int(u.is_active),
                     "token_quota": int(u.token_quota or 0),
+                    "full_name": u.full_name,
+                    "teacher_code": u.teacher_code,
                     "created_at": u.created_at.isoformat() if u.created_at else None,
                 }
                 for u in session.query(User).all()
@@ -381,6 +438,8 @@ class UserStore:
                     role=r.get("role") or ROLE_USER,
                     is_active=int(r.get("is_active", 1)),
                     token_quota=max(0, int(r.get("token_quota") or 0)),
+                    full_name=self._norm_optional(r.get("full_name")),
+                    teacher_code=self._norm_optional(r.get("teacher_code")),
                     created_at=_ts(r.get("created_at")),
                 ))
             session.commit()

@@ -14,6 +14,8 @@ export interface SessionUser {
   role: string;
   is_active?: boolean;
   token_quota?: number;
+  full_name?: string | null;
+  teacher_code?: string | null;
   created_at?: string | null;
 }
 

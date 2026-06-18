@@ -59,6 +59,8 @@ export function createUser(body: {
   password: string;
   role: string;
   token_quota?: number;
+  full_name?: string;
+  teacher_code?: string;
 }): Promise<SessionUser> {
   return apiPost<typeof body, SessionUser>("/auth/users", body);
 }
@@ -68,6 +70,8 @@ export interface BulkUserItem {
   password: string;
   role?: string;
   token_quota?: number;
+  full_name?: string;
+  teacher_code?: string;
 }
 
 export interface BulkResultRow {
