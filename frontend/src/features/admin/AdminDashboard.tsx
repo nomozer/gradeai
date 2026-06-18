@@ -623,7 +623,7 @@ function OverviewSection() {
                     <th style={thStyle}>Trạng thái</th>
                     <th style={{ ...thStyle, textAlign: "right" }}>Bài đã chấm</th>
                     <th style={{ ...thStyle, textAlign: "right" }}>Lessons</th>
-                    <th style={{ ...thStyle, textAlign: "right" }}>Token đã dùng</th>
+                    <th style={{ ...thStyle, textAlign: "right" }}>Token đã dùng (30 ngày)</th>
                     <th style={{ ...thStyle, textAlign: "right" }}>Hạn mức token</th>
                   </tr>
                 </thead>
@@ -742,7 +742,7 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
 
   const onSetQuota = async (u: SessionUser) => {
     const raw = window.prompt(
-      `Hạn mức token cho "${u.username}" (số token tối đa; 0 = không giới hạn):`,
+      `Hạn mức token / 30 ngày cho "${u.username}" (tự reset mỗi 30 ngày; 0 = không giới hạn):`,
       String(u.token_quota ?? 0),
     );
     if (raw === null) return;
@@ -913,7 +913,7 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
                   <option value="admin">Admin</option>
                 </FormSelect>
               </Field>
-              <Field label="Hạn mức token (0 = ∞)">
+              <Field label="Hạn mức token / 30 ngày (0 = ∞)">
                 <FormInput
                   type="number"
                   value={newQuota}

@@ -10,6 +10,6 @@ Internal modules:
 """
 
 from .logger import log_event
-from .store import MemoryManager
+from .store import MemoryManager, QUOTA_PERIOD_DAYS
 
-__all__ = ["MemoryManager", "log_event"]
+__all__ = ["MemoryManager", "QUOTA_PERIOD_DAYS", "log_event"]

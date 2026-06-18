@@ -163,6 +163,10 @@ class ApprovedGrade(Base):
 
 CHROMA_COLLECTION = "hitl_grading_lessons_v1"
 
+# Token quota resets every this-many days, counted from each user's
+# ``created_at`` (a rolling window — see ``MemoryManager.quota_window_start``).
+QUOTA_PERIOD_DAYS = 30
+
 
 def _timestamp_ms(value: datetime.datetime | None) -> int:
     if value is None:
@@ -936,6 +940,55 @@ class MemoryManager:
                 .scalar()
             )
         return int(total or 0)
+
+    def tokens_used_since(self, user_id: int, since: datetime.datetime) -> int:
+        """Gemini tokens this user has spent in runs at/after ``since``.
+
+        Powers the rolling token quota: the quota is per ``QUOTA_PERIOD_DAYS``
+        window, so usage = sum of run tokens since the window start (see
+        ``quota_window_start``). No counter is stored/reset — the window simply
+        moves forward, so old runs fall out and "used" drops to ~0 each cycle.
+        """
+        with self._get_session() as session:
+            total = (
+                session.query(func.coalesce(func.sum(PipelineRun.total_tokens), 0))
+                .filter(
+                    PipelineRun.user_id == user_id,
+                    PipelineRun.timestamp >= since,
+                )
+                .scalar()
+            )
+        return int(total or 0)
+
+    @staticmethod
+    def quota_window_start(
+        created_at: str | None, period_days: int = QUOTA_PERIOD_DAYS
+    ) -> datetime.datetime:
+        """Start of the current quota window for a user.
+
+        The quota resets every ``period_days`` counted from the user's
+        ``created_at`` — a deterministic rolling window, so no stored period
+        timestamp and no scheduler are needed. The window containing ``now``
+        starts at ``created_at + floor((now - created_at) / period) * period``.
+        A missing/unparseable ``created_at`` falls back to the epoch (i.e. a
+        lifetime cap), which is the safe behaviour.
+        """
+        now = datetime.datetime.now(datetime.timezone.utc)
+        anchor: datetime.datetime | None = None
+        if created_at:
+            try:
+                anchor = datetime.datetime.fromisoformat(created_at)
+            except ValueError:
+                anchor = None
+        if anchor is None:
+            return datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+        if anchor.tzinfo is None:
+            anchor = anchor.replace(tzinfo=datetime.timezone.utc)
+        if now <= anchor:
+            return anchor
+        period = datetime.timedelta(days=period_days)
+        cycles = int((now - anchor) // period)
+        return anchor + cycles * period
 
     def find_recent_lesson(
         self,

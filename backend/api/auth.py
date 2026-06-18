@@ -219,7 +219,8 @@ async def me(user: dict = Depends(get_current_user)):
 async def overview(_admin: dict = Depends(require_admin)):
     """System-wide stats for the admin dashboard — accounts + per-teacher usage."""
     store = _require_store()
-    usage = _require_memory().usage_by_user()
+    mem = _require_memory()
+    usage = mem.usage_by_user()
     rows: list[OverviewUserRow] = []
     total_graded = 0
     total_lessons = 0
@@ -229,7 +230,10 @@ async def overview(_admin: dict = Depends(require_admin)):
         u_usage = usage.get(u["id"], {})
         lessons = int(u_usage.get("lessons", 0))
         graded = int(u_usage.get("graded", 0))
-        tokens = int(u_usage.get("tokens", 0))
+        # Tokens shown for the CURRENT quota window (matches what enforcement
+        # counts), not lifetime — so the number lines up with the per-period
+        # quota that resets every QUOTA_PERIOD_DAYS.
+        tokens = mem.tokens_used_since(u["id"], mem.quota_window_start(u.get("created_at")))
         total_lessons += lessons
         total_graded += graded
         if u["role"] == ROLE_ADMIN:

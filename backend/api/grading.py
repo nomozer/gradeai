@@ -17,6 +17,7 @@ Singletons (memory / prompt_orch / orchestrator) are injected via
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -48,7 +49,7 @@ from grading import (
     parse_grade_json,
     safe_delta,
 )
-from memory import MemoryManager, log_event as log_hitl_event
+from memory import MemoryManager, QUOTA_PERIOD_DAYS, log_event as log_hitl_event
 from prompts import DEFAULT_SUBJECT, pick_top_subject, score_subjects
 
 
@@ -111,13 +112,18 @@ def _enforce_token_quota(user: dict, memory: MemoryManager) -> None:
     quota = int(user.get("token_quota") or 0)
     if quota <= 0:
         return
-    used = memory.tokens_used(int(user["id"]))
+    # Rolling per-user window: usage = tokens spent since the current
+    # QUOTA_PERIOD_DAYS window began. The window moves forward on its own, so
+    # "used" drops to ~0 each cycle without any stored counter or cron.
+    start = memory.quota_window_start(user.get("created_at"))
+    used = memory.tokens_used_since(int(user["id"]), start)
     if used >= quota:
+        reset = (start + datetime.timedelta(days=QUOTA_PERIOD_DAYS)).strftime("%d/%m/%Y")
         raise HTTPException(
             status_code=403,
             detail=(
-                f"Đã dùng hết hạn mức token ({used:,}/{quota:,}). "
-                "Liên hệ admin để được cấp thêm."
+                f"Đã dùng hết hạn mức token kỳ này ({used:,}/{quota:,}). "
+                f"Hạn mức tự reset vào {reset}. Cần thêm sớm hơn thì liên hệ admin."
             ),
         )
 
