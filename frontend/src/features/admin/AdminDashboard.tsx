@@ -1244,10 +1244,18 @@ function BackupSection() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: T.space[5], maxWidth: 720 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: T.space[5] }}>
       <h1 style={titleStyle}>Sao lưu & Khôi phục</h1>
       {error && <Banner text={error} />}
 
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: T.space[4],
+          alignItems: "start",
+        }}
+      >
       <div style={cardStyle}>
         <div style={{ ...sectionTitleStyle, fontSize: T.fontSize.base, color: T.text }}>
           Tải bản sao lưu
@@ -1304,6 +1312,7 @@ function BackupSection() {
             {result.pipeline_runs} lượt chấm · {result.approved_grades} điểm.
           </div>
         )}
+      </div>
       </div>
     </div>
   );
