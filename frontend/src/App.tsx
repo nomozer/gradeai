@@ -39,13 +39,14 @@ import { logout as logoutApi } from "./api/authApi";
 import type { GradeHistoryEntry } from "./types";
 
 const MEMORY_HASH = "#memory";
+const GRADE_HASH = "#grade";
 
-type Route = "workspace" | "memory";
+type Route = "workspace" | "memory" | "grade";
 
 function detectRoute(): Route {
-  if (typeof window !== "undefined" && window.location.hash === MEMORY_HASH) {
-    return "memory";
-  }
+  if (typeof window === "undefined") return "workspace";
+  if (window.location.hash === MEMORY_HASH) return "memory";
+  if (window.location.hash === GRADE_HASH) return "grade";
   return "workspace";
 }
 
@@ -62,13 +63,17 @@ export default function App() {
 }
 
 // ---------------------------------------------------------------------------
-// Role-based landing — admins get the management dashboard (never the grading
-// workspace); teachers go straight to grading (or the memory sub-window).
+// Role-based landing. Admins land on the management dashboard by default but
+// CAN open the grading workspace via the explicit ``#grade`` route (opened in
+// a new tab from the dashboard); teachers go straight to grading. ``#memory``
+// is the shared lesson-corpus sub-window.
 // ---------------------------------------------------------------------------
 
 function RoleRouter({ route }: { route: Route }) {
+  if (route === "memory") return <MemoryPage />;
+  if (route === "grade") return <WorkspacePage />; // admin opened the grading desk
   if (isAdmin()) return <AdminDashboard />;
-  return route === "memory" ? <MemoryPage /> : <WorkspacePage />;
+  return <WorkspacePage />;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,6 +135,14 @@ function WorkspacePage() {
   // position) stays exactly as the user left it.
   const openMemoryTab = useCallback(() => {
     const url = window.location.origin + window.location.pathname + MEMORY_HASH;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, []);
+
+  // Admin-only: jump back to the management dashboard (base URL with no hash ⇒
+  // admins land on AdminDashboard). New tab, same idiom as memory, so the
+  // in-progress grading tab here is preserved.
+  const openAdminTab = useCallback(() => {
+    const url = window.location.origin + window.location.pathname;
     window.open(url, "_blank", "noopener,noreferrer");
   }, []);
 
@@ -407,6 +420,7 @@ function WorkspacePage() {
         onSelectTab={setActive}
         username={getUser()?.username}
         onLogout={handleLogout}
+        onOpenAdmin={isAdmin() ? openAdminTab : undefined}
       />
 
       <TabBar

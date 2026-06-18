@@ -310,6 +310,13 @@ export function AdminDashboard() {
     window.location.reload();
   }, []);
 
+  // Admin can also grade: open the grading workspace (#grade) in a new tab so
+  // the dashboard stays put.
+  const openGrading = useCallback(() => {
+    const url = window.location.origin + window.location.pathname + "#grade";
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, []);
+
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: T.bg, fontFamily: T.font }}>
       <GlobalStyles />
@@ -383,6 +390,12 @@ export function AdminDashboard() {
             active={section === "backup"}
             icon="RefreshCw"
             onClick={() => setSection("backup")}
+          />
+          <SideLink
+            label="Chấm bài (mở tab mới)"
+            active={false}
+            icon="PenTool"
+            onClick={openGrading}
           />
         </nav>
 

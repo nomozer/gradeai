@@ -23,6 +23,9 @@ interface AppHeaderProps {
   // Logged-in user shown in the avatar account-menu.
   username?: string;
   onLogout?: () => void;
+  // Admin-only: jump to the management dashboard (rendered in the avatar menu
+  // only when provided, i.e. the current user is an admin).
+  onOpenAdmin?: () => void;
 }
 
 // Two-letter initials from a label — used by the avatar circle. Falls
@@ -62,6 +65,7 @@ export function AppHeader({
   onSelectTab,
   username,
   onLogout,
+  onOpenAdmin,
 }: AppHeaderProps) {
   const bp = useBreakpoint();
   const [hamburgerHovered, setHamburgerHovered] = useState(false);
@@ -167,6 +171,7 @@ export function AppHeader({
         onOpenMemory={onOpenMemory}
         onOpenHelp={onOpenHelp}
         onLogout={onLogout}
+        onOpenAdmin={onOpenAdmin}
       />
     </header>
   );
@@ -182,6 +187,7 @@ function AccountMenu({
   onOpenMemory,
   onOpenHelp,
   onLogout,
+  onOpenAdmin,
 }: {
   username?: string;
   historyActive: boolean;
@@ -189,6 +195,7 @@ function AccountMenu({
   onOpenMemory: () => void;
   onOpenHelp: () => void;
   onLogout?: () => void;
+  onOpenAdmin?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement | null>(null);
@@ -329,6 +336,13 @@ function AccountMenu({
           </div>
 
           <div style={{ padding: 6 }}>
+            {onOpenAdmin && (
+              <MenuItem
+                label="Trang quản trị"
+                icon={<Icon.Layout size={16} />}
+                onClick={run(onOpenAdmin)}
+              />
+            )}
             <MenuItem
               label="Bài đã chấm"
               icon={<Icon.FileText size={16} />}
