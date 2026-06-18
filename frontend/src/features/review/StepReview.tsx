@@ -22,7 +22,7 @@ import { QuestionBox } from "./components/QuestionBox";
 import { VerdictRow } from "./components/VerdictRow";
 import { formatLine } from "../../lib/mathFormat";
 import { ScoreInline } from "../workspace/components/ScoreBottomBar";
-import { LearningBanner } from "../workspace/components/LearningBanner";
+import { LearnToast } from "../workspace/components/LearnToast";
 import { PrintablePhieu } from "../workspace/PrintablePhieu";
 import { printPhieu } from "../workspace/printPhieu";
 import type {
@@ -2185,11 +2185,9 @@ export function StepReview({
         ((finalizedResult.commentsSavedCount ?? 0) > 0) ||
         ((finalizedResult.commentsSkippedCount ?? 0) > 0)
       ) && (
-        <LearningBanner
+        <LearnToast
           commentsSaved={finalizedResult.commentsSavedCount ?? 0}
-          commentsSkipped={finalizedResult.commentsSkippedCount ?? 0}
           deltaLessonId={finalizedResult.deltaLessonId ?? null}
-          deltas={finalizedResult.deltas ?? {}}
         />
       )}
 
