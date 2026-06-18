@@ -337,6 +337,55 @@ class UserStore:
             ).delete()
             session.commit()
 
+    # ---- backup / restore -------------------------------------------------
+
+    def export_users(self) -> list[dict[str, Any]]:
+        """Dump all users INCLUDING password_hash (so a restore keeps logins)."""
+        with self._session() as session:
+            return [
+                {
+                    "id": u.id, "username": u.username,
+                    "password_hash": u.password_hash, "role": u.role,
+                    "is_active": int(u.is_active),
+                    "token_quota": int(u.token_quota or 0),
+                    "created_at": u.created_at.isoformat() if u.created_at else None,
+                }
+                for u in session.query(User).all()
+            ]
+
+    def import_users(self, rows: list[dict[str, Any]]) -> int:
+        """REPLACE the users table from a backup (preserves id + password_hash).
+
+        Sessions are intentionally NOT touched — but the admin running the
+        restore may be logged out afterwards if their account isn't in the
+        backup; ``main``/the restore endpoint re-seeds the env admin as a
+        safety net so there is always a way back in.
+        """
+        def _ts(s: Any) -> datetime.datetime:
+            if isinstance(s, str):
+                try:
+                    return datetime.datetime.fromisoformat(s)
+                except ValueError:
+                    pass
+            return _utcnow()
+
+        with self._session() as session:
+            session.query(User).delete()
+            session.commit()
+        with self._session() as session:
+            for r in rows:
+                session.add(User(
+                    id=r.get("id"),
+                    username=str(r.get("username") or "").strip(),
+                    password_hash=r.get("password_hash") or "",
+                    role=r.get("role") or ROLE_USER,
+                    is_active=int(r.get("is_active", 1)),
+                    token_quota=max(0, int(r.get("token_quota") or 0)),
+                    created_at=_ts(r.get("created_at")),
+                ))
+            session.commit()
+        return len(rows)
+
     # ---- bootstrap --------------------------------------------------------
 
     def ensure_admin(self, username: str, password: str) -> None:

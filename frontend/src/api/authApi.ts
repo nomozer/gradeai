@@ -88,6 +88,31 @@ export function createUsersBulk(users: BulkUserItem[]): Promise<BulkCreateResult
   });
 }
 
+// ---- backup / restore (admin) ---------------------------------------------
+
+export interface BackupData {
+  version: number;
+  users: unknown[];
+  lessons: unknown[];
+  pipeline_runs: unknown[];
+  approved_grades: unknown[];
+}
+
+export interface RestoreResult {
+  users: number;
+  lessons: number;
+  pipeline_runs: number;
+  approved_grades: number;
+}
+
+export function getBackup(): Promise<BackupData> {
+  return apiGet<BackupData>("/auth/backup");
+}
+
+export function restoreBackup(data: unknown): Promise<RestoreResult> {
+  return apiPost<unknown, RestoreResult>("/auth/restore", data);
+}
+
 export function updateUser(
   id: number,
   body: { password?: string; is_active?: boolean; role?: string; token_quota?: number },

@@ -19,8 +19,9 @@ this teacher.
 from __future__ import annotations
 
 import logging
+import os
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from auth import ROLE_ADMIN, ROLE_USER, UserStore
@@ -149,6 +150,13 @@ class BulkCreateResponse(BaseModel):
     created: int
     failed: int
     results: list[BulkResultRow]
+
+
+class RestoreResult(BaseModel):
+    users: int
+    lessons: int
+    pipeline_runs: int
+    approved_grades: int
 
 
 class OverviewUserRow(BaseModel):
@@ -296,6 +304,43 @@ async def create_users_bulk(req: BulkCreateRequest, admin: dict = Depends(requir
             results.append(BulkResultRow(username=uname, status="skipped", detail=str(exc)))
     logger.info("Admin %s bulk-created %d users (%d failed)", admin["username"], created, failed)
     return BulkCreateResponse(created=created, failed=failed, results=results)
+
+
+@router.get("/backup")
+async def backup(_admin: dict = Depends(require_admin)):
+    """Full-system snapshot (admin): all users + lessons + runs + grades.
+
+    Chroma vectors are omitted — they're rebuilt from lesson text on restore.
+    The frontend turns this JSON into a downloadable file.
+    """
+    store = _require_store()
+    mem = _require_memory()
+    return {
+        "version": 1,
+        "users": store.export_users(),
+        **mem.export_all(),
+    }
+
+
+@router.post("/restore", response_model=RestoreResult)
+async def restore(payload: dict = Body(...), admin: dict = Depends(require_admin)):
+    """REPLACE all data from a backup file (destructive). Admin only.
+
+    Wipes + reloads users and the memory tables, rebuilds Chroma. Re-seeds the
+    env admin afterwards so a backup without a matching admin can't lock you out.
+    """
+    store = _require_store()
+    mem = _require_memory()
+    users = store.import_users(payload.get("users") or [])
+    counts = mem.import_all(payload)
+    store.ensure_admin(
+        os.getenv("ADMIN_USERNAME", "").strip(), os.getenv("ADMIN_PASSWORD", "")
+    )
+    logger.info(
+        "Admin %s restored backup: %d users, %d lessons",
+        admin["username"], users, counts["lessons"],
+    )
+    return RestoreResult(users=users, **counts)
 
 
 @router.patch("/users/{user_id}", response_model=UserOut)

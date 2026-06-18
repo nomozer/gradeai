@@ -1000,3 +1000,138 @@ class MemoryManager:
             for les in lessons:
                 les.correct_code = correct_code
             return len(lessons)
+
+    # ---- backup / restore (admin, un-scoped across ALL users) -------------
+
+    def export_all(self) -> dict[str, list[dict[str, Any]]]:
+        """Dump every lesson / run / approved grade across ALL teachers.
+
+        Deliberately NOT scoped by the ContextVar — this is a full-system
+        admin backup. ChromaDB vectors are NOT exported; they are rebuilt by
+        re-embedding lesson text on ``import_all``, so the dump is a single
+        portable JSON-able dict.
+        """
+        with self._get_session() as session:
+            lessons = [
+                {
+                    "id": x.id, "user_id": x.user_id, "task": x.task,
+                    "wrong_code": x.wrong_code, "correct_code": x.correct_code,
+                    "lesson_text": x.lesson_text, "subject": x.subject,
+                    "feedback_score": x.feedback_score,
+                    "timestamp": x.timestamp.isoformat() if x.timestamp else None,
+                }
+                for x in session.query(Lesson).all()
+            ]
+            runs = [
+                {
+                    "id": x.id, "user_id": x.user_id, "task": x.task,
+                    "iterations": x.iterations, "auto_fixed": x.auto_fixed,
+                    "parent_run_id": x.parent_run_id, "grade_json": x.grade_json,
+                    "subject": x.subject, "lessons_used_json": x.lessons_used_json,
+                    "latency_ms": x.latency_ms, "model_name": x.model_name,
+                    "retry_count": x.retry_count, "prompt_tokens": x.prompt_tokens,
+                    "completion_tokens": x.completion_tokens, "total_tokens": x.total_tokens,
+                    "timestamp": x.timestamp.isoformat() if x.timestamp else None,
+                }
+                for x in session.query(PipelineRun).all()
+            ]
+            grades = [
+                {
+                    "id": x.id, "user_id": x.user_id, "task": x.task,
+                    "grade_json": x.grade_json, "run_id": x.run_id,
+                    "timestamp": x.timestamp.isoformat() if x.timestamp else None,
+                }
+                for x in session.query(ApprovedGrade).all()
+            ]
+        return {"lessons": lessons, "pipeline_runs": runs, "approved_grades": grades}
+
+    def import_all(self, data: dict[str, Any]) -> dict[str, int]:
+        """REPLACE all lessons / runs / grades with a backup, rebuild Chroma.
+
+        Destructive by design (restore semantics): wipes the three tables +
+        the Chroma collection, re-inserts the backup rows preserving ids
+        (so ``approved_grades.run_id`` links stay valid), then re-embeds each
+        lesson into Chroma with its ``user_id`` metadata.
+        """
+        def _ts(s: Any) -> datetime.datetime:
+            if isinstance(s, str):
+                try:
+                    return datetime.datetime.fromisoformat(s)
+                except ValueError:
+                    pass
+            return datetime.datetime.now(datetime.timezone.utc)
+
+        lessons = data.get("lessons") or []
+        runs = data.get("pipeline_runs") or []
+        grades = data.get("approved_grades") or []
+
+        with self._get_session() as session:
+            session.query(ApprovedGrade).delete()
+            session.query(PipelineRun).delete()
+            session.query(Lesson).delete()
+
+        try:
+            self._chroma_client.delete_collection(CHROMA_COLLECTION)
+        except Exception:
+            logger.exception("Chroma drop failed during import_all")
+        self._collection = self._chroma_client.get_or_create_collection(
+            name=CHROMA_COLLECTION, metadata={"hnsw:space": "cosine"}
+        )
+
+        with self._get_session() as session:
+            for x in lessons:
+                session.add(Lesson(
+                    id=x.get("id"), user_id=int(x.get("user_id") or 0),
+                    task=x.get("task", ""), wrong_code=x.get("wrong_code", ""),
+                    correct_code=x.get("correct_code", ""),
+                    lesson_text=x.get("lesson_text", ""), subject=x.get("subject", ""),
+                    feedback_score=float(x.get("feedback_score") or 3.0),
+                    timestamp=_ts(x.get("timestamp")),
+                ))
+            for x in runs:
+                session.add(PipelineRun(
+                    id=x.get("id"), user_id=int(x.get("user_id") or 0),
+                    task=x.get("task", ""), iterations=int(x.get("iterations") or 1),
+                    auto_fixed=int(x.get("auto_fixed") or 0),
+                    parent_run_id=x.get("parent_run_id"),
+                    grade_json=x.get("grade_json", ""), subject=x.get("subject", ""),
+                    lessons_used_json=x.get("lessons_used_json", "[]"),
+                    latency_ms=int(x.get("latency_ms") or 0),
+                    model_name=x.get("model_name", ""),
+                    retry_count=int(x.get("retry_count") or 0),
+                    prompt_tokens=int(x.get("prompt_tokens") or 0),
+                    completion_tokens=int(x.get("completion_tokens") or 0),
+                    total_tokens=int(x.get("total_tokens") or 0),
+                    timestamp=_ts(x.get("timestamp")),
+                ))
+            for x in grades:
+                session.add(ApprovedGrade(
+                    id=x.get("id"), user_id=int(x.get("user_id") or 0),
+                    task=x.get("task", ""), grade_json=x.get("grade_json", ""),
+                    run_id=x.get("run_id"), timestamp=_ts(x.get("timestamp")),
+                ))
+
+        for x in lessons:
+            try:
+                embed_text = (
+                    f"{x.get('task', '')}\n{x.get('lesson_text', '')}".strip()
+                    or x.get("lesson_text", "")
+                )
+                meta: dict[str, Any] = {
+                    "lesson_id": x.get("id"),
+                    "task": x.get("task", ""),
+                    "user_id": int(x.get("user_id") or 0),
+                }
+                if x.get("subject"):
+                    meta["subject"] = x["subject"]
+                self._collection.upsert(
+                    ids=[str(x.get("id"))], documents=[embed_text], metadatas=[meta]
+                )
+            except Exception:
+                logger.exception("Chroma re-embed failed for lesson %s", x.get("id"))
+
+        return {
+            "lessons": len(lessons),
+            "pipeline_runs": len(runs),
+            "approved_grades": len(grades),
+        }
