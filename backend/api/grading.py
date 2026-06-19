@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -30,12 +31,15 @@ from api.schemas import (
     DetectSubjectResponse,
     FeedbackRequest,
     FeedbackResponse,
+    DraftGradeData,
     FinalizeGradeRequest,
     FinalizeGradeResponse,
     GenerateRequest,
     GenerateResponse,
+    GetDraftResponse,
     RegradeRequest,
     RegradeResponse,
+    SaveDraftRequest,
 )
 from grading import (
     AgentOrchestrator,
@@ -438,6 +442,11 @@ async def finalize_grade(req: FinalizeGradeRequest, _user: dict = Depends(get_cu
             correct_code=approved_grade_json,
         )
 
+    # The approved grade supersedes any "Lưu nháp" draft for this run — drop
+    # it so a later reload restores the finalized state, not the stale draft.
+    if req.run_id is not None:
+        await asyncio.to_thread(memory.delete_draft, req.run_id)
+
     # Save review annotations atomically with finalization. Prefer the
     # distilled per-question lessons staged by the frontend; fall back to an
     # aggregate comment only when no structured lessons were staged.
@@ -557,6 +566,49 @@ async def finalize_grade(req: FinalizeGradeRequest, _user: dict = Depends(get_cu
         comment_lesson_ids=comment_lesson_ids,
         deltas=deltas_out,
         message=message,
+    )
+
+
+@router.post("/api/draft-grade")
+async def save_draft_endpoint(
+    req: SaveDraftRequest, _user: dict = Depends(get_current_user)
+):
+    """Save the teacher's in-progress grading ("Lưu nháp") for a run.
+
+    Persists per-câu scores + đối-soát annotations so work survives a reload.
+    NOT a learning signal — no lessons, no deltas (that is /api/finalize-grade).
+    Overwrites any prior draft for the same run.
+    """
+    memory, _, _ = _require_deps()
+    await asyncio.to_thread(
+        memory.save_draft,
+        run_id=req.run_id,
+        scores_json=json.dumps(req.scores),
+        annotations_json=json.dumps(req.annotations),
+    )
+    return {"ok": True}
+
+
+@router.get("/api/draft-grade/{run_id}", response_model=GetDraftResponse)
+async def get_draft_endpoint(run_id: int, _user: dict = Depends(get_current_user)):
+    """Return the saved draft for a run (scoped to the teacher), or null."""
+    memory, _, _ = _require_deps()
+    row = await asyncio.to_thread(memory.get_draft, run_id)
+    if row is None:
+        return GetDraftResponse(draft=None)
+    try:
+        scores = json.loads(row["scores_json"] or "{}")
+        annotations = json.loads(row["annotations_json"] or "[]")
+    except (ValueError, TypeError):
+        # Corrupt row — treat as no draft rather than 500.
+        return GetDraftResponse(draft=None)
+    return GetDraftResponse(
+        draft=DraftGradeData(
+            run_id=row["run_id"],
+            scores=scores,
+            annotations=annotations,
+            updated_at=row["updated_at"],
+        )
     )
 
 

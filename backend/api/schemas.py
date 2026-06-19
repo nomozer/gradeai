@@ -240,6 +240,42 @@ class FinalizeGradeResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# /api/draft-grade — save / load un-finalized working state ("Lưu nháp")
+# ---------------------------------------------------------------------------
+
+
+class SaveDraftRequest(BaseModel):
+    """Persist the teacher's in-progress grading so it survives a reload.
+
+    NOT a learning signal (unlike /api/finalize-grade) — no lessons, no
+    deltas. Keyed by the AI ``run_id``; saving again overwrites the draft.
+    """
+
+    run_id: int = Field(..., description="Pipeline run being graded")
+    scores: dict[str, float] = Field(
+        default_factory=dict,
+        description="Per-câu teacher scores, keyed by câu number (string key over JSON)",
+    )
+    annotations: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Opaque đối-soát annotation list (frontend SelectionAnnotation shape)",
+    )
+
+
+class DraftGradeData(BaseModel):
+    run_id: int
+    scores: dict[str, float] = Field(default_factory=dict)
+    annotations: list[dict[str, Any]] = Field(default_factory=list)
+    updated_at: int | None = None
+
+
+class GetDraftResponse(BaseModel):
+    """The saved draft for a run, or ``draft: null`` when none exists."""
+
+    draft: DraftGradeData | None = None
+
+
+# ---------------------------------------------------------------------------
 # /api/regrade — atomic feedback-then-regrade
 # ---------------------------------------------------------------------------
 

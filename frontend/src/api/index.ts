@@ -6,6 +6,8 @@ export { submitFeedback, analyzeComment } from "./feedback";
 export type { FeedbackRequest, AnalyzeCommentRequest } from "./feedback";
 export { finalizeGrade } from "./finalize";
 export type { FinalizeGradeRequest } from "./finalize";
+export { saveDraft, getDraft } from "./draft";
+export type { SaveDraftRequest, DraftGradeData, GetDraftResponse } from "./draft";
 export { sendHeartbeat } from "./heartbeat";
 export { listGradeHistory } from "./history";
 export { detectSubject } from "./detect";

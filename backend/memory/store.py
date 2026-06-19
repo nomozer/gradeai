@@ -30,6 +30,7 @@ from sqlalchemy import (
     Float,
     Integer,
     Text,
+    UniqueConstraint,
     create_engine,
     event,
     func,
@@ -155,6 +156,36 @@ class ApprovedGrade(Base):
     task: Mapped[str] = mapped_column(Text, nullable=False)
     grade_json: Mapped[str] = mapped_column(Text, nullable=False)
     run_id: Mapped[int] = mapped_column(Integer, nullable=True)
+
+
+class DraftGrade(Base):
+    """The teacher's in-progress (un-finalized) grading state for a run.
+
+    Distinct from ApprovedGrade — a draft is saved explicitly via "Lưu nháp"
+    so work survives a reload, but it does NOT teach the AI (no lessons / no
+    deltas) and is deleted once the teacher finalizes (the approved grade
+    supersedes it). One row per (user_id, run_id), upserted on each save.
+    The whole table is new, so ``create_all`` produces it on both fresh and
+    legacy DBs — no entry needed in ``_migrate_legacy_schema``.
+    """
+
+    __tablename__ = "draft_grades"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # Owning teacher (multi-tenant scope). 0 = legacy/system bucket.
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    # Per-câu teacher scores, JSON object keyed by câu number.
+    scores_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    # Opaque đối-soát annotation list (frontend SelectionAnnotation[]), JSON.
+    annotations_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        nullable=False,
+    )
+
+    __table_args__ = (UniqueConstraint("user_id", "run_id", name="uq_draft_user_run"),)
 
 
 # ---------------------------------------------------------------------------
@@ -770,6 +801,67 @@ class MemoryManager:
                     # genuinely broken (DB corruption / schema mismatch).
                     raise
                 return existing_id
+
+    # ---- drafts (un-finalized working state) ------------------------------
+
+    def save_draft(
+        self, run_id: int, scores_json: str, annotations_json: str
+    ) -> None:
+        """Upsert the teacher's working draft for a run (scores + annotations).
+
+        The "Lưu nháp" path: persists in-progress grading so it survives a
+        reload, WITHOUT teaching the AI. One row per (user_id, run_id) —
+        updated in place when it already exists.
+        """
+        user_id = get_current_user_id()
+        now = datetime.datetime.now(datetime.timezone.utc)
+        with self._get_session() as session:
+            existing = (
+                session.query(DraftGrade)
+                .filter(DraftGrade.user_id == user_id, DraftGrade.run_id == run_id)
+                .first()
+            )
+            if existing is not None:
+                existing.scores_json = scores_json
+                existing.annotations_json = annotations_json
+                existing.updated_at = now
+            else:
+                session.add(
+                    DraftGrade(
+                        user_id=user_id,
+                        run_id=run_id,
+                        scores_json=scores_json,
+                        annotations_json=annotations_json,
+                        updated_at=now,
+                    )
+                )
+
+    def get_draft(self, run_id: int) -> dict[str, Any] | None:
+        """Return the teacher's saved draft for a run (scoped), or None."""
+        user_id = get_current_user_id()
+        with self._get_session() as session:
+            row = (
+                session.query(DraftGrade)
+                .filter(DraftGrade.user_id == user_id, DraftGrade.run_id == run_id)
+                .first()
+            )
+            if row is None:
+                return None
+            return {
+                "run_id": row.run_id,
+                "scores_json": row.scores_json,
+                "annotations_json": row.annotations_json,
+                "updated_at": _timestamp_ms(row.updated_at),
+            }
+
+    def delete_draft(self, run_id: int) -> None:
+        """Drop the draft for a run (scoped). Called on finalize — the
+        approved grade supersedes the draft."""
+        user_id = get_current_user_id()
+        with self._get_session() as session:
+            session.query(DraftGrade).filter(
+                DraftGrade.user_id == user_id, DraftGrade.run_id == run_id
+            ).delete()
 
     def list_lessons(
         self,

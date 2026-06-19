@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentPipeline } from "../../hooks/useAgentPipeline";
 import { useFeedback } from "../../hooks/useFeedback";
-import { ApiError, detectSubject, finalizeGrade, type DetectConfidence } from "../../api";
+import { ApiError, detectSubject, finalizeGrade, saveDraft, getDraft, type DetectConfidence } from "../../api";
 import { T } from "../../theme/tokens";
 import { i18n } from "../../i18n";
 import { Icon } from "../../components/ui/Icon";
@@ -717,6 +717,54 @@ export function EssayWorkspace({
     onMeta({ finalized: false });
   }, [onMeta]);
 
+  // "Lưu nháp" — persist the in-progress scores + đối-soát comments server-side
+  // WITHOUT finalizing (no lock, no AI learning) so the work survives a reload
+  // and the teacher can come back later. Returns success so the button can show
+  // a transient confirmation. No-op (false) when there is no run to attach to.
+  const runDraftSave = useCallback(async (): Promise<boolean> => {
+    if (pipeline.runId == null) return false;
+    try {
+      await saveDraft({
+        run_id: pipeline.runId,
+        scores: finalScores,
+        annotations: teacherAnnotations,
+      });
+      return true;
+    } catch (err) {
+      console.warn("[HITL] save draft failed:", err);
+      return false;
+    }
+  }, [pipeline.runId, finalScores, teacherAnnotations]);
+
+  // Restore a saved draft when a run loads (e.g. reopened from history): pull
+  // the teacher's last in-progress scores + comments back. Finalized runs have
+  // their draft deleted on commit, so this is a no-op for them. Keyed on runId
+  // only — a fresh grade resets finalizedResult to null just before this runs.
+  useEffect(() => {
+    const runId = pipeline.runId;
+    if (runId == null) return;
+    let cancelled = false;
+    void getDraft(runId)
+      .then((res) => {
+        if (cancelled || !res.draft) return;
+        const scores: Record<number, number> = {};
+        for (const [k, v] of Object.entries(res.draft.scores)) {
+          const n = Number(k);
+          if (Number.isFinite(n) && typeof v === "number") scores[n] = v;
+        }
+        if (Object.keys(scores).length > 0) setFinalScores(scores);
+        if (res.draft.annotations && res.draft.annotations.length > 0) {
+          setTeacherAnnotations(res.draft.annotations);
+        }
+      })
+      .catch(() => {
+        /* draft fetch is best-effort; absence just means "no draft" */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pipeline.runId]);
+
   const displayStep = deriveDisplayStep(step);
 
   const stepLabels = [
@@ -822,6 +870,7 @@ export function EssayWorkspace({
             onApprove={handleApprove}
             onFinish={handleFinalizeFromReview}
             onUnlock={handleUnlockFinalize}
+            onSaveDraft={runDraftSave}
             backendSubject={subject}
             task={task}
             t={t}

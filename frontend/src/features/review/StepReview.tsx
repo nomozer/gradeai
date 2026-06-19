@@ -1915,6 +1915,10 @@ interface StepReviewProps {
    *  commit button's in-flight + error states. */
   finalizedResult?: FinalizedResult | null;
   onUnlock?: () => void;
+  /** "Lưu nháp" — persist scores + comments without finalizing (no lock, no
+   *  AI learning). Returns whether the save succeeded so the button can show
+   *  a transient confirmation. */
+  onSaveDraft?: () => Promise<boolean>;
   isFinalizing?: boolean;
   finalizeError?: string | null;
   /** Subject label for the printed phiếu chấm (e.g. "Sinh · Lớp 11"). */
@@ -1937,6 +1941,7 @@ export function StepReview({
   setFinalScores,
   finalizedResult,
   onUnlock,
+  onSaveDraft,
   isFinalizing,
   finalizeError,
   subjectLabel = "",
@@ -1972,6 +1977,26 @@ export function StepReview({
       }
     });
   }, [locked]);
+
+  // "Lưu nháp" button state: idle → saving → saved (auto-reverts after 2s).
+  const [draftState, setDraftState] = useState<"idle" | "saving" | "saved">("idle");
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    },
+    [],
+  );
+  const handleSaveDraft = useCallback(async () => {
+    if (!onSaveDraft || draftState === "saving") return;
+    setDraftState("saving");
+    const ok = await onSaveDraft();
+    setDraftState(ok ? "saved" : "idle");
+    if (ok) {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = setTimeout(() => setDraftState("idle"), 2000);
+    }
+  }, [onSaveDraft, draftState]);
   // dataUrl→blob conversion + revoke lifecycle now lives inside
   // OriginalImageModal (shared with step 4) — caller just owns the
   // open/close toggle.
@@ -2431,23 +2456,52 @@ export function StepReview({
             </span>
           </>
         ) : (
-          <PrimaryButton
-            onClick={onFinish}
-            disabled={pipeline.phase === "generating" || !!isFinalizing}
-            title="Chốt điểm và lưu — nhận xét HITL được lưu cùng lúc."
-          >
-            {isFinalizing ? (
-              <>
-                <Icon.RefreshCw size={14} color="#fff" />
-                {String(t.finalizeSaving ?? "Đang lưu…")}
-              </>
-            ) : (
-              <>
-                Chốt điểm &amp; lưu
-                <Icon.ChevronRight size={14} color="#fff" />
-              </>
+          <>
+            {onSaveDraft && (
+              // Lưu nháp — save progress without finalizing (no lock, no AI
+              // learning). Lets the teacher leave a paper half-graded and
+              // come back later. Distinct from "Chốt" which is the commit.
+              <SecondaryButton
+                onClick={handleSaveDraft}
+                disabled={pipeline.phase === "generating" || !!isFinalizing || draftState === "saving"}
+                title="Lưu nháp — giữ tiến độ để chấm tiếp sau, chưa chốt điểm và chưa dạy AI."
+              >
+                {draftState === "saving" ? (
+                  <>
+                    <Icon.RefreshCw size={14} />
+                    Đang lưu…
+                  </>
+                ) : draftState === "saved" ? (
+                  <>
+                    <Icon.Check size={14} color={T.green} />
+                    Đã lưu nháp
+                  </>
+                ) : (
+                  <>
+                    <Icon.FileText size={14} />
+                    Lưu nháp
+                  </>
+                )}
+              </SecondaryButton>
             )}
-          </PrimaryButton>
+            <PrimaryButton
+              onClick={onFinish}
+              disabled={pipeline.phase === "generating" || !!isFinalizing}
+              title="Chốt điểm và lưu — nhận xét HITL được lưu cùng lúc."
+            >
+              {isFinalizing ? (
+                <>
+                  <Icon.RefreshCw size={14} color="#fff" />
+                  {String(t.finalizeSaving ?? "Đang lưu…")}
+                </>
+              ) : (
+                <>
+                  Chốt điểm &amp; lưu
+                  <Icon.ChevronRight size={14} color="#fff" />
+                </>
+              )}
+            </PrimaryButton>
+          </>
         )}
       </ActionBar>
       {/* Suspend the approve plumbing we no longer render but want to
