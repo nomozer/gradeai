@@ -76,6 +76,7 @@ function ReviewMockup({
   onRemoveAnnotation,
   finalScores,
   setFinalScores,
+  onEditLockedScore,
   onPrint,
   t,
 }: {
@@ -89,6 +90,9 @@ function ReviewMockup({
   onRemoveAnnotation?: (id: string) => void;
   finalScores?: Record<number, number>;
   setFinalScores?: React.Dispatch<React.SetStateAction<Record<number, number>>>;
+  /** Locked mode: click a read-only score to unlock + focus it (no separate
+   *  "Sửa lại" click). Forwarded to MucLucSidebar. */
+  onEditLockedScore?: (cau: number) => void;
   onPrint?: () => void;
   t: I18nStrings;
 }) {
@@ -189,6 +193,7 @@ function ReviewMockup({
             onToggle={() => setTocOpen(false)}
             finalScores={finalScores}
             setFinalScores={setFinalScores}
+            onEditLockedScore={onEditLockedScore}
           />
         )}
         <PaperContainer
@@ -1941,6 +1946,32 @@ export function StepReview({
   const [analyzingQ, setAnalyzingQ] = useState<number | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
   const isMobile = useIsMobile();
+
+  // Click-to-edit a locked score: unlock the grade and focus that câu's input
+  // so the teacher edits in one motion instead of hunting for "Sửa lại". The
+  // câu is stashed in a ref because the unlock + re-render is async; the
+  // effect picks it up once `locked` flips false.
+  const focusCauAfterUnlockRef = useRef<number | null>(null);
+  const handleEditLockedScore = useCallback(
+    (cau: number) => {
+      focusCauAfterUnlockRef.current = cau;
+      onUnlock?.();
+    },
+    [onUnlock],
+  );
+  useEffect(() => {
+    if (locked) return;
+    const cau = focusCauAfterUnlockRef.current;
+    if (cau == null) return;
+    focusCauAfterUnlockRef.current = null;
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`.score-input[data-cau-score="${cau}"]`);
+      if (el instanceof HTMLInputElement) {
+        el.focus();
+        el.select();
+      }
+    });
+  }, [locked]);
   // dataUrl→blob conversion + revoke lifecycle now lives inside
   // OriginalImageModal (shared with step 4) — caller just owns the
   // open/close toggle.
@@ -2250,6 +2281,9 @@ export function StepReview({
         // Locked ⇒ omit the setter so MucLucSidebar renders read-only
         // score text (not editable inputs) and annotations can't be added.
         setFinalScores={locked ? undefined : setFinalScores}
+        // Locked ⇒ a click on a score unlocks + focuses it (click-to-edit),
+        // so the teacher skips the separate "Sửa lại" step.
+        onEditLockedScore={locked ? handleEditLockedScore : undefined}
         teacherAnnotations={teacherAnnotations}
         t={t}
         onAddAnnotation={

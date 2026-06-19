@@ -30,6 +30,7 @@ export function MucLucSidebar({
   onToggle,
   finalScores,
   setFinalScores,
+  onEditLockedScore,
 }: {
   review: ReviewPayload;
   activeQ: number;
@@ -39,6 +40,9 @@ export function MucLucSidebar({
   onToggle: () => void;
   finalScores?: Record<number, number>;
   setFinalScores?: React.Dispatch<React.SetStateAction<Record<number, number>>>;
+  /** Locked (read-only) mode only: click a score to unlock + focus it for
+   *  editing — saves the teacher the separate "Sửa lại" round-trip. */
+  onEditLockedScore?: (cau: number) => void;
 }) {
   const totalNotes = (teacherAnnotations ?? []).length;
   const countByCau = (cau: number) =>
@@ -285,6 +289,7 @@ export function MucLucSidebar({
                 {setFinalScores ? (
                   <input
                     className="score-input"
+                    data-cau-score={q.num}
                     type="number"
                     step={0.25}
                     min={0}
@@ -319,6 +324,33 @@ export function MucLucSidebar({
                       textAlign: "center",
                     }}
                   />
+                ) : onEditLockedScore ? (
+                  // Locked, but click-to-edit: tapping the score unlocks the
+                  // grade and focuses this câu's input — no separate "Sửa lại".
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEditLockedScore(q.num);
+                    }}
+                    title="Bấm để sửa điểm"
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      padding: 0,
+                      margin: 0,
+                      font: "inherit",
+                      color: "inherit",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      borderBottom: "1px dashed transparent",
+                      transition: "border-color 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderBottomColor = T.textMute)}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderBottomColor = "transparent")}
+                  >
+                    {myScore.toFixed(1)}
+                  </button>
                 ) : (
                   <span>{myScore.toFixed(1)}</span>
                 )}
