@@ -5,7 +5,7 @@ import { ApiError, detectSubject, finalizeGrade, type DetectConfidence } from ".
 import { T } from "../../theme/tokens";
 import { i18n } from "../../i18n";
 import { Icon } from "../../components/ui/Icon";
-import { parseCauHeader, parseGrade } from "../../lib/grade";
+import { parseCauHeader, parseGrade, splitTranscriptByCau } from "../../lib/grade";
 import { LoadingSpinner } from "../../components/ui/LoadingSpinner";
 import { StepIndicator } from "../../components/layout/StepIndicator";
 import { subjectLabelOf } from "../../lib/subject";
@@ -72,6 +72,53 @@ function buildAnnotationFinalizePayload(annotations: SelectionAnnotation[]): {
     .join("\n");
 
   return { stagedLessons, aggregateComment, skippedCount: skipped.length };
+}
+
+// Carry the teacher's đối-soát comments across regrade rounds instead of
+// wiping them: they are notes on the *student's* work, which doesn't change
+// between rounds — only the AI's transcript does. Each annotation is
+// re-anchored by finding its quote in the new câu's lines:
+//   • quote found             → re-point lineIdx/endLineIdx to the new spot
+//   • quote gone, câu present  → keep the comment, pin it to the câu (line 0)
+//   • câu itself gone          → drop (nothing left to attach to)
+// A genuinely different essay re-graded in the same tab self-cleans: its
+// quotes won't match, so at most câu-level remnants survive (rare edge case).
+function reanchorAnnotations(
+  prev: SelectionAnnotation[],
+  grade: Grade | null,
+): SelectionAnnotation[] {
+  if (prev.length === 0) return prev;
+  const linesByCau = splitTranscriptByCau(grade?.transcript ?? "");
+  const out: SelectionAnnotation[] = [];
+  for (const a of prev) {
+    const cauLines = linesByCau.get(a.cau);
+    if (!cauLines || cauLines.length === 0) continue; // câu gone → drop
+    const quoteLines = String(a.quote ?? "")
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    let start = -1;
+    if (quoteLines.length > 0) {
+      const first = quoteLines[0];
+      start = cauLines.findIndex((l) => l.trim() === first);
+      // Looser fallback: a line that contains the first quote line (handles
+      // minor re-wording / trailing punctuation the regrade may introduce).
+      if (start < 0 && first.length >= 4) {
+        start = cauLines.findIndex((l) => l.includes(first));
+      }
+    }
+    if (start >= 0) {
+      const end = Math.min(
+        start + Math.max(0, quoteLines.length - 1),
+        cauLines.length - 1,
+      );
+      out.push({ ...a, lineIdx: start, endLineIdx: end });
+    } else {
+      // câu-level fallback — keep the comment, pin to the câu's first line
+      out.push({ ...a, lineIdx: 0, endLineIdx: 0 });
+    }
+  }
+  return out;
 }
 
 function nextFrame(): Promise<void> {
@@ -317,7 +364,12 @@ export function EssayWorkspace({
       // values from older sessions would silently re-inflate the
       // denominator (see comment at the maxOverrides removal).
       setFinalScores(pipeline.historyFinalScores ?? {});
-      setTeacherAnnotations([]);
+      // Keep the teacher's đối-soát comments across regrade rounds (notes on
+      // the student's work, which doesn't change) by re-anchoring them to the
+      // new transcript. A history load opens a different paper, so reset there.
+      setTeacherAnnotations((prev) =>
+        pipeline.historyFinalScores != null ? [] : reanchorAnnotations(prev, g),
+      );
       // Reset the step high-water-mark — a regrade restarts the review
       // arc, so the indicator shouldn't claim step 4 is still "done"
       // from the previous round.
