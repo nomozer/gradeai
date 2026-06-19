@@ -184,26 +184,17 @@ export function TabBar({
               • Hover: bung đầy đủ — ✓ N/total + đang chấm + mọi trạng thái.
               The amber/red dots are kept even when collapsed on purpose: at
               30+ paper batch scale, an error or a paper awaiting review is
-              exactly what must NOT be hidden behind a hover. */}
+              exactly what must NOT be hidden behind a hover.
+
+              SMOOTHNESS: the expanding cluster (✓ N/total + đang chấm, or the
+              single-tab count) is ALWAYS mounted and animated via the grid
+              0fr→1fr trick — the only CSS-interpolatable way to grow to an
+              auto content width — paired with an opacity fade. Conditionally
+              mounting it (the naive approach) made the capsule snap because
+              `width: auto` can't transition. */}
           {(() => {
             const total = tabs.length;
             const expanded = hoveredTrigger;
-
-            if (total <= 1) {
-              if (!expanded) return null;
-              return (
-                <span
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: T.textSoft,
-                    fontFamily: `"Inter", "Outfit", system-ui, -apple-system, sans-serif`,
-                  }}
-                >
-                  {total}
-                </span>
-              );
-            }
 
             const finalizedCount = tabs.filter((tt) => tt.finalized).length;
             const awaitingReview = tabs.filter(
@@ -215,36 +206,13 @@ export function TabBar({
             const failedCount = tabs.filter((tt) => tt.error).length;
 
             const isAllDone = finalizedCount === total;
-            const hasAttention = awaitingReview > 0 || failedCount > 0;
+            // Dots that stay visible while collapsed (batch only).
+            const showDots = total > 1 && (awaitingReview > 0 || failedCount > 0);
+            // Rail reserves left spacing only when something is visible —
+            // collapsed-with-nothing keeps the capsule a tight ☰.
+            const railActive = expanded || showDots;
 
-            // Collapsed AND nothing to flag → render nothing so the capsule
-            // is just the ☰ icon.
-            if (!expanded && !hasAttention) return null;
-
-            const Dot = ({ count, color }: { count: number; color: string }) =>
-              count > 0 ? (
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 3,
-                    fontSize: 11,
-                    fontFamily: T.font,
-                    fontWeight: 600,
-                    color,
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      background: color,
-                    }}
-                  />
-                  {count}
-                </span>
-              ) : null;
+            const EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 
             return (
               <div
@@ -253,40 +221,94 @@ export function TabBar({
                   alignItems: "center",
                   gap: 6,
                   userSelect: "none",
-                  marginLeft: 4,
+                  marginLeft: railActive ? 8 : 0,
+                  transition: `margin-left 0.28s ${EASE}`,
                 }}
               >
-                {/* Progress badge (✓ N/total) — only when expanded. */}
-                {expanded && (
-                  <span
+                {/* Collapsible cluster — grid 0fr↔1fr animates to/from the
+                    content's natural width; overflow:hidden clips it mid-grow. */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: expanded ? "1fr" : "0fr",
+                    opacity: expanded ? 1 : 0,
+                    transition: `grid-template-columns 0.28s ${EASE}, opacity 0.18s ease`,
+                  }}
+                >
+                  <div
                     style={{
+                      overflow: "hidden",
+                      minWidth: 0,
                       display: "inline-flex",
                       alignItems: "center",
-                      gap: 4,
-                      padding: "3px 8px",
-                      background: isAllDone ? "rgba(46, 125, 91, 0.06)" : "rgba(44, 46, 58, 0.04)",
-                      border: `1px solid ${isAllDone ? "rgba(46, 125, 91, 0.15)" : T.borderLight}`,
-                      borderRadius: 999,
-                      color: isAllDone ? T.green : T.textSoft,
-                      fontSize: 11,
-                      fontFamily: T.font,
-                      fontWeight: 600,
+                      gap: 6,
                     }}
                   >
-                    <Icon.Check size={10} color={isAllDone ? T.green : T.textMute} style={{ strokeWidth: 3 }} />
-                    <span>
-                      {finalizedCount}/{total}
-                    </span>
-                  </span>
-                )}
+                    {total <= 1 ? (
+                      <span
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: T.textSoft,
+                          fontFamily: `"Inter", "Outfit", system-ui, -apple-system, sans-serif`,
+                        }}
+                      >
+                        {total}
+                      </span>
+                    ) : (
+                      <>
+                        {/* Progress badge (✓ N/total) */}
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            padding: "3px 8px",
+                            background: isAllDone ? "rgba(46, 125, 91, 0.06)" : "rgba(44, 46, 58, 0.04)",
+                            border: `1px solid ${isAllDone ? "rgba(46, 125, 91, 0.15)" : T.borderLight}`,
+                            borderRadius: 999,
+                            color: isAllDone ? T.green : T.textSoft,
+                            fontSize: 11,
+                            fontFamily: T.font,
+                            fontWeight: 600,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          <Icon.Check size={10} color={isAllDone ? T.green : T.textMute} style={{ strokeWidth: 3 }} />
+                          <span>
+                            {finalizedCount}/{total}
+                          </span>
+                        </span>
+                        {/* Đang chấm (indigo spinner) — in-progress, only on hover. */}
+                        {generatingCount > 0 && (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 3,
+                              fontSize: 11,
+                              fontFamily: T.font,
+                              fontWeight: 600,
+                              color: T.accent,
+                            }}
+                          >
+                            <Icon.RefreshCw
+                              size={11}
+                              color={T.accent}
+                              style={{ animation: "spin 1.5s linear infinite" }}
+                            />
+                            {generatingCount}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
 
-                {/* Attention signals — kept even when collapsed:
-                      • pending (amber) — bài chờ giáo viên duyệt
-                      • error   (red)   — bài chấm lỗi, cần xử lý
-                    Grading (indigo spinner) is in-progress, not actionable,
-                    so it only appears when expanded. */}
-                <Dot count={awaitingReview} color={T.amber} />
-                {expanded && generatingCount > 0 && (
+                {/* Persistent attention signals (batch only) — kept even when
+                    collapsed: an error or a paper awaiting review must not be
+                    hidden behind a hover. */}
+                {total > 1 && awaitingReview > 0 && (
                   <span
                     style={{
                       display: "inline-flex",
@@ -295,18 +317,21 @@ export function TabBar({
                       fontSize: 11,
                       fontFamily: T.font,
                       fontWeight: 600,
-                      color: T.accent,
+                      color: T.amber,
                     }}
                   >
-                    <Icon.RefreshCw
-                      size={11}
-                      color={T.accent}
-                      style={{ animation: "spin 1.5s linear infinite" }}
+                    <span
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        background: T.amber,
+                      }}
                     />
-                    {generatingCount}
+                    {awaitingReview}
                   </span>
                 )}
-                {failedCount > 0 && (
+                {total > 1 && failedCount > 0 && (
                   <span
                     style={{
                       display: "inline-flex",
