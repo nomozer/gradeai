@@ -191,6 +191,13 @@ export function ActionBar({ children, status, scoreSlot }: ActionBarProps) {
         bottom: 0,
         zIndex: 40,
         marginTop: 20,
+        // Cancel the workspace-container's bottom padding that would
+        // otherwise show as blank paper BELOW this sticky bar (the bar is the
+        // last child of that padded container). Reads the SAME --ws-pad-bottom
+        // var the container pads with, so the two always match across
+        // breakpoints (96 / 48 / 32) — the bar ends flush with the document
+        // bottom instead of leaving a stray gap on short / finalized papers.
+        marginBottom: "calc(-1 * var(--ws-pad-bottom, 96px))",
         // Full-bleed: cancel the workspace-container's horizontal padding so
         // the bar's background/border span edge-to-edge, then push content
         // back in via matching padding. Both read the SAME --ws-bleed var that

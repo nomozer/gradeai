@@ -284,10 +284,12 @@ sub.math-expr {
     display: inline !important;
   }
 
-  /* Workspace: tighter padding (--ws-bleed keeps the action-bar in sync) */
+  /* Workspace: tighter padding (--ws-bleed + --ws-pad-bottom keep the
+     action-bar in sync — its full-bleed margin and bottom-gap cancel read
+     the same two vars). */
   .workspace-container {
     --ws-bleed: 8px;
-    padding-bottom: 48px !important;
+    --ws-pad-bottom: 48px;
   }
 
   /* Paper body: reduce inner padding so text isn't squeezed */
@@ -371,10 +373,11 @@ sub.math-expr {
    MOBILE  (≤ 480px)
    ══════════════════════════════════════════════════════════════════════ */
 @media (max-width: 480px) {
-  /* Workspace: minimal padding (--ws-bleed keeps the action-bar in sync) */
+  /* Workspace: minimal padding (--ws-bleed + --ws-pad-bottom keep the
+     action-bar in sync). */
   .workspace-container {
     --ws-bleed: 6px;
-    padding-bottom: 32px !important;
+    --ws-pad-bottom: 32px;
   }
 
   /* Paper body: minimal margins */
