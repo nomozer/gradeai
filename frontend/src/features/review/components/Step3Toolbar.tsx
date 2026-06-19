@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { T } from "../../../theme/tokens";
 import { Icon } from "../../../components/ui/Icon";
 import { useBreakpoint } from "../../../hooks/useBreakpoint";
+import type { SelectionAnnotation } from "../../../types";
+import { clipText } from "../utils";
 
 // Step3Toolbar — full-width strip above the doc/sidebar grid: a usage
 // hint on the left (đối soát is a select-to-annotate surface with no
@@ -16,6 +18,8 @@ export function Step3Toolbar({
   tocOpen,
   onToggleToc,
   onPrint,
+  annotations,
+  onJumpToAnnotation,
 }: {
   onViewOriginal?: () => void;
   essayAvailable?: boolean;
@@ -25,9 +29,43 @@ export function Step3Toolbar({
    *  to "Xem PDF gốc") instead of a dedicated finalize screen, so the
    *  teacher can print at any time without leaving the review surface. */
   onPrint?: () => void;
+  /** All đối-soát annotations on the current paper. Drives the "Ghi chú (N)"
+   *  popover — a jump-list so the teacher can review every comment without
+   *  scrolling the document hunting for highlights. */
+  annotations?: SelectionAnnotation[];
+  /** Scroll the document to a given annotation's highlight (by id). */
+  onJumpToAnnotation?: (id: string) => void;
 }) {
   const bp = useBreakpoint();
   const isMobile = bp === "mobile";
+
+  // "Ghi chú (N)" popover — jump-list of every comment, grouped by câu.
+  const [notesOpen, setNotesOpen] = useState(false);
+  const notesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!notesOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (notesRef.current && !notesRef.current.contains(e.target as Node)) {
+        setNotesOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [notesOpen]);
+
+  const notes = (annotations ?? []).filter((a) => a.comment.trim().length > 0);
+  const noteCount = notes.length;
+  // Group by câu (then line order) so the list mirrors the document's flow.
+  const byCau = new Map<number, SelectionAnnotation[]>();
+  for (const a of [...notes].sort((x, y) => x.cau - y.cau || x.lineIdx - y.lineIdx)) {
+    if (!byCau.has(a.cau)) byCau.set(a.cau, []);
+    byCau.get(a.cau)!.push(a);
+  }
+  const noteGroups = [...byCau.entries()];
+  // Left accent stripe per row reflects the AI's verdict on the comment.
+  const verdictColor = (v?: string) =>
+    v === "agree" ? T.green : v === "partial" ? T.amber : v === "dispute" ? T.red : T.borderLight;
+
   return (
     <div
       style={{
@@ -108,6 +146,115 @@ export function Step3Toolbar({
             {tocOpen ? "Ẩn mục lục" : "Mục lục"}
           </ToolbarButton>
         )}
+        <div ref={notesRef} style={{ position: "relative", display: "inline-flex" }}>
+          <ToolbarButton
+            icon={<Icon.MessageCircle size={12} />}
+            onClick={() => setNotesOpen((v) => !v)}
+            variant={notesOpen ? "accent" : "default"}
+            title="Xem tất cả ghi chú đối soát — bấm để nhảy tới từng đoạn"
+          >
+            Ghi chú ({noteCount})
+          </ToolbarButton>
+          {notesOpen && (
+            <div
+              role="menu"
+              style={{
+                position: "absolute",
+                top: "calc(100% + 8px)",
+                right: 0,
+                width: 320,
+                maxWidth: "min(320px, 86vw)",
+                maxHeight: 380,
+                overflowY: "auto",
+                background: T.bgCard,
+                border: `1px solid ${T.border}`,
+                borderRadius: 12,
+                boxShadow: "0 12px 32px -8px rgba(44, 46, 58, 0.18)",
+                zIndex: 60,
+                padding: 8,
+                animation: "fadeUp 0.16s ease-out",
+              }}
+            >
+              {noteCount === 0 ? (
+                <div
+                  style={{
+                    padding: "18px 12px",
+                    fontSize: 12.5,
+                    color: T.textMute,
+                    fontFamily: T.font,
+                    lineHeight: 1.5,
+                    textAlign: "center",
+                  }}
+                >
+                  Chưa có ghi chú nào.
+                  <br />
+                  Bôi đen đoạn cần góp ý để thêm.
+                </div>
+              ) : (
+                noteGroups.map(([cau, items]) => (
+                  <div key={cau} style={{ marginBottom: 6 }}>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: T.textMute,
+                        fontFamily: T.font,
+                        letterSpacing: "0.03em",
+                        textTransform: "uppercase",
+                        padding: "6px 8px 4px",
+                      }}
+                    >
+                      Câu {cau}
+                    </div>
+                    {items.map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => {
+                          onJumpToAnnotation?.(a.id);
+                          setNotesOpen(false);
+                        }}
+                        title="Nhảy tới đoạn này"
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "8px 10px",
+                          marginBottom: 2,
+                          borderRadius: 8,
+                          border: "none",
+                          borderLeft: `3px solid ${verdictColor(a.verdict)}`,
+                          background: "transparent",
+                          cursor: "pointer",
+                          fontFamily: T.font,
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(44, 46, 58, 0.04)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      >
+                        {a.quote.trim() && (
+                          <div
+                            style={{
+                              fontSize: 11.5,
+                              color: T.textMute,
+                              fontStyle: "italic",
+                              marginBottom: 2,
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            “{clipText(a.quote, 46)}”
+                          </div>
+                        )}
+                        <div style={{ fontSize: 12.5, color: T.text, lineHeight: 1.45 }}>
+                          {clipText(a.comment, 90)}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
         <ToolbarButton
           icon={<Icon.FileText size={12} />}
           onClick={essayAvailable ? onViewOriginal : undefined}

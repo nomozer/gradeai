@@ -135,6 +135,17 @@ function ReviewMockup({
     };
   }, [jumpToCau]);
 
+  // Scroll to a specific annotation's highlight (from the toolbar's
+  // "Ghi chú" jump-list) — same data-ann-id anchor the bubble queries.
+  const jumpToAnnotation = useCallback((id: string) => {
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`mark[data-ann-id="${id}"]`);
+      if (el instanceof HTMLElement) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+  }, []);
+
   return (
     <div>
       <Step3Toolbar
@@ -143,6 +154,8 @@ function ReviewMockup({
         tocOpen={tocOpen}
         onToggleToc={() => setTocOpen((v) => !v)}
         onPrint={onPrint}
+        annotations={teacherAnnotations}
+        onJumpToAnnotation={jumpToAnnotation}
       />
       {isMobile && (
         <MucLucChips
