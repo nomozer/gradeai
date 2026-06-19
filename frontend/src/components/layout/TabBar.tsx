@@ -206,23 +206,21 @@ export function TabBar({
             const failedCount = tabs.filter((tt) => tt.error).length;
 
             const isAllDone = finalizedCount === total;
-            // Dots that stay visible while collapsed (batch only).
-            const showDots = total > 1 && (awaitingReview > 0 || failedCount > 0);
-            // Rail reserves left spacing only when something is visible —
-            // collapsed-with-nothing keeps the capsule a tight ☰.
-            const railActive = expanded || showDots;
 
             const EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 
+            // Spacing: the button's own gap:8 separates ☰ from this rail, so
+            // the rail itself adds NO left margin and NO inter-item gap —
+            // otherwise the always-mounted 0-width progress grid would leave
+            // ~22px of dead space before the dots when collapsed (the capsule
+            // looked stretched). Instead each dot carries its own marginLeft,
+            // zero when collapsed (tight ☰ ● 2) and 6 when expanded.
             return (
               <div
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 6,
                   userSelect: "none",
-                  marginLeft: railActive ? 8 : 0,
-                  transition: `margin-left 0.28s ${EASE}`,
                 }}
               >
                 {/* Collapsible cluster — grid 0fr↔1fr animates to/from the
@@ -318,6 +316,8 @@ export function TabBar({
                       fontFamily: T.font,
                       fontWeight: 600,
                       color: T.amber,
+                      marginLeft: expanded ? 6 : 0,
+                      transition: `margin-left 0.28s ${EASE}`,
                     }}
                   >
                     <span
@@ -341,6 +341,11 @@ export function TabBar({
                       fontFamily: T.font,
                       fontWeight: 600,
                       color: T.red,
+                      // 6px gap from whatever precedes (amber dot or the
+                      // expanded progress cluster); tight to ☰ when it's the
+                      // lone collapsed signal.
+                      marginLeft: expanded || awaitingReview > 0 ? 6 : 0,
+                      transition: `margin-left 0.28s ${EASE}`,
                     }}
                   >
                     <Icon.AlertTriangle size={11} color={T.red} />
