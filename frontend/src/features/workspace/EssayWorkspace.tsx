@@ -729,12 +729,18 @@ export function EssayWorkspace({
         scores: finalScores,
         annotations: teacherAnnotations,
       });
+      // Fast review pass: after saving, hand off to App.tsx to jump to the
+      // next paper (it owns activeId). Lets the teacher lướt nháp through the
+      // whole batch, then chốt at the end.
+      window.dispatchEvent(
+        new CustomEvent("hitl.draftAdvance", { detail: { tabId: tab.id } }),
+      );
       return true;
     } catch (err) {
       console.warn("[HITL] save draft failed:", err);
       return false;
     }
-  }, [pipeline.runId, finalScores, teacherAnnotations]);
+  }, [pipeline.runId, finalScores, teacherAnnotations, tab.id]);
 
   // Restore a saved draft when a run loads (e.g. reopened from history): pull
   // the teacher's last in-progress scores + comments back. Finalized runs have

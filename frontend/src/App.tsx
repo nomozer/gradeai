@@ -341,6 +341,30 @@ function WorkspacePage() {
     }
   }, [tabs, activeId, setActive]);
 
+  // "Lưu nháp" advance: after a tab saves its draft, jump to the NEXT paper
+  // (in tab order) that's graded and not yet finalized — a fast left-to-right
+  // review pass. Unlike Chốt's auto-advance this fires on the save action
+  // (via event from EssayWorkspace), not on a tab-state flip, and only moves
+  // forward; if there's no next paper we stay put and just confirm the save.
+  useEffect(() => {
+    const onDraftAdvance = (e: Event) => {
+      const fromId = (e as CustomEvent<{ tabId: string }>).detail?.tabId;
+      const idx = tabs.findIndex((t) => t.id === fromId);
+      const next =
+        idx >= 0
+          ? tabs.slice(idx + 1).find((t) => t.hasGrade && !t.finalized)
+          : undefined;
+      if (next) {
+        setActive(next.id);
+        setToast("Đã lưu nháp — sang bài kế tiếp");
+      } else {
+        setToast("Đã lưu nháp");
+      }
+    };
+    window.addEventListener("hitl.draftAdvance", onDraftAdvance);
+    return () => window.removeEventListener("hitl.draftAdvance", onDraftAdvance);
+  }, [tabs, setActive]);
+
   // ── Synchronize shared fields (Task PDF, Answer Key, Subject, Max Template) across all tabs ──
   useEffect(() => {
     const activeTab = tabs.find((t) => t.id === activeId);
