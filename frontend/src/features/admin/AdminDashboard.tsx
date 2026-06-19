@@ -27,6 +27,7 @@ import { getUser, clearSession, type SessionUser } from "../../api/session";
 import { ApiError } from "../../api/client";
 import { Icon } from "../../components/ui/Icon";
 import { MirrorLogo } from "../../components/ui/MirrorLogo";
+import { InlineLoader } from "../../components/ui/InlineLoader";
 import { openInNewTab } from "../../lib/openInNewTab";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
 import { BulkImportUsers } from "./BulkImportUsers";
@@ -467,14 +468,17 @@ export function AdminDashboard() {
             <MenuIcon size={20} color="currentColor" style={{ display: "block" }} />
           </button>
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-            <MirrorLogo size={24} />
+            {/* Balanced lockup (see AppHeader): wordmark sized ≈ the logo,
+                logo nudged up -6% for its bottom-heavy mass. */}
+            <MirrorLogo size={24} style={{ transform: "translateY(-6%)" }} />
             <span
               style={{
                 fontFamily: T.display,
-                fontSize: T.fontSize.base,
+                fontSize: 22,
                 fontWeight: 800,
                 color: T.accentDark,
                 letterSpacing: 0.5,
+                lineHeight: 1,
               }}
             >
               MIRROR
@@ -501,14 +505,17 @@ export function AdminDashboard() {
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <MirrorLogo size={28} />
+              {/* Balanced lockup (see AppHeader): wordmark sized ≈ the logo,
+                  logo nudged up -6% for its bottom-heavy mass. */}
+              <MirrorLogo size={28} style={{ transform: "translateY(-6%)" }} />
               <span
                 style={{
                   fontFamily: T.display,
-                  fontSize: T.fontSize.lg,
+                  fontSize: 26,
                   fontWeight: 800,
                   color: T.accentDark,
                   letterSpacing: 0.5,
+                  lineHeight: 1,
                 }}
               >
                 MIRROR
@@ -773,7 +780,7 @@ function OverviewSection() {
       <h1 style={titleStyle}>Tổng quan hệ thống</h1>
       {error && <Banner text={error} />}
       {loading ? (
-        <p style={mutedStyle}>Đang tải…</p>
+        <InlineLoader />
       ) : data ? (
         <>
           <div
@@ -1086,7 +1093,7 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
         />
 
         {loading ? (
-          <p style={mutedStyle}>Đang tải…</p>
+          <InlineLoader />
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={tableStyle}>

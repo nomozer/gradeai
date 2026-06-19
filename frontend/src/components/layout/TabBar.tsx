@@ -405,14 +405,17 @@ export function TabBar({
               >
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <MirrorLogo size={24} />
+                    {/* Balanced lockup (see AppHeader): wordmark sized ≈ the
+                        logo, logo nudged up -6% for its bottom-heavy mass. */}
+                    <MirrorLogo size={24} style={{ transform: "translateY(-6%)" }} />
                     <span
                       style={{
                         fontFamily: T.display,
-                        fontSize: 16,
+                        fontSize: 22,
                         fontWeight: 800,
                         color: T.accentDark,
                         letterSpacing: 0.5,
+                        lineHeight: 1,
                       }}
                     >
                       MIRROR

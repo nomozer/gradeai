@@ -138,11 +138,21 @@ export function AppHeader({
           flex: "0 0 auto",
         }}
       >
-        <MirrorLogo size={28} />
+        {/* Logo is the anchor (28px); the wordmark is sized UP to match it
+            (see fontSize below) so the two read as equal, Mentimeter-style.
+            The translateY (in %, scales with size) corrects the artwork's
+            bottom-heavy mass — red arc + filled base, empty top-left sits
+            ~15% below the box's geometric centre — so the ink reads
+            optically level with the text instead of low. */}
+        <MirrorLogo size={28} style={{ transform: "translateY(-6%)" }} />
         <span
           style={{
             fontFamily: T.display,
-            fontSize: T.fontSize.xl,
+            // Brand-specific size (not the xl token): sits between the old
+            // xl (20, too small beside the 28px logo) and a full match (~32,
+            // too big) so the lockup reads balanced without the wordmark
+            // shouting. Tunable — 24 if still a touch big, 28 for more heft.
+            fontSize: 26,
             fontWeight: 800,
             color: T.accentDark,
             letterSpacing: 0.5,
