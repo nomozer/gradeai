@@ -175,13 +175,22 @@ export function TabBar({
           >
             <Icon.Menu size={16} />
           </div>
-          {/* Single-tab mode: just the tab count digit (current behavior).
-              Batch mode (≥2 tabs): inline mini progress glyphs so the
-              teacher sees how many bài are duyệt-xong without opening
-              the drawer. Same visual language as the drawer header pill
-              for consistency. ⊙ = AI graded, waiting teacher review. */}
+          {/* Hybrid display (collapses to a bare ☰ at rest):
+              • Single tab: nothing collapsed — reveal the tab count only on
+                hover; there is no batch progress worth a permanent glyph.
+              • Batch (≥2 tabs), collapsed: show ONLY the attention signals
+                — bài chờ duyệt (amber) + lỗi (đỏ). If nothing needs the
+                teacher, the capsule stays just the ☰ icon.
+              • Hover: bung đầy đủ — ✓ N/total + đang chấm + mọi trạng thái.
+              The amber/red dots are kept even when collapsed on purpose: at
+              30+ paper batch scale, an error or a paper awaiting review is
+              exactly what must NOT be hidden behind a hover. */}
           {(() => {
-            if (tabs.length <= 1) {
+            const total = tabs.length;
+            const expanded = hoveredTrigger;
+
+            if (total <= 1) {
+              if (!expanded) return null;
               return (
                 <span
                   style={{
@@ -191,11 +200,11 @@ export function TabBar({
                     fontFamily: `"Inter", "Outfit", system-ui, -apple-system, sans-serif`,
                   }}
                 >
-                  {tabs.length}
+                  {total}
                 </span>
               );
             }
-            const total = tabs.length;
+
             const finalizedCount = tabs.filter((tt) => tt.finalized).length;
             const awaitingReview = tabs.filter(
               (tt) => tt.hasGrade && !tt.finalized,
@@ -206,12 +215,12 @@ export function TabBar({
             const failedCount = tabs.filter((tt) => tt.error).length;
 
             const isAllDone = finalizedCount === total;
+            const hasAttention = awaitingReview > 0 || failedCount > 0;
 
-            // Glance-only status dots: a coloured dot + count, NO words.
-            // Different from the old "N chờ duyệt" text badge that made the
-            // capsule long and duplicated the drawer — here it's just a dot
-            // so the teacher can spot "something needs me" (amber pending /
-            // indigo grading / red error) without hover, click, or reading.
+            // Collapsed AND nothing to flag → render nothing so the capsule
+            // is just the ☰ icon.
+            if (!expanded && !hasAttention) return null;
+
             const Dot = ({ count, color }: { count: number; color: string }) =>
               count > 0 ? (
                 <span
@@ -247,42 +256,37 @@ export function TabBar({
                   marginLeft: 4,
                 }}
               >
-                {/* 1. Progress badge (Approved / Total) */}
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    padding: "3px 8px",
-                    background: isAllDone ? "rgba(46, 125, 91, 0.06)" : "rgba(44, 46, 58, 0.04)",
-                    border: `1px solid ${isAllDone ? "rgba(46, 125, 91, 0.15)" : T.borderLight}`,
-                    borderRadius: 999,
-                    color: isAllDone ? T.green : T.textSoft,
-                    fontSize: 11,
-                    fontFamily: T.font,
-                    fontWeight: 600,
-                  }}
-                >
-                  <Icon.Check size={10} color={isAllDone ? T.green : T.textMute} style={{ strokeWidth: 3 }} />
-                  {/* Glance-only progress — just "✓ N/total", no "Xong"
-                      word. The capsule is the TRIGGER; full per-state detail
-                      (chờ duyệt / đang chấm) lives in the drawer it opens,
-                      so repeating them here only made the pill long and
-                      duplicated the drawer header. */}
-                  <span>
-                    {finalizedCount}/{total}
+                {/* Progress badge (✓ N/total) — only when expanded. */}
+                {expanded && (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "3px 8px",
+                      background: isAllDone ? "rgba(46, 125, 91, 0.06)" : "rgba(44, 46, 58, 0.04)",
+                      border: `1px solid ${isAllDone ? "rgba(46, 125, 91, 0.15)" : T.borderLight}`,
+                      borderRadius: 999,
+                      color: isAllDone ? T.green : T.textSoft,
+                      fontSize: 11,
+                      fontFamily: T.font,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <Icon.Check size={10} color={isAllDone ? T.green : T.textMute} style={{ strokeWidth: 3 }} />
+                    <span>
+                      {finalizedCount}/{total}
+                    </span>
                   </span>
-                </span>
+                )}
 
-                {/* Status indicators — show only when count > 0, so an
-                    all-done batch stays just "✓ N/total".
-                      • pending  (amber)  — static dot: nothing is moving
-                      • grading  (indigo) — SPINNING refresh icon, matching
-                        the drawer, because it's an in-progress state
-                      • error    (red)    — warning icon, the one state that
-                        needs the teacher to act */}
+                {/* Attention signals — kept even when collapsed:
+                      • pending (amber) — bài chờ giáo viên duyệt
+                      • error   (red)   — bài chấm lỗi, cần xử lý
+                    Grading (indigo spinner) is in-progress, not actionable,
+                    so it only appears when expanded. */}
                 <Dot count={awaitingReview} color={T.amber} />
-                {generatingCount > 0 && (
+                {expanded && generatingCount > 0 && (
                   <span
                     style={{
                       display: "inline-flex",
