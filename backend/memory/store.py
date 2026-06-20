@@ -502,10 +502,38 @@ class MemoryManager:
                            narrowing the search space before vector similarity.
 
         Returns:
-            The auto-generated lesson ID.
+            The lesson ID — a NEW row's id, or the existing row's id when an
+            identical lesson already exists (ingest de-dup, see below).
         """
         user_id = get_current_user_id()
         with self._get_session() as session:
+            # Ingest de-dup: the same correction (task + text + score) is ONE
+            # lesson however many times it's saved — a re-finalize outside the
+            # 300 s ``find_recent_lesson`` window, re-grading the same task days
+            # later, or the same mistake across different students. Reuse the
+            # existing row instead of minting a new row + Chroma vector each
+            # time, so the corpus doesn't grow unboundedly (and retrieval can't
+            # over-weight the repeat). Covers ALL ingest paths, not just finalize.
+            existing = (
+                session.query(Lesson)
+                .filter(
+                    Lesson.user_id == user_id,
+                    Lesson.task == task,
+                    Lesson.lesson_text == lesson_text,
+                    Lesson.feedback_score == feedback_score,
+                )
+                .order_by(Lesson.id.asc())
+                .first()
+            )
+            if existing is not None:
+                # Enrich the kept row with grade JSON this save carries but the
+                # original lacked (e.g. correct_code only known at approve time).
+                if correct_code and not (existing.correct_code or ""):
+                    existing.correct_code = correct_code
+                if wrong_code and not (existing.wrong_code or ""):
+                    existing.wrong_code = wrong_code
+                return existing.id  # Chroma already holds this id's vector.
+
             lesson = Lesson(
                 user_id=user_id,
                 task=task,
