@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import { T } from "../../theme/tokens";
 import { Icon } from "../../components/ui/Icon";
-import { ActionBar, PrimaryButton, SecondaryButton, GhostButton } from "../../components/ui/ActionBar";
+import { ActionBar, PrimaryButton, SecondaryButton } from "../../components/ui/ActionBar";
 import { OriginalImageModal } from "../../components/ui/OriginalImageModal";
 import { getStageableLesson } from "../../lib/hitl";
 import { analyzeComment } from "../../api";
@@ -2457,10 +2457,10 @@ export function StepReview({
       >
         {locked ? (
           <>
-            <GhostButton onClick={onUnlock} disabled={!!isFinalizing}>
-              <Icon.ArrowLeft size={14} />
-              {String(t.editGrade ?? "Sửa lại")}
-            </GhostButton>
+            {/* The explicit "Sửa lại" unlock button was removed — returning to
+                a graded paper now auto-unlocks for editing, and a locked score
+                is click-to-edit, so the button was redundant. ``onUnlock`` stays
+                wired for those two paths. */}
             {/* Print is also reachable from the toolbar at any time, but
                 surface it here too: right after chốt is exactly when the
                 teacher wants the slip, so they don't have to scroll back
