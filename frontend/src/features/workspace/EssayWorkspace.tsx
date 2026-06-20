@@ -618,7 +618,7 @@ export function EssayWorkspace({
       };
       const annotationPayload = buildAnnotationFinalizePayload(teacherAnnotations);
       try {
-        return await finalizeGrade({
+        const resp = await finalizeGrade({
           task,
           lang,
           ai_overall: aiOverall,
@@ -631,6 +631,23 @@ export function EssayWorkspace({
           comment: annotationPayload.aggregateComment,
           staged_lessons: annotationPayload.stagedLessons,
         });
+        // Persist the teacher's final đối-soát (highlights + comments) + per-câu
+        // scores to the draft so reopening this graded paper from history
+        // restores them. The raw annotations live NOWHERE else — the history
+        // entry and approved-grade JSON don't carry them — and finalize just
+        // deleted the pre-final "Lưu nháp" draft server-side, so re-save it here
+        // with the FINAL state. Best-effort: a failure only means annotations
+        // won't restore on a later reopen (grade itself is already saved).
+        if (pipeline.runId != null) {
+          void saveDraft({
+            run_id: pipeline.runId,
+            scores: finalScores,
+            annotations: teacherAnnotations,
+          }).catch((e) =>
+            console.warn("[HITL] persist final đối-soát failed:", e),
+          );
+        }
+        return resp;
       } catch (err) {
         console.warn("[HITL] finalize-grade persist failed:", err);
         if (err instanceof ApiError) {
