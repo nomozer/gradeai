@@ -660,12 +660,6 @@ export function EssayWorkspace({
   // ``finalizedResult`` (which locks StepReview in place: read-only
   // scores + "AI đã học" banner) and the cross-tab ``finalized`` flag so
   // App.tsx auto-advances to the next paper.
-  // Set true by ``runFinalize`` so the auto-unlock-on-return effect skips the
-  // finalize that JUST happened — the teacher should still see the locked
-  // "đã chốt / AI đã ghi nhớ" confirmation. Consumed (reset to false) on the
-  // next effect run, so a later RETURN to the tab unlocks normally.
-  const suppressAutoUnlockRef = useRef(false);
-
   const runFinalize = useCallback(
     async (payload: { overall: number | string }) => {
       if (isFinalizing) return;
@@ -674,7 +668,6 @@ export function EssayWorkspace({
       try {
         const resp = await persistFinalizedGrade(payload);
         const annotationPayload = buildAnnotationFinalizePayload(teacherAnnotations);
-        suppressAutoUnlockRef.current = true;
         setFinalizedResult({
           ...payload,
           finalizedAt: new Date().toISOString(),
@@ -742,18 +735,18 @@ export function EssayWorkspace({
     if (tab.finalized) onMeta({ finalized: false });
   }, [tab.finalized, onMeta]);
 
-  // When the teacher RETURNS to an already-finalized paper (the tab is active
-  // again on the review step), drop straight into the editable view so they can
-  // tweak without hunting for "Sửa lại". Suppressed for the finalize that just
-  // happened so its locked "đã chốt / AI đã ghi nhớ" confirmation still shows
-  // until the teacher navigates away and back. Screen-only — the paper stays
-  // "đã xong" unless actually edited (``markGradeEdited``).
+  // Auto-unlock only on a RETURN — the tab going inactive→active again while
+  // still holding a finalized result. Keying on the ``active`` false→true edge
+  // (not just "active && finalizedResult") is what lets the finalize that just
+  // happened keep its locked "đã chốt / AI đã ghi nhớ" confirmation: at finalize
+  // the tab either stays active (last paper → stays locked) or auto-advances
+  // away (active→false, no unlock), and only coming BACK re-opens it for
+  // editing. Screen-only — finalized status is untouched (see markGradeEdited).
+  const prevActiveRef = useRef(active);
   useEffect(() => {
-    if (active && step === 3 && finalizedResult) {
-      if (suppressAutoUnlockRef.current) {
-        suppressAutoUnlockRef.current = false;
-        return;
-      }
+    const wasActive = prevActiveRef.current;
+    prevActiveRef.current = active;
+    if (active && !wasActive && step === 3 && finalizedResult) {
       handleUnlockFinalize();
     }
   }, [active, step, finalizedResult, handleUnlockFinalize]);
