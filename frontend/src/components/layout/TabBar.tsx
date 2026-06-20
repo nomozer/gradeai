@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { T } from "../../theme/tokens";
 import type { I18nStrings, Tab } from "../../types";
 import { Icon } from "../ui/Icon";
@@ -72,9 +73,13 @@ export function TabBar({
   const [hoveredClear, setHoveredClear] = useState(false);
   const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
   const [hoveredBatch, setHoveredBatch] = useState(false);
+  // Styled rename modal (replaces the native window.prompt). Holds the tab id
+  // being renamed + the in-progress name; null when closed.
+  const [renameDraft, setRenameDraft] = useState<{ id: string; value: string } | null>(null);
 
   const sidebarRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Listen for custom event to open sidebar (from header hamburger)
   useEffect(() => {
@@ -96,22 +101,183 @@ export function TabBar({
     };
   }, [menuOpenId]);
 
+  // Open the styled rename modal (replaces the native window.prompt). The
+  // input is focused + selected by the effect below when the modal opens.
   const handleRename = (tab: Tab, index: number) => {
     const defaultVal = tab.label || `${String(t.essayN ?? "Bài")} ${index + 1}`;
-    const newName = window.prompt("Nhập tên mới cho bài làm này:", defaultVal);
-    if (newName !== null) {
-      const trimmed = newName.trim();
-      if (trimmed) {
-        onRename(tab.id, trimmed);
-      }
-    }
+    setRenameDraft({ id: tab.id, value: defaultVal });
   };
+
+  const commitRename = () => {
+    if (!renameDraft) return;
+    const trimmed = renameDraft.value.trim();
+    if (trimmed) onRename(renameDraft.id, trimmed);
+    setRenameDraft(null);
+  };
+
+  const cancelRename = () => setRenameDraft(null);
+
+  // Focus + select-all when the modal opens (keyed on the target id so it
+  // fires once per open, not on every keystroke).
+  useEffect(() => {
+    if (!renameDraft) return;
+    const el = renameInputRef.current;
+    if (el) {
+      el.focus();
+      el.select();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renameDraft?.id]);
 
   const activeTabIdx = tabs.findIndex((x) => x.id === activeId);
   const activeLabel = tabs[activeTabIdx]?.label || `${String(t.essayN ?? "Bài")} ${activeTabIdx + 1}`;
 
   return (
     <>
+      {/* Styled "Đổi tên" modal — replaces the native browser prompt(), which
+          looked off-brand. Portaled to <body> so it sits above the header and
+          isn't clipped by the capsule's stacking context. */}
+      {renameDraft &&
+        createPortal(
+          <div
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) cancelRename();
+            }}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 1000,
+              background: "rgba(44, 46, 58, 0.45)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 16,
+            }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={String(t.renameTitle ?? "Đổi tên bài làm")}
+              style={{
+                width: "min(440px, 100%)",
+                background: T.bgCard,
+                border: `1px solid ${T.border}`,
+                borderRadius: 14,
+                boxShadow: T.shadowStrong,
+                padding: 24,
+                fontFamily: T.font,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: T.display,
+                  fontSize: T.fontSize.lg,
+                  fontWeight: 600,
+                  color: T.text,
+                }}
+              >
+                {String(t.renameTitle ?? "Đổi tên bài làm")}
+              </div>
+              <label
+                htmlFor="rename-input"
+                style={{
+                  display: "block",
+                  marginTop: 6,
+                  fontSize: T.fontSize.sm,
+                  color: T.textMute,
+                }}
+              >
+                {String(t.renamePrompt ?? "Nhập tên mới cho bài làm này")}
+              </label>
+              <input
+                id="rename-input"
+                ref={renameInputRef}
+                value={renameDraft.value}
+                maxLength={80}
+                onChange={(e) =>
+                  setRenameDraft((d) => (d ? { ...d, value: e.target.value } : d))
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    commitRename();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    cancelRename();
+                  }
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = T.accent)}
+                onBlur={(e) => (e.currentTarget.style.borderColor = T.border)}
+                style={{
+                  width: "100%",
+                  marginTop: 12,
+                  boxSizing: "border-box",
+                  padding: "10px 12px",
+                  fontSize: T.fontSize.base,
+                  fontFamily: T.font,
+                  color: T.text,
+                  background: T.bgInput,
+                  border: `1.5px solid ${T.border}`,
+                  borderRadius: 8,
+                  outline: "none",
+                }}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 8,
+                  marginTop: 20,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={cancelRename}
+                  style={{
+                    padding: "9px 16px",
+                    fontSize: T.fontSize.sm,
+                    fontFamily: T.font,
+                    fontWeight: 500,
+                    color: T.textSoft,
+                    background: "transparent",
+                    border: `1px solid ${T.border}`,
+                    borderRadius: 8,
+                    cursor: "pointer",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = T.bgHover)}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  {String(t.cancel ?? "Hủy")}
+                </button>
+                <button
+                  type="button"
+                  onClick={commitRename}
+                  disabled={!renameDraft.value.trim()}
+                  style={{
+                    padding: "9px 18px",
+                    fontSize: T.fontSize.sm,
+                    fontFamily: T.font,
+                    fontWeight: 600,
+                    color: "#fff",
+                    background: T.accent,
+                    border: "none",
+                    borderRadius: 8,
+                    cursor: renameDraft.value.trim() ? "pointer" : "default",
+                    opacity: renameDraft.value.trim() ? 1 : 0.5,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (renameDraft.value.trim())
+                      e.currentTarget.style.background = T.accentDark;
+                  }}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = T.accent)}
+                >
+                  {String(t.save ?? "Lưu")}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
       {/* 1. Floating Capsule Trigger Button (Image 1 style) — desktop only */}
       {bp === "desktop" && (
         <button
