@@ -252,38 +252,23 @@ function WorkspacePage() {
     }
   }, [tabs, pendingQueue, updateMeta]);
 
-  // Auto-advance — two triggers, both designed to keep the teacher
-  // looking at the right tab without having to open ☰ drawer manually.
+  // Auto-advance keeps the teacher on the right tab without opening the ☰
+  // drawer. Two paths:
   //
-  // (1) After Step 5 finalize: when the active tab's ``finalized`` flag
-  //     flips to true (set by EssayWorkspace on a successful /api/finalize-
-  //     grade), jump to the next ``hasGrade && !finalized`` tab. This is
-  //     what makes "Lưu & sang bài kế" live up to its label.
+  // (1) Chốt advance — jump to the next ``hasGrade && !finalized`` paper after
+  //     a finalize. EVENT-driven (the hitl.finalizeAdvance listener below),
+  //     fired by EssayWorkspace on a successful /api/finalize-grade — NOT a
+  //     ``finalized`` flag flip. Re-opening a graded paper now KEEPS it
+  //     finalized (so it stays in "Xong"), so a rising-edge trigger would miss
+  //     a re-chốt entirely; the action event always fires.
   //
-  // (2) When a tab finishes AI grading while the teacher is "idle"
-  //     (active tab still at step 1 upload or step 2 generating):
-  //     auto-jump to the newly-graded tab so the teacher can start
-  //     review. WITHOUT this guard, if the teacher's active tab is
-  //     mid-review at step 3-4-5, the effect does NOTHING — we don't
-  //     yank them away from work they're doing.
-  //
-  // Both triggers use the same ref-diff pattern: track the previous set
-  // of (finalized | graded) IDs, fire only on the rising edge. Without
-  // the ref, the effect would re-trigger on every parent re-render and
-  // could pull the teacher around against their will.
-  const prevFinalizedRef = useRef<Set<string>>(new Set());
+  // (2) Graded-while-idle advance (this effect) — when a tab finishes AI
+  //     grading while the teacher is idle (active tab still at step 1 upload or
+  //     step 2 generating), jump to it so they can start review. The
+  //     ``step < 3`` guard means we never yank them out of a review in
+  //     progress. Rising-edge via prevHasGradeRef so it fires once per tab.
   const prevHasGradeRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    // ── Trigger 1: finalized advance ─────────────────────────────────
-    const currentFinalized = new Set(
-      tabs.filter((tab) => tab.finalized).map((tab) => tab.id),
-    );
-    const newlyFinalized = [...currentFinalized].filter(
-      (id) => !prevFinalizedRef.current.has(id),
-    );
-    prevFinalizedRef.current = currentFinalized;
-
-    // ── Trigger 2: graded-while-idle advance ─────────────────────────
     const currentHasGrade = new Set(
       tabs.filter((tab) => tab.hasGrade).map((tab) => tab.id),
     );
@@ -292,21 +277,42 @@ function WorkspacePage() {
     );
     prevHasGradeRef.current = currentHasGrade;
 
-    // Pick the next pending tab in declaration order — graders typically
-    // grade left-to-right, so this matches "next paper in the stack".
-    const pickNextPending = () =>
-      tabs.find(
-        (tab) => tab.id !== activeId && tab.hasGrade && !tab.finalized,
-      );
+    if (newlyGraded.length > 0) {
+      const active = tabs.find((tab) => tab.id === activeId);
+      const teacherIdle = !active || (active.step ?? 1) < 3;
+      if (teacherIdle) {
+        // Prefer a *newly* graded tab ("AI just finished one, take me there");
+        // fall back to any pending tab in declaration order.
+        const justGraded = tabs.find(
+          (tab) =>
+            tab.id !== activeId &&
+            newlyGraded.includes(tab.id) &&
+            !tab.finalized,
+        );
+        const next =
+          justGraded ??
+          tabs.find(
+            (tab) => tab.id !== activeId && tab.hasGrade && !tab.finalized,
+          );
+        if (next) setActive(next.id);
+      }
+    }
+  }, [tabs, activeId, setActive]);
 
-    if (newlyFinalized.includes(activeId)) {
-      const next = pickNextPending();
+  // Chốt advance (path 1 above): fire on the finalize ACTION, so it works even
+  // when the paper was already finalized (re-chốt after re-opening). Mirrors
+  // the "Lưu nháp" advance below.
+  useEffect(() => {
+    const onFinalizeAdvance = (e: Event) => {
+      const fromId = (e as CustomEvent<{ tabId: string }>).detail?.tabId;
+      const from = tabs.find((t) => t.id === fromId);
+      const next = tabs.find(
+        (t) => t.id !== fromId && t.hasGrade && !t.finalized,
+      );
       if (next) {
-        // Name the paper just saved (its tab label is the student / bài làm
-        // identifier) so the toast confirms WHICH paper landed before we
-        // pull the teacher to the next one.
-        const justSaved = tabs.find((tab) => tab.id === activeId);
-        const name = (justSaved?.label || "").trim();
+        // Name the paper just saved (the tab label is the student / bài làm
+        // identifier) so the toast confirms WHICH paper landed.
+        const name = (from?.label || "").trim();
         setToast(
           name
             ? `Đã chấm xong bài của ${name} — chuyển tới bài kế tiếp`
@@ -314,32 +320,11 @@ function WorkspacePage() {
         );
         setActive(next.id);
       }
-      return;
-    }
-
-    // Only auto-jump on grading-complete if teacher isn't busy reviewing.
-    // ``step >= 3`` means the active tab is in review / regrade / done
-    // (i.e. the teacher is actively looking at AI output) — never yank
-    // them away from that. Step 1 (upload waiting) or step 2 (AI loading)
-    // means they're idle, safe to jump.
-    if (newlyGraded.length > 0) {
-      const active = tabs.find((tab) => tab.id === activeId);
-      const teacherIdle = !active || (active.step ?? 1) < 3;
-      if (teacherIdle) {
-        // Prefer one of the *newly* graded tabs over any older pending —
-        // matches the teacher's mental model "AI just finished one, take
-        // me there". Falls back to any pending tab if needed.
-        const justGraded = tabs.find(
-          (tab) =>
-            tab.id !== activeId &&
-            newlyGraded.includes(tab.id) &&
-            !tab.finalized,
-        );
-        const next = justGraded ?? pickNextPending();
-        if (next) setActive(next.id);
-      }
-    }
-  }, [tabs, activeId, setActive]);
+    };
+    window.addEventListener("hitl.finalizeAdvance", onFinalizeAdvance);
+    return () =>
+      window.removeEventListener("hitl.finalizeAdvance", onFinalizeAdvance);
+  }, [tabs, setActive]);
 
   // "Lưu nháp" advance: after a tab saves its draft, jump to the NEXT paper
   // (in tab order) that's graded and not yet finalized — a fast left-to-right

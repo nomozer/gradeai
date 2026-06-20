@@ -684,6 +684,13 @@ export function EssayWorkspace({
           deltas: resp?.deltas,
         });
         onMeta({ finalized: true });
+        // Advance to the next paper on the finalize ACTION (not on a
+        // ``finalized`` flag transition) — a paper re-chốt'd after being
+        // re-opened is already finalized, so a rising-edge trigger in App.tsx
+        // would never fire. Mirrors the "Lưu nháp" advance.
+        window.dispatchEvent(
+          new CustomEvent("hitl.finalizeAdvance", { detail: { tabId: tab.id } }),
+        );
       } catch (err) {
         const e = err as Error;
         setFinalizeError(
@@ -695,7 +702,7 @@ export function EssayWorkspace({
         setIsFinalizing(false);
       }
     },
-    [isFinalizing, persistFinalizedGrade, teacherAnnotations, onMeta, t],
+    [isFinalizing, persistFinalizedGrade, teacherAnnotations, onMeta, t, tab.id],
   );
 
   // "Chốt điểm" from Step 3 — compute the teacher's final total (sum of
