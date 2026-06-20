@@ -1915,6 +1915,10 @@ interface StepReviewProps {
    *  commit button's in-flight + error states. */
   finalizedResult?: FinalizedResult | null;
   onUnlock?: () => void;
+  /** Called whenever the teacher modifies a score or đối-soát comment, so the
+   *  workspace can mark an already-finalized paper as "needs re-chốt". Unlike
+   *  ``onUnlock`` (screen-only), this fires on the actual edit, not on opening. */
+  onEdit?: () => void;
   /** "Lưu nháp" — persist scores + comments without finalizing (no lock, no
    *  AI learning). Returns whether the save succeeded so the button can show
    *  a transient confirmation. */
@@ -1941,6 +1945,7 @@ export function StepReview({
   setFinalScores,
   finalizedResult,
   onUnlock,
+  onEdit,
   onSaveDraft,
   isFinalizing,
   finalizeError,
@@ -1951,6 +1956,16 @@ export function StepReview({
   const [analyzingQ, setAnalyzingQ] = useState<number | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
   const isMobile = useIsMobile();
+
+  useEffect(() => {
+    const handleOpen = () => {
+      setShowOriginal(true);
+    };
+    window.addEventListener("mirror.viewOriginalImage", handleOpen);
+    return () => {
+      window.removeEventListener("mirror.viewOriginalImage", handleOpen);
+    };
+  }, []);
 
   // Click-to-edit a locked score: unlock the grade and focus that câu's input
   // so the teacher edits in one motion instead of hunting for "Sửa lại". The
@@ -2303,35 +2318,58 @@ export function StepReview({
         onViewOriginal={() => setShowOriginal(true)}
         onPrint={() => printPhieu(subjectLabel)}
         finalScores={finalScores}
-        // Locked ⇒ omit the setter so MucLucSidebar renders read-only
-        // score text (not editable inputs) and annotations can't be added.
-        setFinalScores={locked ? undefined : setFinalScores}
-        // Locked ⇒ a click on a score unlocks + focuses it (click-to-edit),
-        // so the teacher skips the separate "Sửa lại" step.
+        // Always pass the score setter (unless finalizing) so inputs remain editable.
+        // Editing unlocks a locked grade and marks it "needs re-chốt" (onEdit).
+        setFinalScores={
+          isFinalizing
+            ? undefined
+            : (updater) => {
+                if (locked) {
+                  onUnlock?.();
+                }
+                onEdit?.();
+                setFinalScores?.(updater);
+              }
+        }
+        // Keep click-to-edit handler as fallback
         onEditLockedScore={locked ? handleEditLockedScore : undefined}
         teacherAnnotations={teacherAnnotations}
         t={t}
+        // Always pass annotation setters (unless finalizing). Editing unlocks a
+        // locked grade and marks it "needs re-chốt" (onEdit).
         onAddAnnotation={
-          locked
+          isFinalizing
             ? undefined
             : (a) => {
-                setTeacherAnnotations((prev) => [...prev, a]);
+                if (locked) {
+                  onUnlock?.();
+                }
+                onEdit?.();
+                setTeacherAnnotations?.((prev) => [...prev, a]);
               }
         }
         onUpdateAnnotation={
-          locked
+          isFinalizing
             ? undefined
             : (id, patch) => {
-                setTeacherAnnotations((prev) =>
+                if (locked) {
+                  onUnlock?.();
+                }
+                onEdit?.();
+                setTeacherAnnotations?.((prev) =>
                   prev.map((a) => (a.id === id ? { ...a, ...patch } : a)),
                 );
               }
         }
         onRemoveAnnotation={
-          locked
+          isFinalizing
             ? undefined
             : (id) => {
-                setTeacherAnnotations((prev) => prev.filter((a) => a.id !== id));
+                if (locked) {
+                  onUnlock?.();
+                }
+                onEdit?.();
+                setTeacherAnnotations?.((prev) => prev.filter((a) => a.id !== id));
               }
         }
       />

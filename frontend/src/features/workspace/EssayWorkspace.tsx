@@ -660,6 +660,12 @@ export function EssayWorkspace({
   // ``finalizedResult`` (which locks StepReview in place: read-only
   // scores + "AI đã học" banner) and the cross-tab ``finalized`` flag so
   // App.tsx auto-advances to the next paper.
+  // Set true by ``runFinalize`` so the auto-unlock-on-return effect skips the
+  // finalize that JUST happened — the teacher should still see the locked
+  // "đã chốt / AI đã ghi nhớ" confirmation. Consumed (reset to false) on the
+  // next effect run, so a later RETURN to the tab unlocks normally.
+  const suppressAutoUnlockRef = useRef(false);
+
   const runFinalize = useCallback(
     async (payload: { overall: number | string }) => {
       if (isFinalizing) return;
@@ -668,6 +674,7 @@ export function EssayWorkspace({
       try {
         const resp = await persistFinalizedGrade(payload);
         const annotationPayload = buildAnnotationFinalizePayload(teacherAnnotations);
+        suppressAutoUnlockRef.current = true;
         setFinalizedResult({
           ...payload,
           finalizedAt: new Date().toISOString(),
@@ -709,13 +716,40 @@ export function EssayWorkspace({
     void runFinalize({ overall });
   }, [grade, finalScores, runFinalize]);
 
-  // "← Sửa lại" from the locked summary — release the lock, stay on
-  // Step 3 (now showing the editable StepReview again).
+  // Unlock the review SCREEN (read-only → editable) WITHOUT touching the tab's
+  // "đã xong" status. Shared by "Sửa lại", click-a-locked-score, and the
+  // auto-unlock-on-return effect. Unlocking is free — the paper stays finalized
+  // until the teacher actually edits something (see ``markGradeEdited``), so
+  // merely re-opening a graded paper to look at it doesn't drop it from the
+  // "Xong" count or misfire auto-advance.
   const handleUnlockFinalize = useCallback(() => {
     setFinalizedResult(null);
     setFinalizeError(null);
-    onMeta({ finalized: false });
-  }, [onMeta]);
+  }, []);
+
+  // An actual edit (score or đối-soát comment) on an already-finalized paper
+  // means it's no longer the committed grade — mark it "needs re-chốt" so the
+  // TabBar status icon, batch "Xong" count, and auto-advance treat it as
+  // in-progress again. No-op for papers that were never finalized.
+  const markGradeEdited = useCallback(() => {
+    if (tab.finalized) onMeta({ finalized: false });
+  }, [tab.finalized, onMeta]);
+
+  // When the teacher RETURNS to an already-finalized paper (the tab is active
+  // again on the review step), drop straight into the editable view so they can
+  // tweak without hunting for "Sửa lại". Suppressed for the finalize that just
+  // happened so its locked "đã chốt / AI đã ghi nhớ" confirmation still shows
+  // until the teacher navigates away and back. Screen-only — the paper stays
+  // "đã xong" unless actually edited (``markGradeEdited``).
+  useEffect(() => {
+    if (active && step === 3 && finalizedResult) {
+      if (suppressAutoUnlockRef.current) {
+        suppressAutoUnlockRef.current = false;
+        return;
+      }
+      handleUnlockFinalize();
+    }
+  }, [active, step, finalizedResult, handleUnlockFinalize]);
 
   // "Lưu nháp" — persist the in-progress scores + đối-soát comments server-side
   // WITHOUT finalizing (no lock, no AI learning) so the work survives a reload
@@ -876,6 +910,7 @@ export function EssayWorkspace({
             onApprove={handleApprove}
             onFinish={handleFinalizeFromReview}
             onUnlock={handleUnlockFinalize}
+            onEdit={markGradeEdited}
             onSaveDraft={runDraftSave}
             backendSubject={subject}
             task={task}
