@@ -147,19 +147,20 @@ export function AppHeader({
         <MirrorLogo size={28} style={{ transform: "translateY(-6%)" }} />
         <span
           style={{
-            fontFamily: T.display,
-            // Brand-specific size (not the xl token): sits between the old
-            // xl (20, too small beside the 28px logo) and a full match (~32,
-            // too big) so the lockup reads balanced without the wordmark
-            // shouting. Tunable — 24 if still a touch big, 28 for more heft.
-            fontSize: 26,
-            fontWeight: 800,
+            // Wordmark in Poppins (T.brand) + title-case "Mirror" — geometric &
+            // friendly, replacing the heavier all-caps Be Vietnam Pro lockup.
+            fontFamily: T.brand,
+            // Title-case reads optically smaller than all-caps, so nudge up to
+            // 27 to keep parity with the 28px logo. Tunable.
+            fontSize: 27,
+            fontWeight: 700,
             color: T.accentDark,
-            letterSpacing: 0.5,
+            // Slight negative tracking — Poppins title-case looks tighter/cleaner.
+            letterSpacing: -0.3,
             lineHeight: 1,
           }}
         >
-          MIRROR
+          Mirror
         </span>
       </div>
 

@@ -54,6 +54,10 @@ export const T = {
   // coverage, replacing Outfit (whose missing dấu fell back per-glyph and
   // made VN headings look unbalanced).
   display: `"Be Vietnam Pro", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`,
+  // Brand wordmark only ("Mirror" lockup) — Poppins: geometric, friendly,
+  // title-case. Latin-only is fine here; the wordmark text is fixed, never
+  // user content, so it doesn't need Vietnamese diacritics.
+  brand: `"Poppins", "Be Vietnam Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`,
   mono: `"JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace`,
 
   // Type scale — Tailwind-aligned, used for sizes that recur across the UI.
