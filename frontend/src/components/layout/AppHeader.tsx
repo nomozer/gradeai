@@ -138,21 +138,22 @@ export function AppHeader({
           flex: "0 0 auto",
         }}
       >
-        {/* Logo is the anchor (28px); the wordmark is sized UP to match it
-            (see fontSize below) so the two read as equal, Mentimeter-style.
-            The translateY (in %, scales with size) corrects the artwork's
-            bottom-heavy mass — red arc + filled base, empty top-left sits
-            ~15% below the box's geometric centre — so the ink reads
+        {/* Logo (30px) + wordmark sized so the two read as ONE balanced unit
+            (equal weight, Discord-style lockup) rather than a big mark beside
+            small text. The translateY (in %, scales with size) corrects the
+            artwork's bottom-heavy mass — red arc + filled base, empty top-left
+            sits ~15% below the box's geometric centre — so the ink reads
             optically level with the text instead of low. */}
-        <MirrorLogo size={28} style={{ transform: "translateY(-6%)" }} />
+        <MirrorLogo size={30} style={{ transform: "translateY(-6%)" }} />
         <span
           style={{
             // Wordmark in Poppins (T.brand) + title-case "Mirror" — geometric &
             // friendly, replacing the heavier all-caps Be Vietnam Pro lockup.
             fontFamily: T.brand,
-            // Title-case reads optically smaller than all-caps, so nudge up to
-            // 27 to keep parity with the 28px logo. Tunable.
-            fontSize: 27,
+            // Sized to read EQUAL to the 30px mark (title-case caps are ~0.7em,
+            // so 31 ≈ the mark's height) — the two lock up as one unit instead
+            // of a big logo beside small text. Tunable.
+            fontSize: 31,
             fontWeight: 700,
             color: T.accentDark,
             // Slight negative tracking — Poppins title-case looks tighter/cleaner.
