@@ -258,6 +258,41 @@ def _teacher_overrides_from_approved_grade(
     return final_scores, max_overrides
 
 
+def _dedup_lessons_by_text(
+    lessons: list[dict[str, Any]], top_k: int
+) -> list[dict[str, Any]]:
+    """Collapse retrieved lessons with identical ``lesson_text`` to one slot.
+
+    The corpus can hold the same correction more than once (e.g. a teacher
+    re-finalizes an identical edit outside the 300 s ``find_recent_lesson``
+    dedup window, or grades the same task again days later). Retrieval ranks
+    by ``feedback_score`` DESC and does NOT dedupe, so without this a repeated
+    lesson would occupy several of the few (``top_k`` = 3) prompt slots and
+    over-weight itself, crowding out other relevant lessons.
+
+    Keeps the FIRST occurrence per text (retrieval order is exact → subject →
+    global, i.e. strongest-signal first), but upgrades to the highest-score
+    copy when the same text was saved under different scores. Order-preserving,
+    capped to ``top_k``. Pure — no DB/Chroma — so it is unit-testable.
+    """
+    best: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for idx, les in enumerate(lessons):
+        text = (les.get("lesson_text") or "").strip()
+        # Empty text shouldn't happen, but key it per-item so blanks aren't
+        # merged into a single slot.
+        key = text or f"__empty_{idx}"
+        existing = best.get(key)
+        if existing is None:
+            best[key] = les
+            order.append(key)
+        elif float(les.get("feedback_score") or 0.0) > float(
+            existing.get("feedback_score") or 0.0
+        ):
+            best[key] = les
+    return [best[k] for k in order[:top_k]]
+
+
 class MemoryManager:
     """Dual-backend memory for grading lessons.
 
@@ -605,12 +640,15 @@ class MemoryManager:
         user_id = get_current_user_id()
         seen: set[int] = set()
         ordered_ids: list[int] = []
+        # Over-fetch so content de-dup (below) can drop duplicate lessons and
+        # still return up to top_k DISTINCT ones.
+        fetch_k = max(top_k * 2, top_k + 1)
 
         # Leg 1 — exact task metadata match (scoped to this teacher).
         try:
             exact = self._collection.get(
                 where=self._scoped_where(user_id, {"task": task_description}),
-                limit=top_k,
+                limit=fetch_k,
             )
             for lid in exact.get("ids", []) or []:
                 try:
@@ -626,7 +664,7 @@ class MemoryManager:
         # Leg 2 — subject-scoped semantic search (only when a subject was given).
         if subject:
             self._semantic_leg(
-                task_description, total, top_k, seen, ordered_ids,
+                task_description, total, fetch_k, seen, ordered_ids,
                 where=self._scoped_where(user_id, {"subject": subject}),
                 label="Subject-scoped semantic",
             )
@@ -634,7 +672,7 @@ class MemoryManager:
         # Leg 3 — fallback semantic search across this teacher's lessons
         # (still scoped to user_id — "global" means all of THEIR subjects).
         self._semantic_leg(
-            task_description, total, top_k, seen, ordered_ids,
+            task_description, total, fetch_k, seen, ordered_ids,
             where=self._scoped_where(user_id),
             label="User-global semantic",
         )
@@ -650,7 +688,10 @@ class MemoryManager:
             )
             by_id = {les.id: les.to_dict() for les in lessons}
 
-        return [by_id[lid] for lid in ordered_ids if lid in by_id]
+        ordered = [by_id[lid] for lid in ordered_ids if lid in by_id]
+        # Collapse duplicate corrections to one slot each, then cap to top_k —
+        # see _dedup_lessons_by_text for why (score-DESC retrieval doesn't dedupe).
+        return _dedup_lessons_by_text(ordered, top_k)
 
 
     def log_pipeline_run(
