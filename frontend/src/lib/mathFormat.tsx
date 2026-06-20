@@ -263,6 +263,9 @@ function renderToken(tok: string, isStem: boolean, key: string): ReactNode {
         data-action="view-figure"
         style={{ ...S.figure, cursor: "pointer" }}
         title="Nhấn để xem ảnh gốc — đối chiếu hình vẽ với bài làm"
+        onClick={() => {
+          window.dispatchEvent(new CustomEvent("mirror.viewOriginalImage"));
+        }}
       >
         <span style={S.figureLabel}>{figMatch[1]}</span>
         {figMatch[2]}
