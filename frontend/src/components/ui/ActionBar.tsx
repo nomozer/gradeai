@@ -219,8 +219,8 @@ export function ActionBar({ children, status, scoreSlot }: ActionBarProps) {
         justifyContent: "space-between",
         gap: 20,
         flexWrap: "wrap",
-        borderTop: `1px solid ${T.border}`,
-        boxShadow: "0 -6px 20px -8px rgba(44, 46, 58, 0.08)",
+        borderTop: "1px solid #C8C2B3",
+        boxShadow: "0 -4px 16px -6px rgba(44, 46, 58, 0.05)",
       }}
     >
       {/* Zone 1: Scores (Left) */}
