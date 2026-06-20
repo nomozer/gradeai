@@ -1,7 +1,7 @@
 import type { I18nStrings } from "../types";
 
 export const en: I18nStrings = {
-  title: "MIRROR",
+  title: "Mirror",
   subtitle: "AI Essay Grading",
   langSwitch: "Tiếng Việt",
   // Steps short labels

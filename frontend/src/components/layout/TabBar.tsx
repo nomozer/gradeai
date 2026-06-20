@@ -581,15 +581,15 @@ export function TabBar({
                     <MirrorLogo size={24} style={{ transform: "translateY(-6%)" }} />
                     <span
                       style={{
-                        fontFamily: T.display,
-                        fontSize: 22,
-                        fontWeight: 800,
+                        fontFamily: T.brand,
+                        fontSize: 26,
+                        fontWeight: 700,
                         color: T.accentDark,
-                        letterSpacing: 0.5,
+                        letterSpacing: -0.3,
                         lineHeight: 1,
                       }}
                     >
-                      MIRROR
+                      Mirror
                     </span>
                   </div>
                   <div

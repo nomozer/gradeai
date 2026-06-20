@@ -104,7 +104,7 @@ export function HelpModal({ onClose }: HelpModalProps) {
                 letterSpacing: "-0.015em",
               }}
             >
-              Hướng dẫn sử dụng MIRROR
+              Hướng dẫn sử dụng Mirror
             </h2>
             <p
               style={{

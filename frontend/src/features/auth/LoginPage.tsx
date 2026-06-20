@@ -107,7 +107,7 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
             Chào mừng trở lại!
           </h1>
           <p style={{ fontSize: T.fontSize.base, color: T.textMute, margin: "8px 0 0" }}>
-            Đăng nhập vào MIRROR
+            Đăng nhập vào Mirror
           </p>
         </div>
 

@@ -1,7 +1,7 @@
 import type { I18nStrings } from "../types";
 
 export const vi: I18nStrings = {
-  title: "MIRROR",
+  title: "Mirror",
   subtitle: "Chấm Bài Luận AI",
   langSwitch: "English",
   stepUpload: "Tải lên",
