@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import re
 import secrets
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,7 @@ from sqlalchemy import (
     Text,
     create_engine,
     event,
+    func,
     inspect,
     text,
 )
@@ -49,6 +51,26 @@ logger = logging.getLogger(__name__)
 ROLE_ADMIN = "admin"
 ROLE_USER = "user"
 DEFAULT_SESSION_TTL_DAYS = 30
+USERNAME_RE = re.compile(r"^[a-z0-9]{3,32}$")
+USERNAME_RULE_MESSAGE = (
+    "Tên đăng nhập chỉ gồm chữ thường không dấu và số, dài 3-32 ký tự "
+    "(vd: gv001, admin01)."
+)
+
+
+def normalize_username(username: str | None) -> str:
+    """Normalize login names at creation time: trim + lowercase only."""
+    return (username or "").strip().lower()
+
+
+def validate_username(username: str | None) -> str:
+    """Return the normalized username, or raise a user-facing ValueError."""
+    normalized = normalize_username(username)
+    if not normalized:
+        raise ValueError("Tên đăng nhập không được để trống.")
+    if not USERNAME_RE.fullmatch(normalized):
+        raise ValueError(USERNAME_RULE_MESSAGE)
+    return normalized
 
 
 def _utcnow() -> datetime.datetime:
@@ -198,9 +220,7 @@ class UserStore:
         teacher_code: str | None = None,
     ) -> dict[str, Any]:
         """Create a user. Raises ValueError on a duplicate username or code."""
-        username = (username or "").strip()
-        if not username:
-            raise ValueError("Tên đăng nhập không được để trống.")
+        username = validate_username(username)
         if role not in (ROLE_ADMIN, ROLE_USER):
             role = ROLE_USER
         full_name = self._norm_optional(full_name)
@@ -210,7 +230,7 @@ class UserStore:
             # is still the real guard against a concurrent-insert race.
             if (
                 session.query(User)
-                .filter(User.username == username)
+                .filter(func.lower(User.username) == username)
                 .first()
             ):
                 raise ValueError("Tên đăng nhập đã tồn tại.")
@@ -243,11 +263,12 @@ class UserStore:
     def get_user_by_username(
         self, username: str, *, include_hash: bool = False
     ) -> dict[str, Any] | None:
+        username_key = normalize_username(username)
         with self._session() as session:
             user = (
                 session.query(User)
-                .filter(User.username == (username or "").strip())
-                .one_or_none()
+                .filter(func.lower(User.username) == username_key)
+                .first()
             )
             return user.to_dict(include_hash=include_hash) if user else None
 
@@ -328,11 +349,12 @@ class UserStore:
 
     def verify_login(self, username: str, password: str) -> dict[str, Any] | None:
         """Return the user dict on valid credentials + active account, else None."""
+        username_key = normalize_username(username)
         with self._session() as session:
             user = (
                 session.query(User)
-                .filter(User.username == (username or "").strip())
-                .one_or_none()
+                .filter(func.lower(User.username) == username_key)
+                .first()
             )
             if user is None or not user.is_active:
                 return None
@@ -454,12 +476,16 @@ class UserStore:
         teacher who changed the admin password won't have it reset on every
         redeploy). Only creates when missing.
         """
-        username = (username or "").strip()
-        if not username or not password:
+        if not normalize_username(username) or not password:
             logger.warning(
                 "ADMIN_USERNAME/ADMIN_PASSWORD not set — no admin seeded. "
                 "Set them so the first login exists."
             )
+            return
+        try:
+            username = validate_username(username)
+        except ValueError as exc:
+            logger.warning("ADMIN_USERNAME is invalid — no admin seeded: %s", exc)
             return
         if self.get_user_by_username(username) is not None:
             return

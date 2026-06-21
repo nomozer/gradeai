@@ -31,6 +31,7 @@ import { InlineLoader } from "../../components/ui/InlineLoader";
 import { openInNewTab } from "../../lib/openInNewTab";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
 import { BulkImportUsers } from "./BulkImportUsers";
+import { normalizeUsername, validateUsername } from "../../lib/username";
 
 type Section = "overview" | "accounts" | "backup";
 
@@ -977,6 +978,7 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
   const [newFullName, setNewFullName] = useState("");
   const [newTeacherCode, setNewTeacherCode] = useState("");
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
 
   const refresh = useCallback(async () => {
     setError("");
@@ -996,12 +998,21 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
 
   const onCreate = async (e: React.FormEvent, onSuccess?: () => void) => {
     e.preventDefault();
-    if (!newUsername.trim() || newPassword.length < 4) return;
+    const username = normalizeUsername(newUsername);
+    const usernameError = validateUsername(username);
+    if (usernameError) {
+      setCreateError(usernameError);
+      return;
+    }
+    if (newPassword.length < 6) {
+      setCreateError("Mật khẩu phải có ít nhất 6 ký tự.");
+      return;
+    }
     setCreating(true);
-    setError("");
+    setCreateError("");
     try {
       await createUser({
-        username: newUsername.trim(),
+        username,
         password: newPassword,
         role: newRole,
         token_quota: Math.max(0, parseInt(newQuota, 10) || 0),
@@ -1014,10 +1025,11 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
       setNewQuota("");
       setNewFullName("");
       setNewTeacherCode("");
+      setCreateError("");
       await refresh();
       onSuccess?.();
     } catch (err) {
-      setError(errText(err, "Tạo tài khoản thất bại."));
+      setCreateError(errText(err, "Tạo tài khoản thất bại."));
     } finally {
       setCreating(false);
     }
@@ -1064,6 +1076,11 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
           .some((f) => (f || "").toLowerCase().includes(q)),
       )
     : users;
+  const newUsernameError = newUsername.trim() ? validateUsername(newUsername) : null;
+  const newPasswordError = newPassword && newPassword.length < 6
+    ? "Mật khẩu phải có ít nhất 6 ký tự."
+    : null;
+  const canCreate = !newUsernameError && !newPasswordError && !!newUsername.trim() && newPassword.length >= 6;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: T.space[5] }}>
@@ -1077,7 +1094,14 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
             Danh sách tài khoản ({users.length})
           </div>
           <div style={{ display: "flex", gap: 10 }}>
-            <button type="button" onClick={() => setShowCreate(true)} style={toolbarPrimaryBtn}>
+            <button
+              type="button"
+              onClick={() => {
+                setCreateError("");
+                setShowCreate(true);
+              }}
+              style={toolbarPrimaryBtn}
+            >
               + Tạo tài khoản
             </button>
             <button type="button" onClick={() => setShowBulk(true)} style={toolbarGhostBtn}>
@@ -1150,7 +1174,13 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
 
       {/* Create modal */}
       {showCreate && (
-        <Modal title="Tạo tài khoản mới" onClose={() => setShowCreate(false)}>
+        <Modal
+          title="Tạo tài khoản mới"
+          onClose={() => {
+            setCreateError("");
+            setShowCreate(false);
+          }}
+        >
           <form
             onSubmit={(e) => onCreate(e, () => setShowCreate(false))}
             style={{ display: "flex", flexDirection: "column", gap: T.space[4] }}
@@ -1158,19 +1188,35 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
             <Field label="Tên đăng nhập">
               <FormInput
                 value={newUsername}
-                onChange={(e) => setNewUsername(e.target.value)}
-                placeholder="vd: gv_toan_a"
+                onChange={(e) => {
+                  setNewUsername(e.target.value);
+                  if (createError) setCreateError("");
+                }}
+                placeholder="vd: gvtoana"
                 style={{ width: "100%" }}
               />
+              {newUsernameError && (
+                <span style={{ fontSize: T.fontSize.xs, color: T.red }}>
+                  {newUsernameError}
+                </span>
+              )}
             </Field>
             <Field label="Mật khẩu">
               <FormInput
                 type="password"
                 value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="≥ 4 ký tự"
+                onChange={(e) => {
+                  setNewPassword(e.target.value);
+                  if (createError) setCreateError("");
+                }}
+                placeholder="≥ 6 ký tự"
                 style={{ width: "100%" }}
               />
+              {newPasswordError && (
+                <span style={{ fontSize: T.fontSize.xs, color: T.red }}>
+                  {newPasswordError}
+                </span>
+              )}
             </Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: T.space[3] }}>
               <Field label="Tên giáo viên (không bắt buộc)">
@@ -1211,12 +1257,24 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
                 />
               </Field>
             </div>
+            {createError && !newUsernameError && !newPasswordError && (
+              <div style={{ fontSize: T.fontSize.sm, color: T.red }}>
+                {createError}
+              </div>
+            )}
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
-              <button type="button" onClick={() => setShowCreate(false)} style={toolbarGhostBtn}>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateError("");
+                  setShowCreate(false);
+                }}
+                style={toolbarGhostBtn}
+              >
                 Hủy
               </button>
               <SubmitButton
-                enabled={!!newUsername.trim() && newPassword.length >= 4}
+                enabled={canCreate}
                 loading={creating}
                 label="Tạo"
                 loadingLabel="Đang tạo…"
@@ -1239,9 +1297,9 @@ function AccountsSection({ me }: { me: SessionUser | null }) {
           title={`Đổi mật khẩu — ${dialog.user.username}`}
           label="Mật khẩu mới"
           inputType="password"
-          placeholder="≥ 4 ký tự"
+          placeholder="≥ 6 ký tự"
           confirmLabel="Đổi mật khẩu"
-          validate={(v) => (v.length < 4 ? "Mật khẩu phải có ít nhất 4 ký tự." : null)}
+          validate={(v) => (v.length < 6 ? "Mật khẩu phải có ít nhất 6 ký tự." : null)}
           onSubmit={(v) => doResetPassword(dialog.user, v)}
           onClose={() => setDialog(null)}
         />

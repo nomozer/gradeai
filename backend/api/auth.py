@@ -24,7 +24,7 @@ import os
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from auth import ROLE_ADMIN, ROLE_USER, UserStore
+from auth import ROLE_ADMIN, ROLE_USER, UserStore, validate_username
 from memory import MemoryManager
 from request_context import set_current_user_id
 
@@ -115,7 +115,7 @@ class LoginResponse(BaseModel):
 
 class CreateUserRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=4, max_length=256)
+    password: str = Field(min_length=6, max_length=256)
     role: str = ROLE_USER
     token_quota: int = Field(default=0, ge=0)
     full_name: str | None = Field(default=None, max_length=128)
@@ -123,7 +123,7 @@ class CreateUserRequest(BaseModel):
 
 
 class UpdateUserRequest(BaseModel):
-    password: str | None = Field(default=None, min_length=4, max_length=256)
+    password: str | None = Field(default=None, min_length=6, max_length=256)
     is_active: bool | None = None
     role: str | None = None
     token_quota: int | None = Field(default=None, ge=0)
@@ -289,7 +289,7 @@ async def create_users_bulk(req: BulkCreateRequest, admin: dict = Depends(requir
     Per-row outcome so a few bad rows don't abort the whole batch:
       • created — account made
       • skipped — username already exists
-      • error   — missing username or password < 4 chars
+      • error   — missing username or password < 6 chars
     """
     if len(req.users) > 1000:
         raise HTTPException(status_code=400, detail="Tối đa 1000 tài khoản mỗi lần.")
@@ -298,14 +298,25 @@ async def create_users_bulk(req: BulkCreateRequest, admin: dict = Depends(requir
     created = 0
     failed = 0
     for item in req.users:
-        uname = (item.username or "").strip()
-        if not uname or len(item.password or "") < 4:
+        try:
+            uname = validate_username(item.username)
+        except ValueError as exc:
             failed += 1
             results.append(
                 BulkResultRow(
-                    username=uname or "(trống)",
+                    username=(item.username or "").strip() or "(trống)",
                     status="error",
-                    detail="Thiếu tên đăng nhập hoặc mật khẩu dưới 4 ký tự.",
+                    detail=str(exc),
+                )
+            )
+            continue
+        if len(item.password or "") < 6:
+            failed += 1
+            results.append(
+                BulkResultRow(
+                    username=uname,
+                    status="error",
+                    detail="Mật khẩu phải có ít nhất 6 ký tự.",
                 )
             )
             continue

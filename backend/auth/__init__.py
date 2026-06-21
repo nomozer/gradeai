@@ -9,6 +9,20 @@ Internal modules:
     • store     — UserStore: users + sessions on the shared SQLite file
 """
 
-from .store import ROLE_ADMIN, ROLE_USER, UserStore
+from .store import (
+    ROLE_ADMIN,
+    ROLE_USER,
+    USERNAME_RULE_MESSAGE,
+    UserStore,
+    normalize_username,
+    validate_username,
+)
 
-__all__ = ["UserStore", "ROLE_ADMIN", "ROLE_USER"]
+__all__ = [
+    "UserStore",
+    "ROLE_ADMIN",
+    "ROLE_USER",
+    "USERNAME_RULE_MESSAGE",
+    "normalize_username",
+    "validate_username",
+]

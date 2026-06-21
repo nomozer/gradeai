@@ -12,6 +12,8 @@
 
 import { useRef, useState } from "react";
 import { T } from "../../theme/tokens";
+import { Icon } from "../../components/ui/Icon";
+import { USERNAME_HELP_TEXT, normalizeUsername, validateUsername } from "../../lib/username";
 import {
   createUsersBulk,
   type BulkUserItem,
@@ -42,9 +44,9 @@ async function downloadTemplate() {
   const XLSX = await import("xlsx");
   const ws = XLSX.utils.aoa_to_sheet([
     TEMPLATE_COLUMNS,
-    ["gv_toan_a", "matkhau123", "Nguyễn Văn A", "GV001", "user", 1000000],
-    ["gv_ly_b", "matkhau456", "Trần Thị B", "GV002", "user", 500000],
-    ["truong_ban", "matkhau789", "Lê Văn C", "GV000", "admin", 0],
+    ["gvtoana", "matkhau123", "Nguyễn Văn A", "GV001", "user", 1000000],
+    ["gvlyb", "matkhau456", "Trần Thị B", "GV002", "user", 500000],
+    ["truongban", "matkhau789", "Lê Văn C", "GV000", "admin", 0],
   ]);
   ws["!cols"] = [
     { wch: 16 },
@@ -86,7 +88,7 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
       const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
       const parsed: BulkUserItem[] = raw
         .map((r) => ({
-          username: cell(r, "username"),
+          username: normalizeUsername(cell(r, "username")),
           password: cell(r, "password"),
           full_name: cell(r, "full_name"),
           teacher_code: cell(r, "teacher_code"),
@@ -119,10 +121,17 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
     if (file) void parseFile(file);
   };
 
-  const invalidCount = rows.filter((r) => !r.username || r.password.length < 4).length;
+  const rowError = (row: BulkUserItem): string | null => {
+    const usernameError = validateUsername(row.username);
+    if (usernameError) return usernameError;
+    if (row.password.length < 6) return "Mật khẩu phải có ít nhất 6 ký tự.";
+    return null;
+  };
+  const invalidCount = rows.filter((r) => rowError(r)).length;
+  const validCount = rows.length - invalidCount;
 
   const onSubmit = async () => {
-    if (rows.length === 0) return;
+    if (rows.length === 0 || validCount <= 0) return;
     setBusy(true);
     setError("");
     try {
@@ -163,8 +172,8 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
           }}
         >
           {[
-            ["username", "Bắt buộc"],
-            ["password", "Tối thiểu 4 ký tự"],
+            ["username", USERNAME_HELP_TEXT],
+            ["password", "Tối thiểu 6 ký tự"],
             ["full_name", "Tên giáo viên · không bắt buộc"],
             ["teacher_code", "Mã giáo viên · không trùng · không bắt buộc"],
             ["role", "user / admin · để trống = giáo viên"],
@@ -270,11 +279,23 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
               </thead>
               <tbody>
                 {rows.slice(0, 100).map((r, i) => {
-                  const bad = !r.username || r.password.length < 4;
+                  const message = rowError(r);
+                  const bad = !!message;
                   return (
-                    <tr key={i} style={{ borderTop: `1px solid ${T.borderLight}`, color: bad ? T.red : T.text }}>
+                    <tr
+                      key={i}
+                      title={message || undefined}
+                      style={{ borderTop: `1px solid ${T.borderLight}`, color: bad ? T.red : T.text }}
+                    >
                       <td style={cellTd}>{i + 1}</td>
-                      <td style={cellTd}>{r.username || "—"}</td>
+                      <td style={cellTd}>
+                        {r.username || "—"}
+                        {message && (
+                          <div style={{ fontSize: T.fontSize.xxs, color: T.red, marginTop: 2 }}>
+                            {message}
+                          </div>
+                        )}
+                      </td>
                       <td style={cellTd}>{r.password ? "•".repeat(Math.min(8, r.password.length)) : "—"}</td>
                       <td style={cellTd}>{r.full_name || "—"}</td>
                       <td style={cellTd}>{r.teacher_code || "—"}</td>
@@ -292,8 +313,8 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
             <div style={{ fontSize: T.fontSize.xs, color: T.textMute }}>… và {rows.length - 100} dòng nữa.</div>
           )}
           <div style={{ display: "flex", gap: 10 }}>
-            <button type="button" onClick={onSubmit} disabled={busy} style={primaryBtn(!busy)}>
-              {busy ? "Đang tạo…" : `Tạo ${rows.length} tài khoản`}
+            <button type="button" onClick={onSubmit} disabled={busy || validCount <= 0} style={primaryBtn(!busy && validCount > 0)}>
+              {busy ? "Đang tạo…" : `Tạo ${validCount} tài khoản hợp lệ`}
             </button>
             <button type="button" onClick={reset} style={ghostBtn}>
               Hủy
@@ -305,14 +326,32 @@ export function BulkImportUsers({ onDone }: { onDone: () => void }) {
       {/* Result */}
       {result && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ fontSize: T.fontSize.sm, color: T.text }}>
-            ✅ Đã tạo <b style={{ color: T.green }}>{result.created}</b> tài khoản
-            {result.failed > 0 && (
-              <>
-                {" "}· <b style={{ color: T.red }}>{result.failed}</b> dòng không tạo được
-              </>
-            )}
-            .
+          <div style={{ fontSize: T.fontSize.sm, color: T.text, display: "flex", alignItems: "center", gap: 8 }}>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 20,
+                height: 20,
+                borderRadius: "50%",
+                background: T.greenSoft,
+                border: `1.5px solid ${T.green}`,
+                color: T.green,
+                flexShrink: 0,
+              }}
+            >
+              <Icon.Check size={12} color={T.green} />
+            </span>
+            <span>
+              Đã tạo <b style={{ color: T.green }}>{result.created}</b> tài khoản
+              {result.failed > 0 && (
+                <>
+                  {" "}· <b style={{ color: T.red }}>{result.failed}</b> dòng không tạo được
+                </>
+              )}
+              .
+            </span>
           </div>
           {result.results.some((r) => r.status !== "created") && (
             <div style={{ maxHeight: 200, overflowY: "auto", border: `1px solid ${T.borderLight}`, borderRadius: 8, padding: "8px 12px", fontSize: T.fontSize.xs }}>

@@ -28,6 +28,20 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const clearError = () => {
+    if (error) setError("");
+  };
+
+  const updateUsername = (value: string) => {
+    setUsername(value);
+    clearError();
+  };
+
+  const updatePassword = (value: string) => {
+    setPassword(value);
+    clearError();
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
@@ -122,7 +136,7 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
             autoFocus
             autoComplete="username"
             value={username}
-            onChange={setUsername}
+            onChange={updateUsername}
             placeholder="Nhập tên đăng nhập"
             hasError={!!error}
           />
@@ -138,7 +152,7 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
             type={showPw ? "text" : "password"}
             autoComplete="current-password"
             value={password}
-            onChange={setPassword}
+            onChange={updatePassword}
             placeholder="Nhập mật khẩu"
             hasError={!!error}
             trailing={
