@@ -62,9 +62,41 @@ export function Step3Toolbar({
     byCau.get(a.cau)!.push(a);
   }
   const noteGroups = [...byCau.entries()];
-  // Left accent stripe per row reflects the AI's verdict on the comment.
-  const verdictColor = (v?: string) =>
-    v === "agree" ? T.green : v === "partial" ? T.amber : v === "dispute" ? T.red : T.borderLight;
+  // Verdict shown as a small filled badge at the start of each note row
+  // (replaces the old left stripe) so the AI's stance reads at a glance
+  // while the teacher's comment stays the row's headline.
+  const verdictBadge = (v?: string) => {
+    const base = {
+      width: 16,
+      height: 16,
+      borderRadius: "50%",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0,
+      marginTop: 1,
+    } as const;
+    if (v === "agree")
+      return (
+        <span style={{ ...base, background: T.green }}>
+          <Icon.Check size={9} color="#fff" />
+        </span>
+      );
+    if (v === "dispute")
+      return (
+        <span style={{ ...base, background: T.red }}>
+          <Icon.X size={9} color="#fff" />
+        </span>
+      );
+    if (v === "partial")
+      return (
+        <span style={{ ...base, background: T.amber }}>
+          <Icon.AlertTriangle size={9} color="#fff" />
+        </span>
+      );
+    // No verdict yet (comment not analyzed) — neutral hollow dot.
+    return <span style={{ ...base, border: `1.5px solid ${T.border}` }} />;
+  };
 
   return (
     <div
@@ -192,19 +224,31 @@ export function Step3Toolbar({
                 </div>
               ) : (
                 noteGroups.map(([cau, items]) => (
-                  <div key={cau} style={{ marginBottom: 6 }}>
+                  <div key={cau} style={{ marginBottom: 8 }}>
+                    {/* Câu divider — thin label + hairline, lighter than a
+                        full-weight header so the comments stay the focus. */}
                     <div
                       style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: T.textMute,
-                        fontFamily: T.font,
-                        letterSpacing: "0.03em",
-                        textTransform: "uppercase",
-                        padding: "6px 8px 4px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "6px 8px",
                       }}
                     >
-                      Câu {cau}
+                      <span
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          color: T.textMute,
+                          fontFamily: T.font,
+                          letterSpacing: "0.06em",
+                          textTransform: "uppercase",
+                          flexShrink: 0,
+                        }}
+                      >
+                        Câu {cau}
+                      </span>
+                      <span style={{ flex: 1, height: 1, background: T.borderLight }} />
                     </div>
                     {items.map((a) => (
                       <button
@@ -216,14 +260,16 @@ export function Step3Toolbar({
                         }}
                         title="Nhảy tới đoạn này"
                         style={{
-                          display: "block",
+                          display: "grid",
+                          gridTemplateColumns: "auto 1fr",
+                          alignItems: "start",
+                          gap: 9,
                           width: "100%",
                           textAlign: "left",
                           padding: "8px 10px",
                           marginBottom: 2,
                           borderRadius: 8,
                           border: "none",
-                          borderLeft: `3px solid ${verdictColor(a.verdict)}`,
                           background: "transparent",
                           cursor: "pointer",
                           fontFamily: T.font,
@@ -231,22 +277,36 @@ export function Step3Toolbar({
                         onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(44, 46, 58, 0.04)")}
                         onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                       >
-                        {a.quote.trim() && (
-                          <div
+                        {verdictBadge(a.verdict)}
+                        <span style={{ minWidth: 0 }}>
+                          {/* Comment is the headline — the teacher's own words
+                              are what they scan the list for. */}
+                          <span
                             style={{
-                              fontSize: 11.5,
-                              color: T.textMute,
-                              fontStyle: "italic",
-                              marginBottom: 2,
+                              display: "block",
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: T.text,
                               lineHeight: 1.4,
                             }}
                           >
-                            “{clipText(a.quote, 46)}”
-                          </div>
-                        )}
-                        <div style={{ fontSize: 12.5, color: T.text, lineHeight: 1.45 }}>
-                          {clipText(a.comment, 90)}
-                        </div>
+                            {clipText(a.comment, 90)}
+                          </span>
+                          {/* Quoted passage demoted to quiet context below. */}
+                          {a.quote.trim() && (
+                            <span
+                              style={{
+                                display: "block",
+                                fontSize: 11,
+                                color: T.textFaint,
+                                lineHeight: 1.4,
+                                marginTop: 3,
+                              }}
+                            >
+                              “{clipText(a.quote, 44)}”
+                            </span>
+                          )}
+                        </span>
                       </button>
                     ))}
                   </div>
