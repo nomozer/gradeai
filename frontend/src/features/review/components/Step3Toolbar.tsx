@@ -62,40 +62,35 @@ export function Step3Toolbar({
     byCau.get(a.cau)!.push(a);
   }
   const noteGroups = [...byCau.entries()];
-  // Verdict shown as a small filled badge at the start of each note row
-  // (replaces the old left stripe) so the AI's stance reads at a glance
-  // while the teacher's comment stays the row's headline.
-  const verdictBadge = (v?: string) => {
-    const base = {
-      width: 16,
-      height: 16,
-      borderRadius: "50%",
-      display: "inline-flex",
-      alignItems: "center",
-      justifyContent: "center",
-      flexShrink: 0,
-      marginTop: 1,
-    } as const;
-    if (v === "agree")
-      return (
-        <span style={{ ...base, background: T.green }}>
-          <Icon.Check size={9} color="#fff" />
-        </span>
-      );
-    if (v === "dispute")
-      return (
-        <span style={{ ...base, background: T.red }}>
-          <Icon.X size={9} color="#fff" />
-        </span>
-      );
-    if (v === "partial")
-      return (
-        <span style={{ ...base, background: T.amber }}>
-          <Icon.AlertTriangle size={9} color="#fff" />
-        </span>
-      );
-    // No verdict yet (comment not analyzed) — neutral hollow dot.
-    return <span style={{ ...base, border: `1.5px solid ${T.border}` }} />;
+  // Ledger layout: the AI's verdict rides in the left column as a small
+  // text chip, so a teacher scanning the column reads stances vertically
+  // (Đồng ý / Phản biện / Một phần) while the comments stay the content.
+  const verdictChip = (v?: string) => {
+    const map: Record<string, { label: string; color: string; bg: string }> = {
+      agree: { label: "Đồng ý", color: T.green, bg: "rgba(46, 125, 91, 0.10)" },
+      dispute: { label: "Phản biện", color: T.red, bg: "rgba(184, 66, 58, 0.10)" },
+      partial: { label: "Một phần", color: T.amber, bg: "rgba(192, 139, 48, 0.12)" },
+    };
+    // No verdict yet (comment not analyzed) — a muted dash placeholder.
+    const s = map[v ?? ""] ?? { label: "—", color: T.textMute, bg: T.borderLight };
+    return (
+      <span
+        style={{
+          alignSelf: "start",
+          justifySelf: "start",
+          fontSize: 10,
+          fontWeight: 700,
+          lineHeight: 1,
+          whiteSpace: "nowrap",
+          borderRadius: 5,
+          padding: "3px 6px",
+          color: s.color,
+          background: s.bg,
+        }}
+      >
+        {s.label}
+      </span>
+    );
   };
 
   return (
@@ -203,14 +198,59 @@ export function Step3Toolbar({
                 borderRadius: 12,
                 boxShadow: "0 12px 32px -8px rgba(44, 46, 58, 0.18)",
                 zIndex: 60,
-                padding: 8,
+                padding: 0,
                 animation: "fadeUp 0.16s ease-out",
               }}
             >
+              {/* Titled head — pins the list while it scrolls; the count
+                  pill mirrors the trigger so the menu reads as its own
+                  surface, not a bare dropdown. */}
+              <div
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "12px 14px",
+                  background: T.bgCard,
+                  borderBottom: `1px solid ${T.borderLight}`,
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 7,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    color: T.textMute,
+                    fontFamily: T.font,
+                  }}
+                >
+                  <Icon.MessageCircle size={13} color={T.textMute} />
+                  Ghi chú đối soát
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: T.accent,
+                    background: T.accentSoft,
+                    borderRadius: 20,
+                    padding: "2px 9px",
+                  }}
+                >
+                  {noteCount}
+                </span>
+              </div>
               {noteCount === 0 ? (
                 <div
                   style={{
-                    padding: "18px 12px",
+                    padding: "22px 12px",
                     fontSize: 12.5,
                     color: T.textMute,
                     fontFamily: T.font,
@@ -223,94 +263,83 @@ export function Step3Toolbar({
                   Bôi đen đoạn cần góp ý để thêm.
                 </div>
               ) : (
-                noteGroups.map(([cau, items]) => (
-                  <div key={cau} style={{ marginBottom: 8 }}>
-                    {/* Câu divider — thin label + hairline, lighter than a
-                        full-weight header so the comments stay the focus. */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "6px 8px",
-                      }}
-                    >
-                      <span
+                <div style={{ padding: "2px 0 6px" }}>
+                  {noteGroups.map(([cau, items]) => (
+                    <div key={cau}>
+                      {/* Câu sub-head — a quiet ledger section label. */}
+                      <div
                         style={{
-                          fontSize: 10.5,
-                          fontWeight: 700,
+                          fontSize: 10,
+                          fontWeight: 800,
                           color: T.textMute,
                           fontFamily: T.font,
-                          letterSpacing: "0.06em",
+                          letterSpacing: "0.1em",
                           textTransform: "uppercase",
-                          flexShrink: 0,
+                          padding: "10px 12px 4px",
                         }}
                       >
                         Câu {cau}
-                      </span>
-                      <span style={{ flex: 1, height: 1, background: T.borderLight }} />
-                    </div>
-                    {items.map((a) => (
-                      <button
-                        key={a.id}
-                        type="button"
-                        onClick={() => {
-                          onJumpToAnnotation?.(a.id);
-                          setNotesOpen(false);
-                        }}
-                        title="Nhảy tới đoạn này"
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "auto 1fr",
-                          alignItems: "start",
-                          gap: 9,
-                          width: "100%",
-                          textAlign: "left",
-                          padding: "8px 10px",
-                          marginBottom: 2,
-                          borderRadius: 8,
-                          border: "none",
-                          background: "transparent",
-                          cursor: "pointer",
-                          fontFamily: T.font,
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(44, 46, 58, 0.04)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                      >
-                        {verdictBadge(a.verdict)}
-                        <span style={{ minWidth: 0 }}>
-                          {/* Comment is the headline — the teacher's own words
-                              are what they scan the list for. */}
-                          <span
-                            style={{
-                              display: "block",
-                              fontSize: 13,
-                              fontWeight: 600,
-                              color: T.text,
-                              lineHeight: 1.4,
-                            }}
-                          >
-                            {clipText(a.comment, 90)}
-                          </span>
-                          {/* Quoted passage demoted to quiet context below. */}
-                          {a.quote.trim() && (
+                      </div>
+                      {items.map((a) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => {
+                            onJumpToAnnotation?.(a.id);
+                            setNotesOpen(false);
+                          }}
+                          title="Nhảy tới đoạn này"
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "70px 1fr",
+                            alignItems: "start",
+                            gap: 10,
+                            width: "100%",
+                            textAlign: "left",
+                            padding: "9px 12px",
+                            border: "none",
+                            borderTop: `1px solid ${T.borderLight}`,
+                            background: "transparent",
+                            cursor: "pointer",
+                            fontFamily: T.font,
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "#F6F3EC")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                        >
+                          {verdictChip(a.verdict)}
+                          <span style={{ minWidth: 0 }}>
+                            {/* Comment is the content; quote is quiet context. */}
                             <span
                               style={{
                                 display: "block",
-                                fontSize: 11,
-                                color: T.textFaint,
+                                fontSize: 12.5,
+                                fontWeight: 600,
+                                color: T.text,
                                 lineHeight: 1.4,
-                                marginTop: 3,
                               }}
                             >
-                              “{clipText(a.quote, 44)}”
+                              {clipText(a.comment, 90)}
                             </span>
-                          )}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                ))
+                            {a.quote.trim() && (
+                              <span
+                                style={{
+                                  display: "block",
+                                  fontSize: 11,
+                                  color: T.textFaint,
+                                  fontStyle: "italic",
+                                  lineHeight: 1.45,
+                                  marginTop: 3,
+                                }}
+                              >
+                                {clipText(a.quote, 44)}
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}
