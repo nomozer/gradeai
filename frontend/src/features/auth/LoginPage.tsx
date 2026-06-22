@@ -65,6 +65,10 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
     }
   };
 
+  // Decoration scales with the breakpoint and sits BEHIND the card (zIndex 0),
+  // so it can grow without colliding with the centred form.
+  const artW = bp === "desktop" ? 300 : bp === "laptop" ? 230 : 175;
+
   return (
     <div
       style={{
@@ -104,6 +108,8 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
           display: "flex",
           flexDirection: "column",
           gap: 20,
+          position: "relative",
+          zIndex: 1,
         }}
       >
         {/* Heading */}
@@ -214,24 +220,25 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
       </form>
 
       {/* Decorative hand-drawn "climb" — a figure striding up 3D blocks toward a
-          summit spark, reusing the parchment/indigo palette with the memory-violet
-          on the top face + the spark so the HITL motif reads here too. The
-          feDisplacementMap gives the marker "wobble" so the lines look drawn by
-          hand rather than machine-straight. Hidden on mobile. */}
+          violet summit star, in the deep-indigo ink + warm parchment surfaces of
+          the system (the memory-violet marks the goal so the HITL motif reads).
+          feDisplacementMap gives a light marker "wobble"; a soft ground shadow +
+          spark halo add depth. Sits BEHIND the card so it can be large without
+          colliding with the form. Hidden on mobile. */}
       {bp !== "mobile" && (
         <div
           style={{
             position: "absolute",
-            bottom: 36,
-            right: 48,
-            color: T.text,
-            opacity: 0.9,
+            bottom: 26,
+            right: bp === "tablet" ? 24 : 48,
+            zIndex: 0,
+            color: T.accentDark,
           }}
         >
           <svg
-            width="200"
-            height="182"
-            viewBox="0 0 220 200"
+            width={artW}
+            height={Math.round((artW * 248) / 260)}
+            viewBox="0 0 260 248"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             aria-hidden="true"
@@ -240,56 +247,68 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
               <filter id="login-sketch" x="-20%" y="-20%" width="140%" height="140%">
                 <feTurbulence
                   type="fractalNoise"
-                  baseFrequency="0.018"
+                  baseFrequency="0.02"
                   numOctaves="2"
-                  seed="11"
+                  seed="9"
                   result="noise"
                 />
                 <feDisplacementMap
                   in="SourceGraphic"
                   in2="noise"
-                  scale="3.2"
+                  scale="1.8"
                   xChannelSelector="R"
                   yChannelSelector="G"
                 />
               </filter>
+              <filter id="login-soft" x="-60%" y="-60%" width="220%" height="220%">
+                <feGaussianBlur stdDeviation="3.2" />
+              </filter>
             </defs>
+
+            {/* Ground shadow + spark halo (unfiltered, soft) */}
+            <ellipse cx="120" cy="233" rx="106" ry="9" fill="rgba(42, 59, 107, 0.07)" filter="url(#login-soft)" />
+            <circle cx="226" cy="66" r="13" fill="rgba(124, 58, 237, 0.13)" />
 
             <g
               filter="url(#login-sketch)"
               stroke="currentColor"
-              strokeWidth="2.4"
               strokeLinejoin="round"
               strokeLinecap="round"
               fill="none"
             >
-              {/* Box 3 — highest / farthest, drawn first */}
-              <polygon points="98,144 142,144 142,122 98,122" fill={T.bgCard} />
-              <polygon points="142,144 142,122 156,114 156,136" fill={T.bgElevated} />
-              <polygon points="98,122 142,122 156,114 112,114" fill="rgba(124,58,237,0.14)" />
-              {/* Box 2 — middle */}
-              <polygon points="58,160 102,160 102,138 58,138" fill={T.bgCard} />
-              <polygon points="102,160 102,138 116,130 116,152" fill={T.bgElevated} />
-              <polygon points="58,138 102,138 116,130 72,130" fill="rgba(59,79,138,0.12)" />
-              {/* Box 1 — lowest / nearest, drawn last so it overlaps cleanly */}
-              <polygon points="18,176 62,176 62,154 18,154" fill={T.bgCard} />
-              <polygon points="62,176 62,154 76,146 76,168" fill={T.bgElevated} />
-              <polygon points="18,154 62,154 76,146 32,146" fill="rgba(59,79,138,0.12)" />
+              <g strokeWidth="2.6">
+                {/* Box 3 — highest / back, drawn first */}
+                <polygon points="150,168 214,168 214,136 150,136" fill={T.bgElevated} />
+                <polygon points="214,168 214,136 238,122 238,154" fill={T.border} />
+                <polygon points="150,136 214,136 238,122 174,122" fill="rgba(124, 58, 237, 0.14)" />
+                {/* Box 2 — middle */}
+                <polygon points="96,196 160,196 160,164 96,164" fill={T.bgElevated} />
+                <polygon points="160,196 160,164 184,150 184,182" fill={T.border} />
+                <polygon points="96,164 160,164 184,150 120,150" fill={T.bgCard} />
+                {/* Box 1 — lowest / front, drawn last so it overlaps cleanly */}
+                <polygon points="24,224 88,224 88,192 24,192" fill={T.bgElevated} />
+                <polygon points="88,224 88,192 112,178 112,210" fill={T.border} />
+                <polygon points="24,192 88,192 112,178 48,178" fill={T.bgCard} />
+              </g>
 
               {/* Figure mid-stride, climbing up-right */}
-              <circle cx="152" cy="70" r="8" />
-              <path d="M 154 63 L 159 59" />
-              <path d="M 153 78 L 146 104" />
-              <path d="M 146 104 L 137 112 L 128 122" />
-              <path d="M 146 104 L 159 110 L 170 102" />
-              <path d="M 152 84 L 140 90" />
-              <path d="M 152 84 L 165 74" />
+              <g strokeWidth="3.2">
+                <circle cx="190" cy="82" r="10" />
+                <path d="M 198 75 L 205 71" />
+                <path d="M 190 92 L 188 98" />
+                <path d="M 188 98 L 180 134" />
+                <path d="M 188 98 L 177 110 L 168 122" />
+                <path d="M 188 98 L 201 92 L 214 80" />
+                <path d="M 180 134 L 170 150 L 158 162" />
+                <path d="M 180 134 L 197 148 L 208 140" />
+              </g>
             </g>
 
-            {/* Summit spark — crisp violet against the rough lines (the goal) */}
-            <g stroke={T.memory} strokeWidth="2" strokeLinecap="round">
-              <path d="M 181 60 L 181 50 M 176 55 L 186 55 M 177.5 51.5 L 184.5 58.5 M 184.5 51.5 L 177.5 58.5" />
-            </g>
+            {/* Summit star — crisp violet against the rough lines (the goal) */}
+            <path
+              d="M 226 55 C 227.5 62.5 228.5 63.5 235 65 C 228.5 66.5 227.5 67.5 226 75 C 224.5 67.5 223.5 66.5 217 65 C 223.5 63.5 224.5 62.5 226 55 Z"
+              fill={T.memory}
+            />
           </svg>
         </div>
       )}
