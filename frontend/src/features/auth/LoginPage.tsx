@@ -219,12 +219,12 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
         </div>
       </form>
 
-      {/* Decorative hand-drawn "climb" — a figure striding up 3D blocks toward a
-          violet summit star, in the deep-indigo ink + warm parchment surfaces of
-          the system (the memory-violet marks the goal so the HITL motif reads).
-          feDisplacementMap gives a light marker "wobble"; a soft ground shadow +
-          spark halo add depth. Sits BEHIND the card so it can be large without
-          colliding with the form. Hidden on mobile. */}
+      {/* Decorative figure climbing 3D blocks — clean vector lines in the
+          deep-indigo ink + warm parchment surfaces of the system. No "sketch"
+          filter (it fractured the strokes); the only flourish is a soft ground
+          shadow and a faint memory-violet wash on the top step (the subtle HITL
+          accent). Sits BEHIND the card so it can be large without colliding with
+          the form. Hidden on mobile. */}
       {bp !== "mobile" && (
         <div
           style={{
@@ -244,71 +244,42 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
             aria-hidden="true"
           >
             <defs>
-              <filter id="login-sketch" x="-20%" y="-20%" width="140%" height="140%">
-                <feTurbulence
-                  type="fractalNoise"
-                  baseFrequency="0.02"
-                  numOctaves="2"
-                  seed="9"
-                  result="noise"
-                />
-                <feDisplacementMap
-                  in="SourceGraphic"
-                  in2="noise"
-                  scale="1.8"
-                  xChannelSelector="R"
-                  yChannelSelector="G"
-                />
-              </filter>
               <filter id="login-soft" x="-60%" y="-60%" width="220%" height="220%">
                 <feGaussianBlur stdDeviation="3.2" />
               </filter>
             </defs>
 
-            {/* Ground shadow + spark halo (unfiltered, soft) */}
-            <ellipse cx="120" cy="233" rx="106" ry="9" fill="rgba(42, 59, 107, 0.07)" filter="url(#login-soft)" />
-            <circle cx="226" cy="66" r="13" fill="rgba(124, 58, 237, 0.13)" />
+            {/* Soft ground shadow */}
+            <ellipse cx="128" cy="236" rx="112" ry="9" fill="rgba(42, 59, 107, 0.07)" filter="url(#login-soft)" />
 
-            <g
-              filter="url(#login-sketch)"
-              stroke="currentColor"
-              strokeLinejoin="round"
-              strokeLinecap="round"
-              fill="none"
-            >
+            <g stroke="currentColor" strokeLinejoin="round" strokeLinecap="round" fill="none">
               <g strokeWidth="2.6">
                 {/* Box 3 — highest / back, drawn first */}
-                <polygon points="150,168 214,168 214,136 150,136" fill={T.bgElevated} />
-                <polygon points="214,168 214,136 238,122 238,154" fill={T.border} />
-                <polygon points="150,136 214,136 238,122 174,122" fill="rgba(124, 58, 237, 0.14)" />
+                <polygon points="168,166 228,166 228,136 168,136" fill={T.bgElevated} />
+                <polygon points="228,166 228,136 250,123 250,153" fill={T.border} />
+                <polygon points="168,136 228,136 250,123 190,123" fill="rgba(124, 58, 237, 0.14)" />
                 {/* Box 2 — middle */}
-                <polygon points="96,196 160,196 160,164 96,164" fill={T.bgElevated} />
-                <polygon points="160,196 160,164 184,150 184,182" fill={T.border} />
-                <polygon points="96,164 160,164 184,150 120,150" fill={T.bgCard} />
+                <polygon points="104,196 164,196 164,166 104,166" fill={T.bgElevated} />
+                <polygon points="164,196 164,166 186,153 186,183" fill={T.border} />
+                <polygon points="104,166 164,166 186,153 126,153" fill={T.bgCard} />
                 {/* Box 1 — lowest / front, drawn last so it overlaps cleanly */}
-                <polygon points="24,224 88,224 88,192 24,192" fill={T.bgElevated} />
-                <polygon points="88,224 88,192 112,178 112,210" fill={T.border} />
-                <polygon points="24,192 88,192 112,178 48,178" fill={T.bgCard} />
+                <polygon points="40,226 100,226 100,196 40,196" fill={T.bgElevated} />
+                <polygon points="100,226 100,196 122,183 122,213" fill={T.border} />
+                <polygon points="40,196 100,196 122,183 62,183" fill={T.bgCard} />
               </g>
 
-              {/* Figure mid-stride, climbing up-right */}
-              <g strokeWidth="3.2">
-                <circle cx="190" cy="82" r="10" />
-                <path d="M 198 75 L 205 71" />
-                <path d="M 190 92 L 188 98" />
-                <path d="M 188 98 L 180 134" />
-                <path d="M 188 98 L 177 110 L 168 122" />
-                <path d="M 188 98 L 201 92 L 214 80" />
-                <path d="M 180 134 L 170 150 L 158 162" />
-                <path d="M 180 134 L 197 148 L 208 140" />
+              {/* Figure: clear forward-leaning climb, stepping box 2 → box 3 */}
+              <g strokeWidth="3">
+                <circle cx="193" cy="113" r="9" />
+                <path d="M 199 108 L 205 105" />
+                <path d="M 191 121 L 184 129" />
+                <path d="M 184 129 L 170 150" />
+                <path d="M 170 150 L 160 158 L 152 165" />
+                <path d="M 170 150 L 184 151 L 190 138" />
+                <path d="M 184 129 L 173 136 L 164 144" />
+                <path d="M 184 129 L 197 132 L 210 130" />
               </g>
             </g>
-
-            {/* Summit star — crisp violet against the rough lines (the goal) */}
-            <path
-              d="M 226 55 C 227.5 62.5 228.5 63.5 235 65 C 228.5 66.5 227.5 67.5 226 75 C 224.5 67.5 223.5 66.5 217 65 C 223.5 63.5 224.5 62.5 226 55 Z"
-              fill={T.memory}
-            />
           </svg>
         </div>
       )}
