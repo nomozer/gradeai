@@ -268,16 +268,16 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
                 <polygon points="40,196 100,196 122,183 62,183" fill={T.bgCard} />
               </g>
 
-              {/* Figure: clear forward-leaning climb, stepping box 2 → box 3 */}
+              {/* Figure: a leap up-right — trailing leg extended (push-off),
+                  leading knee up toward the higher step, both arms thrown up. */}
               <g strokeWidth="3">
-                <circle cx="193" cy="113" r="9" />
-                <path d="M 199 108 L 205 105" />
-                <path d="M 191 121 L 184 129" />
-                <path d="M 184 129 L 170 150" />
-                <path d="M 170 150 L 160 158 L 152 165" />
-                <path d="M 170 150 L 184 151 L 190 138" />
-                <path d="M 184 129 L 173 136 L 164 144" />
-                <path d="M 184 129 L 197 132 L 210 130" />
+                <circle cx="200" cy="117" r="9" />
+                <path d="M 196 124 L 191 133" />
+                <path d="M 191 133 L 170 158" />
+                <path d="M 170 158 L 158 166 L 146 172" />
+                <path d="M 170 158 L 186 160 L 196 146" />
+                <path d="M 191 133 L 182 124 L 174 117" />
+                <path d="M 191 133 L 203 125 L 215 119" />
               </g>
             </g>
           </svg>
