@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { ApiError, getGradebook, type ClassRoom, type GradebookRow } from "../../api";
+import {
+  ApiError,
+  getGradebook,
+  upsertStudentGrade,
+  type ClassRoom,
+  type GradebookRow,
+} from "../../api";
 import { Icon } from "../../components/ui/Icon";
 import { T } from "../../theme/tokens";
 import { exportClassGradebook } from "../../lib/exportClassGradebook";
@@ -29,6 +35,18 @@ export function Gradebook({
   };
 
   useEffect(refresh, [cls.id]);
+
+  // Inline edit: upsert a student's scores from the table, update the row in
+  // place. Covers both adjusting an AI batch grade and entering scores by hand.
+  const saveRow = async (studentId: number, scores: Record<number, number>) => {
+    try {
+      const grade = await upsertStudentGrade(studentId, scores);
+      setRows((prev) => prev.map((r) => (r.id === studentId ? { ...r, grade } : r)));
+      setError("");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.detail : "Lưu điểm thất bại.");
+    }
+  };
 
   const cauNums = useMemo(
     () =>
@@ -125,6 +143,7 @@ export function Gradebook({
                     row={r}
                     cauNums={cauNums}
                     onGrade={() => onGrade(r)}
+                    onSave={saveRow}
                   />
                 ))}
               </tbody>
@@ -163,40 +182,98 @@ function GradeRow({
   row,
   cauNums,
   onGrade,
+  onSave,
 }: {
   index: number;
   row: GradebookRow;
   cauNums: number[];
   onGrade: () => void;
+  onSave: (studentId: number, scores: Record<number, number>) => void;
 }) {
   const [hover, setHover] = useState(false);
-  const g = row.grade;
+  // Local editable copy of the per-câu scores (string for the inputs). Re-seed
+  // when the row's grade changes (e.g. after a batch run / save round-trip).
+  const seed = () => {
+    const v: Record<number, string> = {};
+    for (const n of cauNums) {
+      const s = row.grade?.scores[String(n)];
+      v[n] = typeof s === "number" ? String(s) : "";
+    }
+    return v;
+  };
+  const [vals, setVals] = useState<Record<number, string>>(seed);
+  const seedKey = `${row.grade?.graded_at ?? ""}|${cauNums.join(",")}`;
+  const [lastSeed, setLastSeed] = useState(seedKey);
+  if (seedKey !== lastSeed) {
+    setLastSeed(seedKey);
+    setVals(seed());
+  }
+
+  const numVals = cauNums
+    .map((n) => parseFloat(vals[n]))
+    .filter((x) => Number.isFinite(x));
+  const hasAny = numVals.length > 0;
+  const total = numVals.reduce((a, b) => a + b, 0);
+
+  const commit = () => {
+    const scores: Record<number, number> = {};
+    for (const n of cauNums) {
+      const x = parseFloat(vals[n]);
+      if (Number.isFinite(x)) scores[n] = x;
+    }
+    // Only save when something actually differs from the stored grade.
+    const cur = row.grade?.scores ?? {};
+    const changed =
+      Object.keys(scores).length !== Object.keys(cur).length ||
+      cauNums.some((n) => (scores[n] ?? null) !== (cur[String(n)] ?? null));
+    if (changed) onSave(row.id, scores);
+  };
+
   return (
     <tr
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{ borderBottom: `1px solid ${T.borderLight}`, background: hover ? T.bgHover : "transparent" }}
     >
-      <td style={{ padding: "11px 14px", textAlign: "center", color: T.textFaint, fontFamily: T.mono, fontSize: 13 }}>{index}</td>
-      <td style={{ padding: "11px 14px", fontSize: T.fontSize.base, fontWeight: 600, color: T.text }}>{row.full_name}</td>
-      {cauNums.map((n) => {
-        const v = g?.scores[String(n)];
-        return (
-          <td key={n} style={{ padding: "11px 14px", textAlign: "center", fontFamily: T.mono, fontSize: 14, color: typeof v === "number" ? T.text : T.textFaint }}>
-            {typeof v === "number" ? v.toFixed(1) : "—"}
-          </td>
-        );
-      })}
-      <td style={{ padding: "11px 14px", textAlign: "center", fontFamily: T.mono, fontWeight: 700, fontSize: 15, color: g ? T.green : T.textFaint }}>
-        {g ? g.total.toFixed(1) : "—"}
+      <td style={{ padding: "9px 14px", textAlign: "center", color: T.textFaint, fontFamily: T.mono, fontSize: 13 }}>{index}</td>
+      <td style={{ padding: "9px 14px", fontSize: T.fontSize.base, fontWeight: 600, color: T.text }}>{row.full_name}</td>
+      {cauNums.map((n) => (
+        <td key={n} style={{ padding: "6px 8px", textAlign: "center" }}>
+          <input
+            type="number"
+            step="0.25"
+            min="0"
+            value={vals[n] ?? ""}
+            onChange={(e) => setVals((v) => ({ ...v, [n]: e.target.value }))}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+            }}
+            style={{
+              width: 50,
+              textAlign: "center",
+              padding: "5px 4px",
+              borderRadius: 6,
+              border: `1px solid ${T.border}`,
+              background: T.bgInput,
+              fontFamily: T.mono,
+              fontSize: 13,
+              color: T.text,
+              outline: "none",
+            }}
+          />
+        </td>
+      ))}
+      <td style={{ padding: "9px 14px", textAlign: "center", fontFamily: T.mono, fontWeight: 700, fontSize: 15, color: hasAny ? T.green : T.textFaint }}>
+        {hasAny ? total.toFixed(1) : "—"}
       </td>
-      <td style={{ padding: "11px 14px" }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: T.fontSize.sm, fontWeight: 600, color: g ? T.green : T.textFaint }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: g ? T.green : T.textFaint }} />
-          {g ? "Đã chấm" : "Chưa chấm"}
+      <td style={{ padding: "9px 14px" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: T.fontSize.sm, fontWeight: 600, color: hasAny ? T.green : T.textFaint }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: hasAny ? T.green : T.textFaint }} />
+          {hasAny ? "Đã chấm" : "Chưa chấm"}
         </span>
       </td>
-      <td style={{ padding: "8px 14px", textAlign: "right" }}>
+      <td style={{ padding: "6px 14px", textAlign: "right" }}>
         <button
           type="button"
           onClick={onGrade}
@@ -213,7 +290,7 @@ function GradeRow({
             whiteSpace: "nowrap",
           }}
         >
-          {g ? "Chấm lại →" : "Chấm bài →"}
+          Mở bài →
         </button>
       </td>
     </tr>
