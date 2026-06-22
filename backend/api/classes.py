@@ -67,6 +67,13 @@ class StudentUpdate(BaseModel):
     student_code: str | None = Field(default=None, max_length=60)
 
 
+class GradeUpsert(BaseModel):
+    # Per-câu scores keyed by câu number: {"1": 5.0, "2": 4.0}. Total is
+    # derived server-side as the sum, matching "overall = sum of per-câu".
+    scores: dict[int, float] = Field(default_factory=dict)
+    run_id: int | None = None
+
+
 # ---- classes --------------------------------------------------------------
 
 
@@ -169,3 +176,24 @@ def delete_student(student_id: int, _user: dict = Depends(get_current_user)):
     if not _require_store().delete_student(student_id):
         raise HTTPException(status_code=404, detail="Không tìm thấy học sinh.")
     return {"ok": True}
+
+
+# ---- gradebook ------------------------------------------------------------
+
+
+@router.get("/{class_id}/gradebook")
+def get_gradebook(class_id: int, _user: dict = Depends(get_current_user)):
+    rows = _require_store().get_gradebook(class_id)
+    if rows is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy lớp.")
+    return {"students": rows}
+
+
+@router.put("/students/{student_id}/grade")
+def upsert_grade(
+    student_id: int, body: GradeUpsert, _user: dict = Depends(get_current_user)
+):
+    grade = _require_store().upsert_grade(student_id, body.scores, body.run_id)
+    if grade is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy học sinh.")
+    return grade

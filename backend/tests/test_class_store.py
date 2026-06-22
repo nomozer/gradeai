@@ -92,6 +92,70 @@ def test_delete_class_cascades_students(store):
         current_user_id.reset(token)
 
 
+def test_upsert_grade_and_gradebook(store):
+    token = _as_user(1)
+    try:
+        cls = store.create_class("10A")
+        a = store.add_student(cls["id"], "An")
+        store.add_student(cls["id"], "Bình")  # left ungraded
+
+        saved = store.upsert_grade(a["id"], {1: 5.0, 2: 4.0}, run_id=42)
+        assert saved["total"] == 9.0
+        assert saved["scores"] == {"1": 5.0, "2": 4.0}
+        assert saved["run_id"] == 42
+
+        book = store.get_gradebook(cls["id"])
+        assert [r["full_name"] for r in book] == ["An", "Bình"]
+        assert book[0]["grade"]["total"] == 9.0
+        assert book[1]["grade"] is None  # ungraded student
+    finally:
+        current_user_id.reset(token)
+
+
+def test_upsert_grade_replaces_and_recomputes_total(store):
+    token = _as_user(1)
+    try:
+        cls = store.create_class("10A")
+        a = store.add_student(cls["id"], "An")
+        store.upsert_grade(a["id"], {1: 5.0, 2: 4.0})
+        again = store.upsert_grade(a["id"], {1: 6.0, 2: 3.5})  # overwrite
+        assert again["total"] == 9.5
+        book = store.get_gradebook(cls["id"])
+        assert book[0]["grade"]["scores"] == {"1": 6.0, "2": 3.5}
+        # Still one grade row (upsert, not insert).
+        assert len([r for r in book if r["grade"]]) == 1
+    finally:
+        current_user_id.reset(token)
+
+
+def test_grade_cleared_when_student_deleted(store):
+    token = _as_user(1)
+    try:
+        cls = store.create_class("10A")
+        a = store.add_student(cls["id"], "An")
+        store.upsert_grade(a["id"], {1: 5.0})
+        assert store.delete_student(a["id"])
+        assert store.get_gradebook(cls["id"]) == []
+    finally:
+        current_user_id.reset(token)
+
+
+def test_upsert_grade_refused_for_foreign_student(store):
+    t1 = _as_user(1)
+    try:
+        cls = store.create_class("10A")
+        a = store.add_student(cls["id"], "An")
+    finally:
+        current_user_id.reset(t1)
+
+    t2 = _as_user(2)
+    try:
+        assert store.upsert_grade(a["id"], {1: 9.0}) is None
+        assert store.get_gradebook(cls["id"]) is None
+    finally:
+        current_user_id.reset(t2)
+
+
 def test_multi_tenant_isolation(store):
     # Teacher 1 owns a class with a roster.
     t1 = _as_user(1)

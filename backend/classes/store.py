@@ -7,10 +7,12 @@ can be assembled and exported. This store owns that structure.
 
 Lives in its own ``classes`` package with its own SQLAlchemy engine on the
 SAME SQLite file as MemoryManager / UserStore (``data/hitl_mirror.db``) — WAL
-mode lets the engines share the file safely. Two tables:
+mode lets the engines share the file safely. Three tables:
 
-    • classes  — id, user_id (owner teacher), name, note
-    • students — id, user_id, class_id, full_name, student_code, order_index
+    • classes        — id, user_id (owner teacher), name, note
+    • students       — id, user_id, class_id, full_name, student_code, order_index
+    • student_grades — one current grade per student (scores JSON + total),
+                       fed by the grading desk on finalize
 
 Multi-tenant: every row carries ``user_id`` and every read/write is scoped to
 ``request_context.current_user_id`` read INSIDE each method (never threaded as
@@ -21,12 +23,14 @@ with no request fall in the ``user_id=0`` bucket.
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import (
     DateTime,
+    Float,
     Integer,
     Text,
     create_engine,
@@ -103,6 +107,42 @@ class Student(Base):
             "student_code": self.student_code,
             "order_index": self.order_index,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class StudentGrade(Base):
+    """A student's CURRENT grade (one row per student — upsert target).
+
+    Fed by the grading desk: when a teacher finalizes a paper opened for a
+    specific student, the per-câu scores land here so the class gradebook can
+    be assembled + exported without re-deriving anything from the grading runs.
+    """
+
+    __tablename__ = "student_grades"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    class_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    # Per-câu scores as a JSON object: {"1": 5.0, "2": 4.0}.
+    scores_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    total: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    # Optional link back to the grading run that produced this grade.
+    run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    graded_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        try:
+            scores = json.loads(self.scores_json or "{}")
+        except (ValueError, TypeError):
+            scores = {}
+        return {
+            "scores": scores,
+            "total": float(self.total or 0.0),
+            "run_id": self.run_id,
+            "graded_at": self.graded_at.isoformat() if self.graded_at else None,
         }
 
 
@@ -213,6 +253,9 @@ class ClassStore:
             room = session.get(ClassRoom, class_id)
             if room is None or room.user_id != uid:
                 return False
+            session.query(StudentGrade).filter(
+                StudentGrade.class_id == class_id, StudentGrade.user_id == uid
+            ).delete()
             session.query(Student).filter(
                 Student.class_id == class_id, Student.user_id == uid
             ).delete()
@@ -326,6 +369,88 @@ class ClassStore:
             student = session.get(Student, student_id)
             if student is None or student.user_id != uid:
                 return False
+            session.query(StudentGrade).filter(
+                StudentGrade.student_id == student_id, StudentGrade.user_id == uid
+            ).delete()
             session.delete(student)
             session.commit()
         return True
+
+    # ---- grades / gradebook ----------------------------------------------
+
+    def upsert_grade(
+        self,
+        student_id: int,
+        scores: dict[Any, Any],
+        run_id: int | None = None,
+    ) -> dict[str, Any] | None:
+        """Save/replace a student's current grade (total = sum of câu scores).
+
+        Returns the stored grade dict, or None if the student is missing/foreign.
+        One row per (user, student) — code-level upsert (sequential per-student
+        grading makes a DB unique constraint unnecessary).
+        """
+        uid = get_current_user_id()
+        clean: dict[str, float] = {}
+        for k, v in (scores or {}).items():
+            try:
+                clean[str(int(k))] = round(float(v), 4)
+            except (ValueError, TypeError):
+                continue
+        total = round(sum(clean.values()), 4)
+        with self._session() as session:
+            student = session.get(Student, student_id)
+            if student is None or student.user_id != uid:
+                return None
+            row = (
+                session.query(StudentGrade)
+                .filter(
+                    StudentGrade.user_id == uid,
+                    StudentGrade.student_id == student_id,
+                )
+                .first()
+            )
+            if row is None:
+                row = StudentGrade(
+                    user_id=uid, class_id=student.class_id, student_id=student_id
+                )
+                session.add(row)
+            row.scores_json = json.dumps(clean)
+            row.total = total
+            row.run_id = run_id
+            row.graded_at = _utcnow()
+            session.commit()
+            session.refresh(row)
+            return row.to_dict()
+
+    def get_gradebook(self, class_id: int) -> list[dict[str, Any]] | None:
+        """Roster + each student's current grade (``grade`` is None if ungraded).
+
+        Returns None if the class is missing/foreign.
+        """
+        uid = get_current_user_id()
+        with self._session() as session:
+            room = session.get(ClassRoom, class_id)
+            if room is None or room.user_id != uid:
+                return None
+            students = (
+                session.query(Student)
+                .filter(Student.class_id == class_id, Student.user_id == uid)
+                .order_by(Student.order_index.asc(), Student.id.asc())
+                .all()
+            )
+            grades = {
+                g.student_id: g
+                for g in session.query(StudentGrade)
+                .filter(
+                    StudentGrade.class_id == class_id, StudentGrade.user_id == uid
+                )
+                .all()
+            }
+            rows: list[dict[str, Any]] = []
+            for s in students:
+                entry = s.to_dict()
+                g = grades.get(s.id)
+                entry["grade"] = g.to_dict() if g else None
+                rows.append(entry)
+            return rows
