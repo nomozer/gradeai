@@ -213,67 +213,82 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
         </div>
       </form>
 
-      {/* Decorative "learning curve" — a rising data line the figure climbs,
-          echoing the HITL thesis (AI error falls as the lesson corpus grows).
-          The summit point is the memory-violet so the brand motif reads even
-          here. Hidden on mobile. */}
+      {/* Decorative hand-drawn "climb" — a figure striding up 3D blocks toward a
+          summit spark, reusing the parchment/indigo palette with the memory-violet
+          on the top face + the spark so the HITL motif reads here too. The
+          feDisplacementMap gives the marker "wobble" so the lines look drawn by
+          hand rather than machine-straight. Hidden on mobile. */}
       {bp !== "mobile" && (
         <div
           style={{
             position: "absolute",
-            bottom: 40,
-            right: 56,
+            bottom: 36,
+            right: 48,
             color: T.text,
-            opacity: 0.85,
+            opacity: 0.9,
           }}
         >
           <svg
-            width="180"
-            height="180"
-            viewBox="0 0 200 200"
+            width="200"
+            height="182"
+            viewBox="0 0 220 200"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             aria-hidden="true"
           >
-            {/* Axes */}
-            <path
-              d="M 18 18 V 178 H 192"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              opacity="0.3"
-            />
+            <defs>
+              <filter id="login-sketch" x="-20%" y="-20%" width="140%" height="140%">
+                <feTurbulence
+                  type="fractalNoise"
+                  baseFrequency="0.018"
+                  numOctaves="2"
+                  seed="11"
+                  result="noise"
+                />
+                <feDisplacementMap
+                  in="SourceGraphic"
+                  in2="noise"
+                  scale="3.2"
+                  xChannelSelector="R"
+                  yChannelSelector="G"
+                />
+              </filter>
+            </defs>
 
-            {/* Rising curve */}
-            <path
-              d="M 22 168 C 72 154, 94 132, 122 106 C 152 80, 176 60, 192 44"
-              stroke="currentColor"
-              strokeWidth="2.6"
-              strokeLinecap="round"
-            />
-
-            {/* Data points along the curve */}
-            <circle cx="22" cy="168" r="4" fill={T.accent} />
-            <circle cx="72" cy="150" r="4" fill={T.accent} />
-            <circle cx="122" cy="106" r="4" fill={T.accent} />
-
-            {/* Summit point — the memory-violet, with a soft glow ring */}
-            <circle cx="186" cy="48" r="11" fill="none" stroke={T.memory} strokeWidth="2" opacity="0.4" />
-            <circle cx="186" cy="48" r="6" fill={T.memory} />
-
-            {/* Figure climbing the slope */}
             <g
+              filter="url(#login-sketch)"
               stroke="currentColor"
-              strokeWidth="2.6"
-              strokeLinecap="round"
+              strokeWidth="2.4"
               strokeLinejoin="round"
+              strokeLinecap="round"
+              fill="none"
             >
-              <circle cx="150" cy="42" r="8" />
-              <path d="M 150 50 L 147 74" />
-              <path d="M 147 74 L 141 84 L 132 96" />
-              <path d="M 147 74 L 156 82 L 166 72" />
-              <path d="M 149 54 L 139 66" />
-              <path d="M 149 54 L 162 46" />
+              {/* Box 3 — highest / farthest, drawn first */}
+              <polygon points="98,144 142,144 142,122 98,122" fill={T.bgCard} />
+              <polygon points="142,144 142,122 156,114 156,136" fill={T.bgElevated} />
+              <polygon points="98,122 142,122 156,114 112,114" fill="rgba(124,58,237,0.14)" />
+              {/* Box 2 — middle */}
+              <polygon points="58,160 102,160 102,138 58,138" fill={T.bgCard} />
+              <polygon points="102,160 102,138 116,130 116,152" fill={T.bgElevated} />
+              <polygon points="58,138 102,138 116,130 72,130" fill="rgba(59,79,138,0.12)" />
+              {/* Box 1 — lowest / nearest, drawn last so it overlaps cleanly */}
+              <polygon points="18,176 62,176 62,154 18,154" fill={T.bgCard} />
+              <polygon points="62,176 62,154 76,146 76,168" fill={T.bgElevated} />
+              <polygon points="18,154 62,154 76,146 32,146" fill="rgba(59,79,138,0.12)" />
+
+              {/* Figure mid-stride, climbing up-right */}
+              <circle cx="152" cy="70" r="8" />
+              <path d="M 154 63 L 159 59" />
+              <path d="M 153 78 L 146 104" />
+              <path d="M 146 104 L 137 112 L 128 122" />
+              <path d="M 146 104 L 159 110 L 170 102" />
+              <path d="M 152 84 L 140 90" />
+              <path d="M 152 84 L 165 74" />
+            </g>
+
+            {/* Summit spark — crisp violet against the rough lines (the goal) */}
+            <g stroke={T.memory} strokeWidth="2" strokeLinecap="round">
+              <path d="M 181 60 L 181 50 M 176 55 L 186 55 M 177.5 51.5 L 184.5 58.5 M 184.5 51.5 L 177.5 58.5" />
             </g>
           </svg>
         </div>
