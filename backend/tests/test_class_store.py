@@ -14,6 +14,32 @@ def _as_user(uid: int):
     return current_user_id.set(uid)
 
 
+def test_migrates_legacy_students_table(tmp_path):
+    # An older, unrelated 'students' table (no user_id) lives in some shared
+    # DBs. ClassStore must reconcile it so queries on our columns don't crash.
+    from sqlalchemy import create_engine, text
+
+    eng = create_engine(f"sqlite:///{tmp_path / 'hitl_mirror.db'}")
+    with eng.begin() as conn:
+        conn.execute(
+            text(
+                "CREATE TABLE students "
+                "(id INTEGER PRIMARY KEY, class_id INTEGER, stt INTEGER, name TEXT)"
+            )
+        )
+    eng.dispose()
+
+    store = ClassStore(db_dir=tmp_path)
+    token = _as_user(1)
+    try:
+        cls = store.create_class("10A")
+        store.add_student(cls["id"], "An")  # crashes against the legacy table
+        assert [s["full_name"] for s in store.list_students(cls["id"])] == ["An"]
+        assert store.list_classes()[0]["student_count"] == 1
+    finally:
+        current_user_id.reset(token)
+
+
 def test_create_list_get_class_with_student_count(store):
     token = _as_user(1)
     try:

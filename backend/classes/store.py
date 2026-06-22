@@ -36,6 +36,7 @@ from sqlalchemy import (
     create_engine,
     event,
     func,
+    inspect,
 )
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -171,7 +172,31 @@ class ClassStore:
             cur.close()
 
         Base.metadata.create_all(self._engine)
+        self._migrate()
         self._SessionLocal = sessionmaker(bind=self._engine, expire_on_commit=False)
+
+    def _migrate(self) -> None:
+        """Reconcile a pre-existing schema on a shared/legacy DB.
+
+        ``create_all`` only creates MISSING tables — it never ALTERs an
+        existing one. An earlier, unrelated ``students`` table (columns like
+        ``stt``/``name`` with no ``user_id``) shipped in some older DBs; left
+        in place, every query on our columns (``students.user_id`` etc.)
+        raises ``no such column``. It carries no data this feature uses
+        (``add_student`` would have failed against it), so drop + recreate it
+        with the current schema. Guarded on the absence of ``user_id`` so a
+        correct table is never touched.
+        """
+        insp = inspect(self._engine)
+        if insp.has_table("students"):
+            cols = {c["name"] for c in insp.get_columns("students")}
+            if "user_id" not in cols:
+                Student.__table__.drop(self._engine)
+                Student.__table__.create(self._engine)
+                logger.info(
+                    "Migrated 'students': dropped legacy table (no user_id), "
+                    "recreated with current schema"
+                )
 
     def _session(self) -> Session:
         return self._SessionLocal()
