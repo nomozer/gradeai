@@ -213,110 +213,68 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
         </div>
       </form>
 
-      {/* Decorative climbing stick figure at the bottom-right (hidden on mobile) */}
+      {/* Decorative "learning curve" — a rising data line the figure climbs,
+          echoing the HITL thesis (AI error falls as the lesson corpus grows).
+          The summit point is the memory-violet so the brand motif reads even
+          here. Hidden on mobile. */}
       {bp !== "mobile" && (
         <div
           style={{
             position: "absolute",
             bottom: 40,
-            right: 60,
+            right: 56,
             color: T.text,
             opacity: 0.85,
           }}
         >
           <svg
-            width="160"
-            height="200"
-            viewBox="0 0 160 200"
+            width="180"
+            height="180"
+            viewBox="0 0 200 200"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
           >
-            {/* Base line */}
+            {/* Axes */}
             <path
-              d="M 0 198 Q 80 196 160 198"
+              d="M 18 18 V 178 H 192"
               stroke="currentColor"
-              strokeWidth="2.5"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              opacity="0.3"
+            />
+
+            {/* Rising curve */}
+            <path
+              d="M 22 168 C 72 154, 94 132, 122 106 C 152 80, 176 60, 192 44"
+              stroke="currentColor"
+              strokeWidth="2.6"
               strokeLinecap="round"
             />
 
-            {/* Stairs */}
-            {/* Step 0 */}
-            <path
-              d="M 0 198 Q 8 198 16 198 M 16 198 Q 15 190 16 183 Q 32 184 48 183 M 48 183 L 48 198"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {/* Step 1 */}
-            <path
-              d="M 48 183 Q 47 166 48 148 Q 66 147 84 148 L 84 198"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {/* Step 2 */}
-            <path
-              d="M 84 148 Q 83 131 84 113 Q 102 114 120 113 L 120 198"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {/* Step 3 */}
-            <path
-              d="M 120 113 Q 119 96 120 78 Q 136 79 152 78 L 152 198"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            {/* Data points along the curve */}
+            <circle cx="22" cy="168" r="4" fill={T.accent} />
+            <circle cx="72" cy="150" r="4" fill={T.accent} />
+            <circle cx="122" cy="106" r="4" fill={T.accent} />
 
-            {/* Stick Figure */}
-            {/* Head */}
-            <circle
-              cx="84"
-              cy="28"
-              r="11"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            />
-            
-            {/* Neck */}
-            <path
-              d="M 84 39 L 83 52"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            />
+            {/* Summit point — the memory-violet, with a soft glow ring */}
+            <circle cx="186" cy="48" r="11" fill="none" stroke={T.memory} strokeWidth="2" opacity="0.4" />
+            <circle cx="186" cy="48" r="6" fill={T.memory} />
 
-            {/* Torso & Legs (Single continuous hand-drawn outline for body + thick legs) */}
-            <path
-              d="M 83 52 Q 90 70 80 96 Q 92 90 96 88 Q 102 100 106 113 L 98 113 Q 92 102 82 98 Q 75 124 72 148 L 62 148 Q 66 124 70 96 Q 73 75 83 52 Z"
+            {/* Figure climbing the slope */}
+            <g
               stroke="currentColor"
-              strokeWidth="2.5"
+              strokeWidth="2.6"
               strokeLinecap="round"
               strokeLinejoin="round"
-            />
-
-            {/* Left arm */}
-            <path
-              d="M 76 60 Q 64 80 58 102"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-
-            {/* Right arm */}
-            <path
-              d="M 85 58 Q 96 68 108 70"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            >
+              <circle cx="150" cy="42" r="8" />
+              <path d="M 150 50 L 147 74" />
+              <path d="M 147 74 L 141 84 L 132 96" />
+              <path d="M 147 74 L 156 82 L 166 72" />
+              <path d="M 149 54 L 139 66" />
+              <path d="M 149 54 L 162 46" />
+            </g>
           </svg>
         </div>
       )}
