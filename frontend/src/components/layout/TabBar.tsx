@@ -73,6 +73,7 @@ export function TabBar({
   const [hoveredClear, setHoveredClear] = useState(false);
   const [hoveredTabId, setHoveredTabId] = useState<string | null>(null);
   const [hoveredBatch, setHoveredBatch] = useState(false);
+  const [hoveredExport, setHoveredExport] = useState(false);
   // Styled rename modal (replaces the native window.prompt). Holds the tab id
   // being renamed + the in-progress name; null when closed.
   const [renameDraft, setRenameDraft] = useState<{ id: string; value: string } | null>(null);
@@ -887,6 +888,56 @@ export function TabBar({
                       </div>
                     )}
                   </div>
+                );
+              })()}
+              {/* Batch gradebook export — gathers the per-câu scores already
+                  on each tab into one .xlsx. A batch affordance (only with
+                  >1 paper); disabled until at least one paper has a grade. */}
+              {tabs.length > 1 && (() => {
+                const exportableCount = tabs.filter(
+                  (tt) => tt.questions && tt.questions.length > 0,
+                ).length;
+                const isDisabled = exportableCount === 0;
+                return (
+                  <button
+                    type="button"
+                    disabled={isDisabled}
+                    onClick={() => {
+                      if (!isDisabled) {
+                        window.dispatchEvent(new CustomEvent("hitl.exportGradebook"));
+                      }
+                    }}
+                    onMouseEnter={() => !isDisabled && setHoveredExport(true)}
+                    onMouseLeave={() => setHoveredExport(false)}
+                    title={
+                      isDisabled
+                        ? "Chấm xong ít nhất một bài để xuất bảng điểm"
+                        : "Tải bảng điểm cả lớp dưới dạng Excel"
+                    }
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      width: "100%",
+                      padding: "9px 16px",
+                      marginBottom: 10,
+                      background: hoveredExport && !isDisabled ? T.bgHover : "transparent",
+                      border: `1px solid ${isDisabled ? T.borderLight : T.border}`,
+                      borderRadius: 8,
+                      color: isDisabled ? T.textMute : T.textSoft,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      fontFamily: `"Inter", "Outfit", sans-serif`,
+                      cursor: isDisabled ? "not-allowed" : "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <Icon.ArrowDown size={14} color={isDisabled ? T.textMute : T.textSoft} />
+                    <span>
+                      Xuất bảng điểm{exportableCount > 0 ? ` (${exportableCount} bài)` : ""}
+                    </span>
+                  </button>
                 );
               })()}
               {tabs.map((tab, i) => {

@@ -37,6 +37,7 @@ import { AdminDashboard } from "./features/admin/AdminDashboard";
 import { getToken, getUser, clearSession, isAdmin, AUTH_REQUIRED_EVENT } from "./api/session";
 import { logout as logoutApi } from "./api/authApi";
 import { openInNewTab } from "./lib/openInNewTab";
+import { exportGradebook } from "./lib/exportGradebook";
 import type { GradeHistoryEntry } from "./types";
 
 const MEMORY_HASH = "#memory";
@@ -229,6 +230,25 @@ function WorkspacePage() {
     return () => {
       window.removeEventListener("hitl.startBatchGrading", handleStartBatch);
     };
+  }, [tabs]);
+
+  // Listen for the custom "hitl.exportGradebook" event from TabBar — gathers
+  // the per-câu scores already mirrored onto each tab and downloads one
+  // .xlsx for the whole batch (no more printing a phiếu per paper).
+  useEffect(() => {
+    const handleExport = () => {
+      void exportGradebook(tabs)
+        .then((n) => {
+          setToast(
+            n === 0
+              ? "Chưa có bài nào được chấm để xuất bảng điểm"
+              : `Đã xuất bảng điểm — ${n} bài (.xlsx)`,
+          );
+        })
+        .catch(() => setToast("Xuất bảng điểm thất bại"));
+    };
+    window.addEventListener("hitl.exportGradebook", handleExport);
+    return () => window.removeEventListener("hitl.exportGradebook", handleExport);
   }, [tabs]);
 
   // Queue worker: monitors the running tasks and feeds more tasks from pendingQueue
