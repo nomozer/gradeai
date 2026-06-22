@@ -268,16 +268,18 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
                 <polygon points="40,196 100,196 122,183 62,183" fill={T.bgCard} />
               </g>
 
-              {/* Figure: a leap up-right — trailing leg extended (push-off),
-                  leading knee up toward the higher step, both arms thrown up. */}
+              {/* Figure jumping on TOP of the highest box — the whole body sits in
+                  the clear space above the blocks (only the feet touch the top
+                  face), so its lines never tangle with the box edges. Knees bent
+                  + both arms up = a take-off jump. */}
               <g strokeWidth="3">
-                <circle cx="200" cy="117" r="9" />
-                <path d="M 196 124 L 191 133" />
-                <path d="M 191 133 L 170 158" />
-                <path d="M 170 158 L 158 166 L 146 172" />
-                <path d="M 170 158 L 186 160 L 196 146" />
-                <path d="M 191 133 L 182 124 L 174 117" />
-                <path d="M 191 133 L 203 125 L 215 119" />
+                <circle cx="208" cy="64" r="9" />
+                <path d="M 208 73 L 206 82" />
+                <path d="M 206 82 L 205 104" />
+                <path d="M 206 82 L 196 74 L 188 68" />
+                <path d="M 206 82 L 217 75 L 227 70" />
+                <path d="M 205 104 L 201 118 L 199 130" />
+                <path d="M 205 104 L 211 118 L 214 130" />
               </g>
             </g>
           </svg>
