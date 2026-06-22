@@ -186,7 +186,7 @@ export function Modal({
           boxShadow: T.shadowStrong,
           padding: 24,
           fontFamily: T.font,
-          animation: "toastIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+          animation: "fadeUp 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
         }}
       >
         <div

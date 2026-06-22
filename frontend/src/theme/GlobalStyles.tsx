@@ -74,7 +74,7 @@ export function GlobalStyles() {
         100% { transform: scale(1); opacity: 1; }
       }
       @keyframes toastIn {
-        from { opacity: 0; transform: translate(-50%, -12px); }
+        from { opacity: 0; transform: translate(-50%, 12px); }
         to   { opacity: 1; transform: translate(-50%, 0); }
       }
       /* Score inputs (per-câu in MucLucSidebar): hide the browser's native

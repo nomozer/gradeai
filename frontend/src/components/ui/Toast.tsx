@@ -40,7 +40,7 @@ export function Toast({
       onClick={onDismiss}
       style={{
         position: "fixed",
-        top: 16,
+        bottom: 24,
         left: "50%",
         transform: "translateX(-50%)",
         zIndex: 1000,
