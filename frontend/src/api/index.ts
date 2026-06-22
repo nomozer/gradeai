@@ -23,3 +23,15 @@ export type {
   MemoryStats,
   DeleteLessonResponse,
 } from "./memory";
+export {
+  listClasses,
+  createClass,
+  updateClass,
+  deleteClass,
+  listStudents,
+  addStudent,
+  addStudentsBulk,
+  updateStudent,
+  deleteStudent,
+} from "./classes";
+export type { ClassRoom, Student, StudentBulkRow } from "./classes";

@@ -28,6 +28,7 @@ import { AppHeader } from "./components/layout/AppHeader";
 import { TabBar } from "./components/layout/TabBar";
 import { EssayWorkspace } from "./features/workspace/EssayWorkspace";
 import { MemoryPanel } from "./features/memory/MemoryPanel";
+import { ClassPage } from "./features/classes/ClassPage";
 import { HelpModal } from "./features/help/HelpModal";
 import { GradeHistoryDropdown } from "./features/history/GradeHistoryDropdown";
 import { Toast } from "./components/ui/Toast";
@@ -41,13 +42,15 @@ import type { GradeHistoryEntry } from "./types";
 
 const MEMORY_HASH = "#memory";
 const GRADE_HASH = "#grade";
+const CLASS_HASH = "#class";
 
-type Route = "workspace" | "memory" | "grade";
+type Route = "workspace" | "memory" | "grade" | "class";
 
 function detectRoute(): Route {
   if (typeof window === "undefined") return "workspace";
   if (window.location.hash === MEMORY_HASH) return "memory";
   if (window.location.hash === GRADE_HASH) return "grade";
+  if (window.location.hash === CLASS_HASH) return "class";
   return "workspace";
 }
 
@@ -72,6 +75,7 @@ export default function App() {
 
 function RoleRouter({ route }: { route: Route }) {
   if (route === "memory") return <MemoryPage />;
+  if (route === "class") return <ClassPage />;
   if (route === "grade") return <WorkspacePage />; // admin opened the grading desk
   if (isAdmin()) return <AdminDashboard />;
   return <WorkspacePage />;
@@ -136,6 +140,12 @@ function WorkspacePage() {
   // position) stays exactly as the user left it.
   const openMemoryTab = useCallback(() => {
     openInNewTab(window.location.origin + window.location.pathname + MEMORY_HASH);
+  }, []);
+
+  // "Lớp học" header item: open the class-management page in a new browser
+  // tab (same idiom as memory) so the grading desk here stays untouched.
+  const openClassesTab = useCallback(() => {
+    openInNewTab(window.location.origin + window.location.pathname + CLASS_HASH);
   }, []);
 
   // Admin-only: jump back to the management dashboard (base URL with no hash ⇒
@@ -418,6 +428,7 @@ function WorkspacePage() {
       <AppHeader
         brand={String(t.title)}
         onOpenMemory={openMemoryTab}
+        onOpenClasses={openClassesTab}
         onOpenHelp={openHelp}
         memoryActive={false}
         onToggleHistory={toggleHistory}
