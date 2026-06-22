@@ -48,6 +48,12 @@ export interface Tab {
   initialHistoryEntry?: GradeHistoryEntry | null;
   initialHistoryStep?: 3 | 4 | 5 | null;
   questions?: { num: number; score: number; label: string }[];
+  // Class-grading link: set when the tab was opened from a class roster's
+  // "Chấm bài" action (via #grade?cls=&sid=). On finalize, EssayWorkspace
+  // pushes the per-câu scores to that student's row in the class gradebook
+  // (PUT /classes/students/{studentId}/grade). Absent for ad-hoc grading.
+  classId?: number | null;
+  studentId?: number | null;
 }
 
 export type TabMeta = Partial<Tab>;

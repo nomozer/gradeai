@@ -113,6 +113,22 @@ export function apiPatch<TReq, TRes>(
   );
 }
 
+export function apiPut<TReq, TRes>(
+  path: string,
+  body: TReq,
+  options: RequestOptions = {},
+): Promise<TRes> {
+  return _request<TRes>(
+    path,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    options,
+  );
+}
+
 export function apiDelete<TRes>(
   path: string,
   options: RequestOptions = {},

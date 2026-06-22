@@ -12,7 +12,19 @@ import {
 } from "../../api";
 import { Icon } from "../../components/ui/Icon";
 import { T } from "../../theme/tokens";
+import { openInNewTab } from "../../lib/openInNewTab";
 import { Btn, Field, Modal } from "./components/ClassUI";
+import { Gradebook } from "./Gradebook";
+
+/** Open the grading desk in a new tab, tagged with this class + student so
+ *  the finalize step pushes the scores back into the gradebook. */
+function gradeStudent(classId: number, studentId: number, name: string) {
+  const url =
+    window.location.origin +
+    window.location.pathname +
+    `#grade?cls=${classId}&sid=${studentId}&name=${encodeURIComponent(name)}`;
+  openInNewTab(url);
+}
 
 /** Case-insensitive lookup across common header spellings (VN + ascii). */
 function pick(row: Record<string, unknown>, keys: string[]): string {
@@ -41,6 +53,7 @@ export function ClassDetail({ cls, onBack }: { cls: ClassRoom; onBack: () => voi
 
   const [edit, setEdit] = useState<Student | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Student | null>(null);
+  const [view, setView] = useState<"roster" | "gradebook">("roster");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refresh = () => {
@@ -151,23 +164,32 @@ export function ClassDetail({ cls, onBack }: { cls: ClassRoom; onBack: () => voi
             {students.length} học sinh
           </div>
         </div>
-        <div>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void onImportFile(f);
-            }}
-          />
-          <Btn onClick={() => fileRef.current?.click()} disabled={importBusy}>
-            <Icon.Upload size={15} /> {importBusy ? "Đang nhập…" : "Nhập danh sách (Excel)"}
-          </Btn>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <ViewToggle view={view} onChange={setView} />
+          {view === "roster" && (
+            <>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void onImportFile(f);
+                }}
+              />
+              <Btn onClick={() => fileRef.current?.click()} disabled={importBusy}>
+                <Icon.Upload size={15} /> {importBusy ? "Đang nhập…" : "Nhập danh sách (Excel)"}
+              </Btn>
+            </>
+          )}
         </div>
       </div>
 
+      {view === "gradebook" ? (
+        <Gradebook cls={cls} onGrade={(r) => gradeStudent(cls.id, r.id, r.full_name)} />
+      ) : (
+        <>
       {/* Quick add row */}
       <div
         style={{
@@ -219,7 +241,7 @@ export function ClassDetail({ cls, onBack }: { cls: ClassRoom; onBack: () => voi
                   <Th style={{ width: 56, textAlign: "center" }}>STT</Th>
                   <Th>Họ tên</Th>
                   <Th style={{ width: 140 }}>Mã HS</Th>
-                  <Th style={{ width: 90, textAlign: "right" }}></Th>
+                  <Th style={{ width: 160, textAlign: "right" }}></Th>
                 </tr>
               </thead>
               <tbody>
@@ -228,6 +250,7 @@ export function ClassDetail({ cls, onBack }: { cls: ClassRoom; onBack: () => voi
                     key={s.id}
                     index={i + 1}
                     student={s}
+                    onGrade={() => gradeStudent(cls.id, s.id, s.full_name)}
                     onEdit={() => setEdit(s)}
                     onDelete={() => setConfirmDelete(s)}
                   />
@@ -236,6 +259,8 @@ export function ClassDetail({ cls, onBack }: { cls: ClassRoom; onBack: () => voi
             </table>
           </div>
         </div>
+      )}
+        </>
       )}
 
       {edit && (
@@ -288,11 +313,13 @@ function Th({ children, style }: { children?: React.ReactNode; style?: React.CSS
 function StudentRow({
   index,
   student,
+  onGrade,
   onEdit,
   onDelete,
 }: {
   index: number;
   student: Student;
+  onGrade: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -307,7 +334,24 @@ function StudentRow({
       <td style={{ padding: "11px 16px", fontSize: T.fontSize.base, fontWeight: 600, color: T.text }}>{student.full_name}</td>
       <td style={{ padding: "11px 16px", fontFamily: T.mono, fontSize: 13, color: T.textMute }}>{student.student_code || "—"}</td>
       <td style={{ padding: "8px 12px", textAlign: "right" }}>
-        <span style={{ display: "inline-flex", gap: 2, opacity: hover ? 1 : 0.35, transition: "opacity 0.12s ease" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, opacity: hover ? 1 : 0.55, transition: "opacity 0.12s ease" }}>
+          <button
+            type="button"
+            onClick={onGrade}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: T.accent,
+              cursor: "pointer",
+              fontFamily: T.font,
+              fontSize: T.fontSize.sm,
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              padding: "4px 6px",
+            }}
+          >
+            Chấm bài →
+          </button>
           <RowIconBtn title="Sửa" onClick={onEdit}>
             <Icon.Edit size={15} />
           </RowIconBtn>
@@ -317,6 +361,46 @@ function StudentRow({
         </span>
       </td>
     </tr>
+  );
+}
+
+/** Segmented toggle between the roster (Danh sách) and the gradebook. */
+function ViewToggle({
+  view,
+  onChange,
+}: {
+  view: "roster" | "gradebook";
+  onChange: (v: "roster" | "gradebook") => void;
+}) {
+  const opt = (key: "roster" | "gradebook", label: string) => {
+    const active = view === key;
+    return (
+      <button
+        type="button"
+        onClick={() => onChange(key)}
+        style={{
+          padding: "7px 14px",
+          borderRadius: 8,
+          border: "none",
+          background: active ? T.bgCard : "transparent",
+          color: active ? T.accent : T.textMute,
+          fontFamily: T.font,
+          fontSize: T.fontSize.sm,
+          fontWeight: 600,
+          cursor: "pointer",
+          boxShadow: active ? "0 1px 2px rgba(44,46,58,0.08)" : "none",
+          transition: "background 0.15s ease, color 0.15s ease",
+        }}
+      >
+        {label}
+      </button>
+    );
+  };
+  return (
+    <div style={{ display: "inline-flex", gap: 2, padding: 3, background: T.bgElevated, borderRadius: 10, border: `1px solid ${T.border}` }}>
+      {opt("roster", "Danh sách")}
+      {opt("gradebook", "Bảng điểm")}
+    </div>
   );
 }
 

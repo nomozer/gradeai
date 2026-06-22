@@ -48,9 +48,12 @@ type Route = "workspace" | "memory" | "grade" | "class";
 
 function detectRoute(): Route {
   if (typeof window === "undefined") return "workspace";
-  if (window.location.hash === MEMORY_HASH) return "memory";
-  if (window.location.hash === GRADE_HASH) return "grade";
-  if (window.location.hash === CLASS_HASH) return "class";
+  // The grade route can carry a query (#grade?cls=&sid=&name=) when opened
+  // from a class roster, so match the base hash, not the whole string.
+  const hash = window.location.hash.split("?")[0];
+  if (hash === MEMORY_HASH) return "memory";
+  if (hash === GRADE_HASH) return "grade";
+  if (hash === CLASS_HASH) return "class";
   return "workspace";
 }
 
@@ -169,6 +172,29 @@ function WorkspacePage() {
   }, []);
 
   const { tabs, activeId, addTab, closeTab, clearAll, setActive, updateMeta } = useTabs();
+
+  // When opened from a class roster ("Chấm bài"), the URL carries
+  // #grade?cls=&sid=&name= — stamp the initial tab with that student so the
+  // finalize step can push the per-câu scores back into the class gradebook.
+  // Runs once (ref-guarded); then strips the query so a refresh won't re-stamp.
+  const classLinkApplied = useRef(false);
+  useEffect(() => {
+    if (classLinkApplied.current) return;
+    const q = window.location.hash.split("?")[1];
+    if (!q) return;
+    const params = new URLSearchParams(q);
+    const sid = params.get("sid");
+    if (!sid) return;
+    classLinkApplied.current = true;
+    const cls = params.get("cls");
+    const name = params.get("name");
+    updateMeta(activeId, {
+      studentId: Number(sid),
+      classId: cls ? Number(cls) : null,
+      ...(name ? { label: name } : {}),
+    });
+    window.history.replaceState(null, "", window.location.pathname + GRADE_HASH);
+  }, [activeId, updateMeta]);
 
   // Pending queue of tab IDs waiting to be graded
   const [pendingQueue, setPendingQueue] = useState<string[]>([]);

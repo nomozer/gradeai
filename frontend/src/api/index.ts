@@ -33,5 +33,13 @@ export {
   addStudentsBulk,
   updateStudent,
   deleteStudent,
+  getGradebook,
+  upsertStudentGrade,
 } from "./classes";
-export type { ClassRoom, Student, StudentBulkRow } from "./classes";
+export type {
+  ClassRoom,
+  Student,
+  StudentBulkRow,
+  StudentGrade,
+  GradebookRow,
+} from "./classes";

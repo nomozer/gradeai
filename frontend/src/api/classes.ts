@@ -3,6 +3,7 @@ import {
   apiGet,
   apiPatch,
   apiPost,
+  apiPut,
   type RequestOptions,
 } from "./client";
 
@@ -125,4 +126,44 @@ export function deleteStudent(
   options?: RequestOptions,
 ): Promise<{ ok: boolean }> {
   return apiDelete<{ ok: boolean }>(`/classes/students/${studentId}`, options);
+}
+
+// ---- gradebook ------------------------------------------------------------
+
+/** A student's current grade — per-câu scores keyed by câu number (string). */
+export interface StudentGrade {
+  scores: Record<string, number>;
+  total: number;
+  run_id: number | null;
+  graded_at: string | null;
+}
+
+/** A roster row enriched with the student's grade (null if not yet graded). */
+export interface GradebookRow extends Student {
+  grade: StudentGrade | null;
+}
+
+export function getGradebook(
+  classId: number,
+  options?: RequestOptions,
+): Promise<{ students: GradebookRow[] }> {
+  return apiGet<{ students: GradebookRow[] }>(
+    `/classes/${classId}/gradebook`,
+    {},
+    options,
+  );
+}
+
+/** Upsert a student's grade (called from the grading desk on finalize). */
+export function upsertStudentGrade(
+  studentId: number,
+  scores: Record<number, number>,
+  runId?: number | null,
+  options?: RequestOptions,
+): Promise<StudentGrade> {
+  return apiPut<{ scores: Record<number, number>; run_id: number | null }, StudentGrade>(
+    `/classes/students/${studentId}/grade`,
+    { scores, run_id: runId ?? null },
+    options,
+  );
 }
