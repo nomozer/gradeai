@@ -15,6 +15,9 @@ import { T } from "../../theme/tokens";
 import { openInNewTab } from "../../lib/openInNewTab";
 import { Btn, Field, Modal } from "./components/ClassUI";
 import { Gradebook } from "./Gradebook";
+import { BatchGrade } from "./BatchGrade";
+
+type ClassView = "roster" | "gradebook" | "batch";
 
 /** Open the grading desk in a new tab, tagged with this class + student so
  *  the finalize step pushes the scores back into the gradebook. */
@@ -53,7 +56,7 @@ export function ClassDetail({ cls, onBack }: { cls: ClassRoom; onBack: () => voi
 
   const [edit, setEdit] = useState<Student | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Student | null>(null);
-  const [view, setView] = useState<"roster" | "gradebook">("roster");
+  const [view, setView] = useState<ClassView>("roster");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refresh = () => {
@@ -112,6 +115,20 @@ export function ClassDetail({ cls, onBack }: { cls: ClassRoom; onBack: () => voi
       if (fileRef.current) fileRef.current.value = "";
     }
   };
+
+  if (view === "batch") {
+    return (
+      <BatchGrade
+        cls={cls}
+        students={students}
+        onBack={() => setView("roster")}
+        onDone={() => {
+          refresh();
+          setView("gradebook");
+        }}
+      />
+    );
+  }
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "20px clamp(16px, 4vw, 32px) 80px" }}>
@@ -183,6 +200,9 @@ export function ClassDetail({ cls, onBack }: { cls: ClassRoom; onBack: () => voi
               </Btn>
             </>
           )}
+          <Btn variant="primary" onClick={() => setView("batch")} title="Đổ cả loạt bài làm để AI chấm tự động">
+            <Icon.Bot size={15} /> Chấm cả lớp
+          </Btn>
         </div>
       </div>
 
@@ -369,7 +389,7 @@ function ViewToggle({
   view,
   onChange,
 }: {
-  view: "roster" | "gradebook";
+  view: ClassView;
   onChange: (v: "roster" | "gradebook") => void;
 }) {
   const opt = (key: "roster" | "gradebook", label: string) => {
