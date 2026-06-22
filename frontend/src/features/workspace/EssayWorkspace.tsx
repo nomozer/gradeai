@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentPipeline } from "../../hooks/useAgentPipeline";
 import { useFeedback } from "../../hooks/useFeedback";
-import { ApiError, detectSubject, finalizeGrade, saveDraft, getDraft, upsertStudentGrade, type DetectConfidence } from "../../api";
+import { ApiError, detectSubject, finalizeGrade, saveDraft, getDraft, type DetectConfidence } from "../../api";
 import { T } from "../../theme/tokens";
 import { i18n } from "../../i18n";
 import { Icon } from "../../components/ui/Icon";
@@ -684,20 +684,6 @@ export function EssayWorkspace({
       setFinalizeError(null);
       try {
         const resp = await persistFinalizedGrade(payload);
-        // If this tab was opened from a class roster ("Chấm bài"), push the
-        // effective per-câu scores into that student's gradebook row. Best-
-        // effort: a failure doesn't undo the finalize (grade is already saved).
-        if (tab.studentId && tabQuestions && tabQuestions.length > 0) {
-          const scores: Record<number, number> = {};
-          for (const q of tabQuestions) scores[q.num] = q.score;
-          void upsertStudentGrade(
-            tab.studentId,
-            scores,
-            pipeline.runId ?? undefined,
-          ).catch((e) =>
-            console.warn("[HITL] push grade to class gradebook failed:", e),
-          );
-        }
         const annotationPayload = buildAnnotationFinalizePayload(teacherAnnotations);
         setFinalizedResult({
           ...payload,
@@ -726,17 +712,7 @@ export function EssayWorkspace({
         setIsFinalizing(false);
       }
     },
-    [
-      isFinalizing,
-      persistFinalizedGrade,
-      teacherAnnotations,
-      onMeta,
-      t,
-      tab.id,
-      tab.studentId,
-      tabQuestions,
-      pipeline.runId,
-    ],
+    [isFinalizing, persistFinalizedGrade, teacherAnnotations, onMeta, t, tab.id],
   );
 
   // "Chốt điểm" from Step 3 — compute the teacher's final total (sum of

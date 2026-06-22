@@ -8,7 +8,6 @@ import { MirrorLogo } from "../ui/MirrorLogo";
 interface AppHeaderProps {
   brand: string;
   onOpenMemory: () => void;
-  onOpenClasses?: () => void;
   onOpenHelp: () => void;
   memoryActive: boolean;
   onToggleHistory: (anchorRect: DOMRect | null) => void;
@@ -57,7 +56,6 @@ function initialsOf(label: string): string {
 export function AppHeader({
   brand: _brand,
   onOpenMemory,
-  onOpenClasses,
   onOpenHelp,
   onToggleHistory,
   historyActive,
@@ -184,7 +182,6 @@ export function AppHeader({
         historyActive={historyActive}
         onToggleHistory={onToggleHistory}
         onOpenMemory={onOpenMemory}
-        onOpenClasses={onOpenClasses}
         onOpenHelp={onOpenHelp}
         onLogout={onLogout}
         onOpenAdmin={onOpenAdmin}
@@ -201,7 +198,6 @@ function AccountMenu({
   historyActive,
   onToggleHistory,
   onOpenMemory,
-  onOpenClasses,
   onOpenHelp,
   onLogout,
   onOpenAdmin,
@@ -210,7 +206,6 @@ function AccountMenu({
   historyActive: boolean;
   onToggleHistory: (anchorRect: DOMRect | null) => void;
   onOpenMemory: () => void;
-  onOpenClasses?: () => void;
   onOpenHelp: () => void;
   onLogout?: () => void;
   onOpenAdmin?: () => void;
@@ -359,13 +354,6 @@ function AccountMenu({
                 label="Trang quản trị"
                 icon={<Icon.Layout size={16} />}
                 onClick={run(onOpenAdmin)}
-              />
-            )}
-            {onOpenClasses && (
-              <MenuItem
-                label="Lớp học"
-                icon={<Icon.User size={16} />}
-                onClick={run(onOpenClasses)}
               />
             )}
             <MenuItem

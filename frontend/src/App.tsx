@@ -28,7 +28,6 @@ import { AppHeader } from "./components/layout/AppHeader";
 import { TabBar } from "./components/layout/TabBar";
 import { EssayWorkspace } from "./features/workspace/EssayWorkspace";
 import { MemoryPanel } from "./features/memory/MemoryPanel";
-import { ClassPage } from "./features/classes/ClassPage";
 import { HelpModal } from "./features/help/HelpModal";
 import { GradeHistoryDropdown } from "./features/history/GradeHistoryDropdown";
 import { Toast } from "./components/ui/Toast";
@@ -42,18 +41,13 @@ import type { GradeHistoryEntry } from "./types";
 
 const MEMORY_HASH = "#memory";
 const GRADE_HASH = "#grade";
-const CLASS_HASH = "#class";
 
-type Route = "workspace" | "memory" | "grade" | "class";
+type Route = "workspace" | "memory" | "grade";
 
 function detectRoute(): Route {
   if (typeof window === "undefined") return "workspace";
-  // The grade route can carry a query (#grade?cls=&sid=&name=) when opened
-  // from a class roster, so match the base hash, not the whole string.
-  const hash = window.location.hash.split("?")[0];
-  if (hash === MEMORY_HASH) return "memory";
-  if (hash === GRADE_HASH) return "grade";
-  if (hash === CLASS_HASH) return "class";
+  if (window.location.hash === MEMORY_HASH) return "memory";
+  if (window.location.hash === GRADE_HASH) return "grade";
   return "workspace";
 }
 
@@ -78,7 +72,6 @@ export default function App() {
 
 function RoleRouter({ route }: { route: Route }) {
   if (route === "memory") return <MemoryPage />;
-  if (route === "class") return <ClassPage />;
   if (route === "grade") return <WorkspacePage />; // admin opened the grading desk
   if (isAdmin()) return <AdminDashboard />;
   return <WorkspacePage />;
@@ -145,12 +138,6 @@ function WorkspacePage() {
     openInNewTab(window.location.origin + window.location.pathname + MEMORY_HASH);
   }, []);
 
-  // "Lớp học" header item: open the class-management page in a new browser
-  // tab (same idiom as memory) so the grading desk here stays untouched.
-  const openClassesTab = useCallback(() => {
-    openInNewTab(window.location.origin + window.location.pathname + CLASS_HASH);
-  }, []);
-
   // Admin-only: jump back to the management dashboard (base URL with no hash ⇒
   // admins land on AdminDashboard). New tab, same idiom as memory, so the
   // in-progress grading tab here is preserved.
@@ -172,29 +159,6 @@ function WorkspacePage() {
   }, []);
 
   const { tabs, activeId, addTab, closeTab, clearAll, setActive, updateMeta } = useTabs();
-
-  // When opened from a class roster ("Chấm bài"), the URL carries
-  // #grade?cls=&sid=&name= — stamp the initial tab with that student so the
-  // finalize step can push the per-câu scores back into the class gradebook.
-  // Runs once (ref-guarded); then strips the query so a refresh won't re-stamp.
-  const classLinkApplied = useRef(false);
-  useEffect(() => {
-    if (classLinkApplied.current) return;
-    const q = window.location.hash.split("?")[1];
-    if (!q) return;
-    const params = new URLSearchParams(q);
-    const sid = params.get("sid");
-    if (!sid) return;
-    classLinkApplied.current = true;
-    const cls = params.get("cls");
-    const name = params.get("name");
-    updateMeta(activeId, {
-      studentId: Number(sid),
-      classId: cls ? Number(cls) : null,
-      ...(name ? { label: name } : {}),
-    });
-    window.history.replaceState(null, "", window.location.pathname + GRADE_HASH);
-  }, [activeId, updateMeta]);
 
   // Pending queue of tab IDs waiting to be graded
   const [pendingQueue, setPendingQueue] = useState<string[]>([]);
@@ -454,7 +418,6 @@ function WorkspacePage() {
       <AppHeader
         brand={String(t.title)}
         onOpenMemory={openMemoryTab}
-        onOpenClasses={openClassesTab}
         onOpenHelp={openHelp}
         memoryActive={false}
         onToggleHistory={toggleHistory}
