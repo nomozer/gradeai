@@ -43,6 +43,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 # uvicorn is launched from backend/, so direct imports (no "backend." prefix).
 from api.auth import router as auth_router, attach_auth
+from api.classes import router as classes_router, attach_classes
 from api.grading import router as grading_router, attach_grading
 from api.heartbeat import router as heartbeat_router, start_watchdog
 from api.history import router as history_router, attach_history_memory
@@ -55,6 +56,7 @@ from api.middleware import (
     normalize_origin,
 )
 from auth import UserStore
+from classes import ClassStore
 from grading import AgentOrchestrator, PromptOrchestrator
 from memory import MemoryManager
 
@@ -178,13 +180,17 @@ prompt_orch = PromptOrchestrator(
 )
 orchestrator = AgentOrchestrator(memory=memory, prompt_orchestrator=prompt_orch)
 
+class_store = ClassStore()
+
 attach_grading(memory, prompt_orch, orchestrator)
 attach_memory(memory)
 attach_history_memory(memory)
 attach_auth(user_store, memory)
+attach_classes(class_store)
 
 app.include_router(auth_router)
 app.include_router(grading_router)
 app.include_router(heartbeat_router)
 app.include_router(memory_router)
 app.include_router(history_router)
+app.include_router(classes_router)
