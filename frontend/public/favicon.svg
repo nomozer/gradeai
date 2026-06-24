@@ -1,9 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <title>MIRROR</title>
-  <circle cx="16" cy="16" r="14" fill="#3B4F8A" />
-  <circle cx="16" cy="16" r="12.2" fill="none" stroke="#FFFDF8" stroke-width="1.4" opacity=".9" />
-  <path
-    d="M8.2 22.6V9.4h3.2l4.6 7 4.6-7h3.2v13.2h-3.5v-7.2l-3.2 4.7h-2.2l-3.2-4.7v7.2H8.2z"
-    fill="#FFFDF8"
-  />
+  <!-- Navy badge so the mark survives any browser-tab background -->
+  <rect width="100" height="100" rx="24" fill="#3B4F8A" />
+  <!-- Mirror axis -->
+  <line x1="22" y1="52" x2="78" y2="52" stroke="#FFFDF8" stroke-width="3" stroke-linecap="round" opacity="0.32" />
+  <!-- The M, in cream -->
+  <polyline points="22,48 37,22 50,42 63,22 78,48" fill="none" stroke="#FFFDF8"
+    stroke-width="11" stroke-linejoin="round" stroke-linecap="round" />
+  <!-- Its violet reflection -->
+  <polyline points="22,56 37,82 50,62 63,82 78,56" fill="none" stroke="#C2A4EE"
+    stroke-width="9" stroke-linejoin="round" stroke-linecap="round" opacity="0.85" />
 </svg>
